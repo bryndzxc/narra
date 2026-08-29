@@ -1,0 +1,314 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\Gate;
+use App\Enums\StoryFormat;
+use App\Enums\StoryStatus;
+use App\Exceptions\GateViolationException;
+use Database\Factories\StoryFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
+
+/**
+ * One video, from premise to publish sheet.
+ *
+ * The gate logic below is the reason this model is not anaemic. The four human
+ * gates are the product's central promise and the line below Gate 2 is a money
+ * invariant, so neither can be a UI concern: a Livewire component that enforces
+ * them is a rule a queued job or an Artisan command walks straight past. Every
+ * caller goes through transitionTo() or approveGate(), and anything that spends
+ * money calls assertPaidAssetsUnlocked() first.
+ *
+ * @property StoryStatus $status
+ * @property StoryFormat $format
+ */
+class Story extends Model
+{
+    /** @use HasFactory<StoryFactory> */
+    use HasFactory;
+
+    protected $fillable = [
+        'title',
+        'slug',
+        'premise',
+        'format',
+        'locale_profile',
+        'voice_id',
+        'target_duration_min',
+        'target_duration_max',
+        'target_publish_at',
+    ];
+
+    /**
+     * `status` is deliberately absent from $fillable. It is not an attribute to
+     * be assigned; it is a state machine with four operator gates in it, and
+     * every move belongs in transitionTo() or approveGate().
+     *
+     * `total_cost_usd` too — it is maintained from cost_entries, not set.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => StoryStatus::class,
+            'reopened_from' => StoryStatus::class,
+            'format' => StoryFormat::class,
+            'target_publish_at' => 'datetime',
+            'total_cost_usd' => 'decimal:4',
+            'target_duration_min' => 'integer',
+            'target_duration_max' => 'integer',
+        ];
+    }
+
+    /**
+     * A filesystem-safe workspace name for a title.
+     *
+     * Capped hard, and not only because the column is varchar(64). Render
+     * output lives at `renders/<slug>/clips/scene-nnn.mp4`, Windows caps a path
+     * at 260 characters unless long paths are enabled, and a title is arbitrary
+     * operator text — em dashes, quotes, colons, and as long as they like.
+     * Slugging once at creation is what keeps 200 scene files addressable.
+     */
+    public static function slugFor(string $title, ?string $suffix = null): string
+    {
+        $slug = Str::slug($title) ?: 'story';
+        $suffix = $suffix === null ? '' : '-'.trim($suffix, '-');
+
+        return Str::limit($slug, 63 - strlen($suffix), '').$suffix;
+    }
+
+    // -- Relations ----------------------------------------------------------
+
+    /** @return HasMany<Act, $this> */
+    public function acts(): HasMany
+    {
+        return $this->hasMany(Act::class)->orderBy('sequence');
+    }
+
+    /** @return HasMany<Scene, $this> */
+    public function scenes(): HasMany
+    {
+        return $this->hasMany(Scene::class)->orderBy('sequence');
+    }
+
+    /** @return HasMany<Character, $this> */
+    public function characters(): HasMany
+    {
+        return $this->hasMany(Character::class);
+    }
+
+    /** @return HasMany<AudioTrack, $this> */
+    public function audioTracks(): HasMany
+    {
+        return $this->hasMany(AudioTrack::class);
+    }
+
+    /** @return HasManyThrough<SceneAudio, Scene, $this> */
+    public function sceneAudio(): HasManyThrough
+    {
+        return $this->hasManyThrough(SceneAudio::class, Scene::class);
+    }
+
+    /** @return HasMany<RenderJob, $this> */
+    public function renderJobs(): HasMany
+    {
+        return $this->hasMany(RenderJob::class);
+    }
+
+    /** @return HasMany<CostEntry, $this> */
+    public function costEntries(): HasMany
+    {
+        return $this->hasMany(CostEntry::class);
+    }
+
+    /** @return HasOne<YoutubeMetadata, $this> */
+    public function youtubeMetadata(): HasOne
+    {
+        return $this->hasOne(YoutubeMetadata::class);
+    }
+
+    // -- Gates and transitions ----------------------------------------------
+
+    public function canTransitionTo(StoryStatus $status): bool
+    {
+        return $this->status->canTransitionTo($status);
+    }
+
+    /**
+     * Move the story, for any move that is not a gate crossing.
+     *
+     * Refuses gate crossings outright rather than performing them quietly. A
+     * gate is an operator decision; if a job could reach it through the same
+     * method as every other transition, one day one will.
+     *
+     * @throws GateViolationException
+     */
+    public function transitionTo(StoryStatus $status): static
+    {
+        if (! $this->canTransitionTo($status)) {
+            throw GateViolationException::illegalTransition($this->status, $status);
+        }
+
+        $gate = $this->status->gateFor($status);
+
+        if ($gate !== null) {
+            throw GateViolationException::gateNotApproved($this->status, $status, $gate);
+        }
+
+        $this->forceFill(['status' => $status])->save();
+
+        return $this;
+    }
+
+    /**
+     * Cross a gate. The one path through, and it is explicit by design.
+     *
+     * @throws GateViolationException
+     */
+    public function approveGate(Gate $gate): static
+    {
+        if ($this->status !== $gate->waitsAt()) {
+            throw GateViolationException::notWaitingAtGate($gate, $this->status);
+        }
+
+        $this->forceFill(['status' => $gate->opensTo()])->save();
+
+        return $this;
+    }
+
+    /**
+     * Reopen Gate 2 so the operator can fix a scene.
+     *
+     * A move of its own rather than a transitionTo() call, because the caller
+     * that asks for it does not know which statuses it is legal from, and the
+     * page that offers it was previously deciding that for itself. That is the
+     * bug this method closes: the button was shown whenever scenes were locked,
+     * which is six statuses, and only one of them had the transition.
+     *
+     * It destroys nothing. Reopening is entered speculatively — "let me look at
+     * scene 147" — and an operator who changes their mind should not have paid
+     * for the look. What has actually gone stale is computed and applied when
+     * the gate is approved again, where it can be shown before it happens. See
+     * SceneChangeSet and ApproveScenesGate.
+     *
+     * @throws GateViolationException
+     */
+    public function reopenScenesGate(): static
+    {
+        if (! $this->status->canReopenScenesGate()) {
+            throw GateViolationException::cannotReopenScenesGate($this->status);
+        }
+
+        $this->forceFill([
+            // Kept so the re-approval can name what it is about to discard.
+            // "This will discard the finished 37-minute render" is a different
+            // sentence from "this will discard the images you generated", and
+            // the operator deserves whichever one is true.
+            'reopened_from' => $this->status,
+            'status' => StoryStatus::ScenesDrafted,
+        ])->save();
+
+        // The one thing a reopen does touch, and it marks rather than deletes.
+        // Chapters are derived from act timings, act timings come from the
+        // render, and the render is now invalid — so every timestamp in a
+        // drafted publish sheet is wrong. The sheet stays on screen and stays
+        // copyable in the meantime, which is why leaving it unmarked is not an
+        // option: Gate 4's consequences land on YouTube, outside this app.
+        $this->youtubeMetadata?->markStale();
+
+        return $this;
+    }
+
+    /**
+     * A digest of the scene list as it stands: ordered, with sequence numbers.
+     *
+     * Answers only whole-video questions — whether the concatenated render
+     * still matches the scene list, and whether the clips are still filed under
+     * the right numbers. That second one is easy to miss: clips are named
+     * `scene-%03d` from `sequence`, so swapping scenes 2 and 3 leaves each
+     * clip's contents under the other's filename. Nothing here is ever a reason
+     * to re-bill a provider.
+     */
+    public function sceneDigest(): string
+    {
+        $pairs = $this->scenes()
+            ->reorder('sequence')
+            ->pluck('sequence', 'id')
+            ->map(fn (int $sequence, int $id): string => "{$id}:{$sequence}")
+            ->values()
+            ->implode(',');
+
+        return hash('sha256', $pairs);
+    }
+
+    /** The gate currently waiting on the operator, if the story is parked at one. */
+    public function awaitingGate(): ?Gate
+    {
+        return $this->status->awaitingGate();
+    }
+
+    public function hasPassedGate(Gate $gate): bool
+    {
+        return $this->status->rank() >= $gate->opensTo()->rank();
+    }
+
+    // -- The money line ------------------------------------------------------
+
+    /**
+     * Whether this story may generate paid assets yet.
+     *
+     * False until Gate 2 is passed. Nothing about images, TTS or transcription
+     * may run before then.
+     */
+    public function canGeneratePaidAssets(): bool
+    {
+        return $this->status->allowsPaidAssets();
+    }
+
+    /**
+     * Guard for anything that will bill.
+     *
+     * Every paid provider call in Phase 2 goes through this first, and so does
+     * every cost_entries insert — see CostEntry, which refuses to record a cost
+     * against a story that was not allowed to incur one. That makes "no paid
+     * asset generation before scenes_approved" a property of the data rather
+     * than a note in a job class.
+     *
+     * @throws GateViolationException
+     */
+    public function assertPaidAssetsUnlocked(?string $operation = null): void
+    {
+        if (! $this->canGeneratePaidAssets()) {
+            throw GateViolationException::paidAssetsLocked($this->status, $operation);
+        }
+    }
+
+    // -- Publishing ----------------------------------------------------------
+
+    /**
+     * The target publish time in US Eastern — the timezone the schedule is
+     * actually reasoned about in, since peak viewing is 6-10 PM ET.
+     */
+    public function targetPublishAtEastern(): ?Carbon
+    {
+        return $this->target_publish_at?->copy()->setTimezone('America/New_York');
+    }
+
+    /**
+     * The same instant in Manila, where the operator is.
+     *
+     * That US evening window lands in the early hours here, which is exactly
+     * how a publish time gets fumbled — so both are shown, never just one.
+     */
+    public function targetPublishAtManila(): ?Carbon
+    {
+        return $this->target_publish_at?->copy()->setTimezone('Asia/Manila');
+    }
+}

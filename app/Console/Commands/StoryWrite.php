@@ -1,0 +1,310 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Actions\GenerateActScripts;
+use App\Actions\GenerateOutline;
+use App\Enums\CostCategory;
+use App\Enums\StoryFormat;
+use App\Exceptions\LocaleViolationException;
+use App\Models\Act;
+use App\Models\Story;
+use App\Support\Providers\ActScriptDraft;
+use Illuminate\Console\Command;
+use Illuminate\Support\Str;
+use Throwable;
+
+/**
+ * Write a story: outline, then every act, in order.
+ *
+ * The operator-facing entry point for Phase 2a. It spends real money, so it
+ * says what it is about to spend it on and asks first — and it reports what it
+ * actually cost against the story's own cost_entries rows rather than against
+ * an estimate, because the estimate is the thing being checked.
+ *
+ * Deliberately stops at `outlined` or `scripted`. There is no flag that carries
+ * on into scenes or assets: Gate 1 and Gate 2 are operator decisions and this
+ * command's job ends where theirs begins.
+ */
+class StoryWrite extends Command
+{
+    protected $signature = 'story:write
+        {story? : Story slug or id. Omit to create a new one from --premise.}
+        {--premise= : Premise for a new story.}
+        {--title= : Working title for a new story.}
+        {--format=anthology : single or anthology.}
+        {--acts= : Number of acts. Defaults to 5 for anthology, 6 for single.}
+        {--min=30 : Target minimum runtime, minutes.}
+        {--max=40 : Target maximum runtime, minutes.}
+        {--outline-only : Stop after the outline, before any act is written.}
+        {--acts-only= : Comma-separated act sequences to rewrite. Implies the outline exists.}
+        {--yes : Skip the spend confirmation.}';
+
+    protected $description = 'Generate a story outline and its act scripts, chunked and sequential.';
+
+    public function handle(GenerateOutline $outline, GenerateActScripts $scripts): int
+    {
+        try {
+            $story = $this->resolveStory();
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->line('');
+        $this->info("Story: {$story->title}");
+        $this->line("  slug            {$story->slug}");
+        $this->line("  format          {$story->format->value}");
+        $this->line("  locale          {$story->locale_profile}");
+        $this->line("  target runtime  {$story->target_duration_min}-{$story->target_duration_max} min");
+        $this->line("  status          {$story->status->value}");
+        $this->line('  provider        '.config('providers.script_writer').' / '.config('providers.anthropic.model'));
+        $this->line('');
+
+        if (! $this->confirmSpend($story)) {
+            return self::FAILURE;
+        }
+
+        $startedAt = microtime(true);
+        $actsOnly = $this->parseActsOnly();
+
+        try {
+            if ($actsOnly === [] && $story->acts()->count() === 0) {
+                $this->outlineStage($story, $outline);
+            } elseif ($actsOnly === []) {
+                $this->line('Outline already exists — keeping it. Use a fresh story to regenerate.');
+            }
+
+            if ($this->option('outline-only')) {
+                $this->line('');
+                $this->info('Stopped after the outline, as asked. Gate 1 is where it gets reviewed.');
+                $this->report($story->refresh(), $startedAt);
+
+                return self::SUCCESS;
+            }
+
+            $this->actStage($story->refresh(), $scripts, $actsOnly);
+        } catch (LocaleViolationException $e) {
+            // Distinct from a generic failure: the tokens were spent and the
+            // cost rows are already written, so the report below still runs.
+            $this->line('');
+            $this->error($e->getMessage());
+            $this->report($story->refresh(), $startedAt);
+
+            return self::FAILURE;
+        } catch (Throwable $e) {
+            $this->line('');
+            $this->error($e->getMessage());
+            $this->report($story->refresh(), $startedAt);
+
+            return self::FAILURE;
+        }
+
+        $this->report($story->refresh(), $startedAt);
+
+        return self::SUCCESS;
+    }
+
+    private function outlineStage(Story $story, GenerateOutline $outline): void
+    {
+        $this->line('Outline...');
+
+        $actCount = $this->option('acts') !== null ? (int) $this->option('acts') : null;
+        $draft = $outline->handle($story, $actCount);
+
+        $this->line('');
+        $this->info("  \"{$draft->title}\"");
+
+        foreach ($draft->acts as $act) {
+            $this->line(sprintf('  %d. %s', $act->sequence, $act->title));
+            $this->line(sprintf('     %s', wordwrap($act->summary, 86, "\n     ")));
+        }
+
+        $this->line('');
+        $this->line('  '.$draft->usage->summary());
+        $this->line('');
+    }
+
+    /**
+     * @param  array<int, int>  $only
+     */
+    private function actStage(Story $story, GenerateActScripts $scripts, array $only): void
+    {
+        $total = $story->acts()->count();
+        $this->line("Act scripts ({$total}, sequential — each one is written knowing the ones before it)...");
+        $this->line('');
+
+        $scripts->handle($story, $only, function (Act $act, ?ActScriptDraft $draft, string $note): void {
+            $this->line(sprintf(
+                '  %d. %-38s %s',
+                $act->sequence,
+                Str::limit($act->title, 36),
+                $draft === null ? $note : $note.'   '.$draft->usage->summary()
+            ));
+        });
+
+        $this->line('');
+
+        foreach ($scripts->localeWarnings($story) as $warning) {
+            $this->warn(sprintf(
+                '  locale warning, act %d: "%s" — ...%s...',
+                $warning['act'],
+                $warning['term'],
+                $warning['context']
+            ));
+        }
+    }
+
+    /**
+     * What this is about to spend, before it spends it.
+     *
+     * Not ceremony. Every act is a billed call and a five-act story is six of
+     * them; a command that starts spending on being typed is one typo from a
+     * duplicate run.
+     */
+    private function confirmSpend(Story $story): bool
+    {
+        if ($this->option('yes') || ! $this->input->isInteractive()) {
+            return true;
+        }
+
+        $acts = $story->acts()->count() ?: (int) ($this->option('acts') ?: 5);
+        $calls = $story->acts()->count() === 0 ? $acts + 1 : $acts;
+
+        $this->warn(sprintf(
+            'This makes %d billed API calls against %s and writes a cost row for each.',
+            $calls,
+            config('providers.anthropic.model')
+        ));
+
+        return $this->confirm('Continue?', true);
+    }
+
+    /**
+     * What it actually cost and how long the script actually is.
+     *
+     * Read from cost_entries rather than accumulated in memory: the table is
+     * the thing that has to be able to answer this, so the command proves it
+     * can rather than reporting its own running total.
+     */
+    private function report(Story $story, float $startedAt): void
+    {
+        $words = $story->acts()->get()->sum(fn (Act $act): int => str_word_count((string) $act->script));
+        // One constant, shared with the word target and the fake TTS.
+        $wpm = (int) config('render.narration.words_per_minute');
+        $minutes = $words / $wpm;
+
+        $entries = $story->costEntries()->get();
+        $text = $entries->where('category', CostCategory::Text);
+
+        $this->line('');
+        $this->line(str_repeat('-', 72));
+        $this->info('Result');
+        $this->line(str_repeat('-', 72));
+
+        $this->table(
+            ['', ''],
+            [
+                ['status', $story->status->value],
+                ['acts written', $story->acts()->whereNotNull('script')->count().' of '.$story->acts()->count()],
+                ['rehooks written', $story->acts()->where('is_rehook_written', true)->count()],
+                ['words', number_format($words)],
+                ['target', '5,500-8,000 words'],
+                ['in target', $words >= 5500 && $words <= 8000 ? 'yes' : 'NO'],
+                ['est. runtime', sprintf('%.1f min @ %d wpm', $minutes, $wpm)],
+                ['runtime target', "{$story->target_duration_min}-{$story->target_duration_max} min"],
+                ['in runtime window', $minutes >= $story->target_duration_min && $minutes <= $story->target_duration_max ? 'yes' : 'NO'],
+                ['', ''],
+                ['api calls', (string) $entries->count()],
+                ['tokens', number_format((float) $entries->sum('quantity'))],
+                ['text spend', '$'.number_format((float) $text->sum('usd_cost'), 4)],
+                ['asset spend', '$'.number_format((float) $entries->where('category', CostCategory::Asset)->sum('usd_cost'), 4)],
+                ['TOTAL (cost_entries)', '$'.number_format((float) $entries->sum('usd_cost'), 4)],
+                ['TOTAL (stories row)', '$'.number_format((float) $story->total_cost_usd, 4)],
+                ['', ''],
+                ['wall clock', sprintf('%.1f s', microtime(true) - $startedAt)],
+            ]
+        );
+
+        $this->line('');
+        $this->line('Per-call breakdown:');
+
+        foreach ($entries as $entry) {
+            $this->line(sprintf(
+                '  %-22s %-8s %10s tok   $%s',
+                $entry->operation,
+                $entry->category->value,
+                number_format((float) $entry->quantity),
+                number_format((float) $entry->usd_cost, 4)
+            ));
+        }
+
+        $this->line('');
+        $this->line("Review it at Gate 1: /stories/{$story->slug}/gate/1");
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function parseActsOnly(): array
+    {
+        $raw = (string) $this->option('acts-only');
+
+        if (trim($raw) === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            fn (string $part): int => (int) trim($part),
+            explode(',', $raw)
+        )));
+    }
+
+    private function resolveStory(): Story
+    {
+        $key = (string) $this->argument('story');
+
+        if ($key !== '') {
+            $story = Story::query()
+                ->where('slug', $key)
+                ->orWhere('id', ctype_digit($key) ? (int) $key : 0)
+                ->first();
+
+            if ($story === null) {
+                throw new \RuntimeException("No story matching '{$key}'.");
+            }
+
+            return $story;
+        }
+
+        $premise = trim((string) $this->option('premise'));
+
+        if ($premise === '') {
+            throw new \RuntimeException(
+                'Give a story slug, or --premise to start a new one. The premise is the operator\'s '
+                .'editorial input and there is no default for it.'
+            );
+        }
+
+        $title = trim((string) $this->option('title')) ?: Str::limit($premise, 60, '');
+
+        // Refreshed, not just created. `status` and `total_cost_usd` are
+        // deliberately absent from $fillable — they are a state machine and a
+        // derived total, not attributes to assign — so they come from the
+        // column defaults and are not on the in-memory model until it is read
+        // back.
+        $story = Story::create([
+            'title' => $title,
+            'slug' => Story::slugFor($title, (string) random_int(1000, 9999)),
+            'premise' => $premise,
+            'format' => StoryFormat::from((string) $this->option('format')),
+            'locale_profile' => config('locale.default'),
+            'voice_id' => 'narrator-us-01',
+            'target_duration_min' => (int) $this->option('min'),
+            'target_duration_max' => (int) $this->option('max'),
+        ]);
+
+        return $story->refresh();
+    }
+}

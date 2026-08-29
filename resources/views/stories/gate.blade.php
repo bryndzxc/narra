@@ -1,0 +1,69 @@
+@php
+    /** @var \App\Models\Story $story */
+    /** @var \App\Enums\Gate $gate */
+    $waiting = $story->awaitingGate();
+
+    $routes = [
+        1 => 'stories.outline',
+        2 => 'stories.scenes',
+        3 => 'stories.preview',
+        4 => 'stories.metadata',
+    ];
+
+    $blurbs = [
+        1 => 'Premise and act outline',
+        2 => 'Every scene, before anything bills',
+        3 => 'Watch the render',
+        4 => 'The publish sheet',
+    ];
+@endphp
+
+<x-layouts.app :title="$story->title">
+    <div class="row" style="margin-bottom:4px">
+        <h1 style="margin:0">{{ $story->title }}</h1>
+        <span class="badge">{{ $story->status->value }}</span>
+        @if ($waiting)
+            <span class="badge money">{{ $waiting->label() }} awaiting you</span>
+        @endif
+        <span class="right small">
+            <a href="{{ route('renders.show', $story->slug) }}">render progress</a>
+        </span>
+    </div>
+    <p class="muted mono small">
+        {{ $story->slug }} &middot; {{ $story->scenes()->count() }} scenes &middot;
+        {{ $story->acts()->count() }} acts &middot;
+        ${{ number_format((float) $story->total_cost_usd, 4) }} spent
+    </p>
+
+    {{-- The stepper is the spine of the whole tool: four gates, always visible,
+         always in order, so it is never unclear which decision is outstanding. --}}
+    <div class="gates">
+        @foreach (\App\Enums\Gate::cases() as $g)
+            @php
+                $passed = $story->hasPassedGate($g);
+                $current = $waiting === $g;
+                $class = $current ? 'current' : ($passed ? 'passed' : 'locked');
+            @endphp
+            <a href="{{ route($routes[$g->value], $story) }}"
+               class="{{ $class }} {{ $g === $gate ? 'viewing' : '' }}"
+               style="{{ $g === $gate ? 'border-color: var(--run)' : '' }}">
+                <div class="num">Gate {{ $g->value }}</div>
+                <div class="name">{{ $g->name }}</div>
+                <div class="muted small">{{ $blurbs[$g->value] }}</div>
+                <div class="state">
+                    @if ($current) waiting on you
+                    @elseif ($passed) approved
+                    @else not reached
+                    @endif
+                </div>
+            </a>
+        @endforeach
+    </div>
+
+    @switch($gate->value)
+        @case(1) <livewire:gates.outline-gate :story="$story" /> @break
+        @case(2) <livewire:gates.scenes-gate :story="$story" /> @break
+        @case(3) <livewire:gates.preview-gate :story="$story" /> @break
+        @case(4) <livewire:gates.metadata-gate :story="$story" /> @break
+    @endswitch
+</x-layouts.app>
