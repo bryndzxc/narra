@@ -11,11 +11,25 @@ use App\Support\RenderWorkspace;
 /**
  * Delete the scratch once the deliverable exists and decodes.
  *
- * Never in the render chain, and that is deliberate. Scratch is what a re-run
- * reuses, and at Gate 3 the operator may well reject the render — throwing away
- * the clips and the padded PCM the moment the mux finishes would turn a
- * one-stage re-render into a full one. This is dispatched on request, after a
- * human has watched the video.
+ * The last link of the render chain, after the mux. This class existed for a
+ * while dispatched by nobody — the spec said "scratch is purged on successful
+ * render", the chain ended at the mux, and the only thing that ever ran a purge
+ * was an operator typing `render:purge`. Which is to say it never ran: a
+ * 30-40 minute render leaves roughly 700 MB of clips and padded PCM behind, and
+ * at every-other-day uploads that is a disk rather than a housekeeping note.
+ *
+ * **Being in the chain is what makes it safe on the failure path.**
+ * `Bus::chain` stops at the first failure, so a mux that threw never reaches
+ * this at all. The Action then refuses on its own account unless `final.mp4`
+ * exists AND its tail decodes — existence is not success, and a truncated file
+ * exists. The chain decides whether this is REACHED; the guard decides whether
+ * it PROCEEDS. Neither is trusted alone, because the thing being deleted is
+ * exactly what a re-run would otherwise reuse.
+ *
+ * The trade, stated rather than buried: a render rejected at Gate 3 now
+ * re-encodes every clip instead of re-running one stage. That was weighed
+ * against the disk and the disk won. If rejections become common the answer is
+ * to move this to Gate 3 approval — not to soften the guard.
  */
 class PurgeRenderScratchJob extends RenderStageJob
 {

@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Enums\StoryStatus;
 use App\Models\Act;
+use App\Models\Character;
 use App\Models\Scene;
 use App\Models\Story;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -69,6 +71,49 @@ class StoryPagesTest extends TestCase
             $response->assertSeeInOrder(['Gate 1', 'Gate 2', 'Gate 3', 'Gate 4']);
             $response->assertSee('waiting on you');
         }
+    }
+
+    public function test_the_contact_sheet_groups_every_still_by_character(): void
+    {
+        // The instrument for the one risk this format cannot recover from: a
+        // face that changes across 150-250 stills. Grouped per character, in
+        // story order, because the comparison that matters is one person
+        // against themselves across the whole runtime.
+        $story = Story::factory()->status(StoryStatus::AssetsReady)->create(['slug' => 'contact-sheet']);
+        $act = Act::factory()->for($story)->atSequence(1)->create();
+
+        $erin = Character::factory()->for($story)->create(['name' => 'Erin Kessler']);
+
+        $withCast = Scene::factory()->forAct($act)->atSequence(1)->create(['image_path' => 'a.jpg']);
+        $withCast->characters()->attach($erin);
+
+        // A frame with nobody in it: no reference, text-to-image, its own group.
+        Scene::factory()->forAct($act)->atSequence(2)->create(['image_path' => 'b.jpg']);
+
+        $this->get(route('stories.faces', $story))
+            ->assertOk()
+            ->assertSee('Erin Kessler')
+            ->assertSee(route('stories.still', [$story, $withCast]))
+            // The two endpoints are marked, because a style difference in an
+            // unreferenced frame is not face drift and must not read as it.
+            ->assertSee('Frames with nobody in them')
+            ->assertSee('text-to-image, no reference', false);
+    }
+
+    public function test_a_still_is_served_with_the_mime_type_of_the_file_on_disk(): void
+    {
+        // fal answers a PNG request with a JPEG. A hardcoded image/png
+        // described most of a real story's stills wrongly.
+        $story = Story::factory()->status(StoryStatus::AssetsReady)->create(['slug' => 'mime-check']);
+        $act = Act::factory()->for($story)->atSequence(1)->create();
+        $scene = Scene::factory()->forAct($act)->atSequence(1)->create(['image_path' => 'still.jpg']);
+
+        Storage::fake('assets');
+        Storage::disk('assets')->put('still.jpg', 'not-really-a-jpeg-but-readable');
+
+        $this->get(route('stories.still', [$story, $scene]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg');
     }
 
     public function test_a_scene_still_is_served_from_the_non_public_disk(): void

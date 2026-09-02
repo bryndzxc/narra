@@ -20,6 +20,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *     property of the data. Anything that bills writes one of these — so
  *     anything that bills hits the guard, whatever layer it lives in.
  *
+ *     `reference` rows are gated too, one status earlier: a character sheet
+ *     is generated while the operator stands at Gate 2, so it asserts
+ *     `scenes_drafted` rather than `scenes_approved`.
+ *
  *     `text` rows are NOT gated, and that is deliberate rather than a hole. The
  *     Gate 2 line is about 150-250 stills and per-scene TTS committed before a
  *     human has read a scene; tokens spent writing the outline the operator
@@ -44,11 +48,14 @@ class CostEntry extends Model
     protected $fillable = [
         'story_id',
         'provider',
+        'simulated',
+        'model',
         'operation',
         'category',
         'quantity',
         'unit',
         'usd_cost',
+        'detail',
     ];
 
     /**
@@ -57,10 +64,12 @@ class CostEntry extends Model
     protected function casts(): array
     {
         return [
+            'simulated' => 'boolean',
             'quantity' => 'decimal:4',
             'category' => CostCategory::class,
             'unit' => CostUnit::class,
             'usd_cost' => 'decimal:4',
+            'detail' => 'array',
             'created_at' => 'datetime',
         ];
     }
@@ -75,6 +84,15 @@ class CostEntry extends Model
 
             if ($entry->category->requiresPaidAssetsUnlocked()) {
                 $entry->story?->assertPaidAssetsUnlocked($entry->operation);
+            }
+
+            // The weaker guard, for the one category that sits between the two:
+            // reference sheets bill for images but are generated AT Gate 2
+            // rather than after it. Still guarded, one status earlier, so the
+            // row cannot be written by something that found its way here at
+            // `draft`. See CostCategory::Reference.
+            if ($entry->category->requiresScenesDrafted()) {
+                $entry->story?->assertReferenceSpendUnlocked($entry->operation);
             }
         });
 

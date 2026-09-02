@@ -13,7 +13,7 @@ use App\Support\Providers\SynthesizedSpeech;
  * keeps one consistent narrator across every video, and it is American English
  * because the audience is.
  */
-interface SpeechSynthesizer
+interface SpeechSynthesizer extends ProviderIdentity
 {
     public function synthesize(Scene $scene, string $text, string $voiceId): SynthesizedSpeech;
 

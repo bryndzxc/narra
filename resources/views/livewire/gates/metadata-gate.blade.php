@@ -3,6 +3,10 @@
         <div class="alert ok">{{ $notice }}</div>
     @endif
 
+    @if ($problem)
+        <div class="alert fail">{{ $problem }}</div>
+    @endif
+
     @php
         $validation = $this->validation();
         $budget = $this->tagBudget();
@@ -64,6 +68,97 @@
         </div>
     @endif
 
+    {{--
+        The producer for everything below it.
+
+        This page shipped before it: the form was here, the limits were checked,
+        and the only way to fill any of it in was to type it. That gap — a UI
+        built in one phase whose producer was due in the next — is the same seam
+        this project has now found six times, so the button is not a convenience.
+    --}}
+    <h2>Draft the sheet</h2>
+    <div class="panel">
+        @if ($this->drafting())
+            <div class="alert warn">
+                <strong>Writing the sheet now.</strong>
+                <div class="small" style="margin-top:4px">
+                    Three calls on the <span class="mono">{{ config('render.queues.text') }}</span> queue.
+                    <a href="{{ route('renders.show', $story->slug) }}">Watch it</a>, then reload this page.
+                </div>
+            </div>
+        @elseif ($this->draftBlockers())
+            <div class="alert fail">
+                <strong>Not yet.</strong>
+                <ul class="small" style="margin:6px 0 0 18px">
+                    @foreach ($this->draftBlockers() as $blocker)
+                        <li>{{ $blocker }}</li>
+                    @endforeach
+                </ul>
+                <div class="small muted" style="margin-top:6px">
+                    Checked before the button rather than after the bill. Chapters come from act timings
+                    and act timings come from the mux, which is why this stage runs last.
+                </div>
+            </div>
+        @else
+            @php $job = $this->lastDraftJob(); @endphp
+
+            @if ($job && $job->status->value === 'failed')
+                <div class="alert fail">
+                    <strong>The last run failed.</strong>
+                    <div class="small mono" style="margin-top:4px">{{ $job->error }}</div>
+                </div>
+            @elseif ($job && $job->log)
+                <div class="alert warn">
+                    <strong>Last run trimmed something.</strong>
+                    <div class="small" style="margin-top:4px">{{ $job->log }}</div>
+                </div>
+            @endif
+
+            <table>
+                <thead><tr><th>Call</th><th style="width:220px">Model</th></tr></thead>
+                <tbody>
+                @foreach ($this->draftRoster() as $line)
+                    <tr><td colspan="2" class="mono small">{{ $line }}</td></tr>
+                @endforeach
+                </tbody>
+            </table>
+
+            <div class="muted small" style="margin-top:8px">
+                Three calls, not one. The titles and the description's opening lines are the judgement
+                — they are the promise that gets the click, and in this genre the title states the
+                ending. The overlay text and the pinned comment are short copy written against that
+                promise. The tags are a keyword list against a hard 500-character budget, which is
+                arithmetic. Cents, in total.
+            </div>
+
+            @if ($this->editable())
+                <div style="margin-top:10px">
+                    @if ($confirmingDraft)
+                        <div class="small" style="margin-bottom:8px">
+                            @if ($this->draftWouldOverwrite())
+                                <strong>This replaces the {{ count($titleOptions) }} title variant(s) and the
+                                description opening that are already here</strong>, including anything you have
+                                edited by hand. The chapter list and footer are rebuilt from the act timings
+                                either way.
+                            @else
+                                Five titles, a description opening, thumbnail text, a pinned comment and the
+                                tag list. Nothing is selected for you — picking the title is this gate.
+                            @endif
+                        </div>
+                        <button class="gate" wire:click="draft">
+                            Yes &mdash; {{ $this->draftWouldOverwrite() ? 'rewrite the sheet' : 'write the sheet' }}
+                        </button>
+                        <button wire:click="cancelDraft">Cancel</button>
+                    @else
+                        <button class="gate" wire:click="askToDraft">
+                            {{ $this->draftWouldOverwrite() ? 'Rewrite the sheet' : 'Write the sheet' }}
+                        </button>
+                    @endif
+                </div>
+            @endif
+        @endif
+    </div>
+
     <h2>Title</h2>
     <div class="panel">
         <div class="field">
@@ -107,8 +202,9 @@
                 <button wire:click="addTitleOption">Add variant</button>
             </div>
             <div class="muted small" style="margin-top:6px">
-                Five variants is the target. Keeping the ones you did not pick is what turns this into
-                data on what actually performs. Drafting them is a Phase 2 job; typing them is fine now.
+                Five variants is the target, and the sheet is drafted with five. Keeping the ones you did
+                not pick is what turns this into data on what actually performs &mdash; and nothing above
+                picks one for you, because picking it is the gate.
             </div>
         @endif
     </div>
@@ -193,7 +289,7 @@
                 <label style="text-transform:none; letter-spacing:0; text-align:center">
                     <input type="radio" wire:model.live="thumbnailSceneId" value="{{ $choice['id'] }}"
                            @disabled(! $this->editable())>
-                    <img class="still" style="display:block"
+                    <img class="still pick" loading="lazy"
                          src="{{ route('stories.still', ['story' => $story, 'scene' => $choice['id']]) }}"
                          alt="scene {{ $choice['sequence'] }}">
                     <span class="muted mono small">
@@ -209,6 +305,33 @@
     <h2>Pinned comment</h2>
     <div class="panel">
         <textarea wire:model.blur="pinnedComment" rows="3" @disabled(! $this->editable())></textarea>
+    </div>
+
+    <h2>Scheduled publish</h2>
+    <div class="panel">
+        <div class="field">
+            <label for="publishat">Publish at &mdash; US Eastern</label>
+            <input id="publishat" type="datetime-local" wire:model.blur="publishAtEastern"
+                   @disabled(! $this->editable())>
+            @error('publishAtEastern') <div class="small" style="color:var(--bad)">{{ $message }}</div> @enderror
+        </div>
+
+        @if ($this->publishWindow())
+            <table>
+                <tbody>
+                <tr><td style="width:60px">ET</td><td class="mono">{{ $this->publishWindow()['et'] }}</td></tr>
+                <tr><td>PHT</td><td class="mono">{{ $this->publishWindow()['pht'] }}</td></tr>
+                </tbody>
+            </table>
+        @endif
+
+        <div class="muted small" style="margin-top:8px">
+            Typed in Eastern because that is where the viewers are &mdash; peak is roughly 6&ndash;10 PM ET
+            &mdash; and stored in UTC. Both zones are shown back because that window lands in the small
+            hours in Manila, which is exactly how a publish time gets fumbled. Nothing here uploads:
+            this is the number you type into YouTube's own scheduler, and the checklist below asks you
+            to confirm you did.
+        </div>
     </div>
 
     <h2>Publish checklist</h2>

@@ -48,12 +48,29 @@ class RenderWorkspace
     /**
      * Resolve an asset path as stored on a scene or scene_audio row.
      *
-     * In Phase 1b these are relative to the fixtures disk, because that is
-     * where the stills and narration come from. Phase 2 changes this method and
-     * nothing else.
+     * Two disks now hold source assets and a stored path names neither, so the
+     * resolution is by where the file actually is: `assets` first, then
+     * `fixtures`.
+     *
+     * The order is what matters. `assets` holds what a provider generated and
+     * was billed for; `fixtures` holds the hand-made Phase 0 inputs that prove
+     * the render pipeline without spending anything. A story is driven by one
+     * or the other and never both, so in practice only one disk ever has the
+     * file — but if a slug ever collided, resolving to the paid asset is the
+     * safe way to be wrong.
+     *
+     * Falling back to the fixtures path when neither disk has it is deliberate:
+     * the callers that consume this raise errors naming the missing file, and a
+     * path is more use in that message than an empty string.
      */
     public function sourcePath(string $storedPath): string
     {
+        $assets = Storage::disk((string) config('render.assets.disk', 'assets'));
+
+        if ($assets->exists($storedPath)) {
+            return self::normalise($assets->path($storedPath));
+        }
+
         return self::normalise(Storage::disk('fixtures')->path($storedPath));
     }
 
@@ -85,9 +102,7 @@ class RenderWorkspace
 
     public function ensureExists(): void
     {
-        if (! is_dir($this->renderRoot)) {
-            mkdir($this->renderRoot, 0775, true);
-        }
+        Directory::ensure($this->renderRoot);
     }
 
     private static function normalise(string $path): string

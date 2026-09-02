@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Exceptions\FfmpegException;
 use App\Services\Ffmpeg;
+use App\Support\Directory;
 use InvalidArgumentException;
 
 /**
@@ -45,6 +46,7 @@ class PadSceneAudio
      *     output_path: string,
      *     frames: int,
      *     source_samples: int,
+     *     source_rate: int,
      *     target_samples: int,
      *     padding_samples: int,
      *     padding_ms: float
@@ -73,32 +75,63 @@ class PadSceneAudio
         // check that is NOT affordable is the one on the full-length files.
         $source = $this->ffmpeg->sampleCount($sourceAudioPath, deep: true);
 
+        // The source's OWN rate, which is not necessarily the render's.
+        //
+        // Every count below has to be compared in one rate domain, and for a
+        // whole phase they were not — they only agreed because the fake
+        // synthesizer writes at render.audio.sample_rate, so source and target
+        // were the same number by construction. Real vendor audio arrives at
+        // whatever the TTS output format says: ElevenLabs `pcm_24000` is 24 kHz
+        // against a 44.1 kHz render.
+        $sourceRate = $this->ffmpeg->sampleRate($sourceAudioPath);
+
+        // Source length expressed at the RENDER rate, so the guard below
+        // compares like with like. Without this a 48 kHz source would report
+        // more samples than a 44.1 kHz target can hold and fail as "longer than
+        // its frame count allows" while being nothing of the kind.
+        $sourceAtRenderRate = (int) round($source * $rate / $sourceRate);
+
         // apad,atrim would silently CUT a scene whose audio runs past its frame
         // count, clipping the tail of the last word. That must never happen —
         // ceil() guarantees it cannot, so if it does, the frame count is wrong.
-        if ($source > $target) {
+        if ($sourceAtRenderRate > $target) {
             throw new FfmpegException(sprintf(
-                'Scene audio is longer than its frame count allows: %s has %d samples but '
-                ."only %d fit in %d frames. Padding would become a trim.\n"
+                'Scene audio is longer than its frame count allows: %s has %d samples at %d Hz '
+                .'(%d at the %d Hz render rate) but only %d fit in %d frames. Padding would become '
+                ."a trim.\n"
                 .'Check that frames were computed with ceil() from this exact file.',
                 basename($sourceAudioPath),
                 $source,
+                $sourceRate,
+                $sourceAtRenderRate,
+                $rate,
                 $target,
                 $frames
             ));
         }
 
-        if (! is_dir($directory = dirname($outputPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure(dirname($outputPath));
 
         $this->ffmpeg->run([
             '-y',
             '-loglevel', 'error',
             '-i', $sourceAudioPath,
-            // apad appends silence indefinitely; atrim cuts at the exact sample.
-            // Together they land on target_samples regardless of source length.
-            '-af', 'apad,atrim=end_sample='.$target,
+            // `aresample` FIRST, and its position is the whole bug.
+            //
+            // `-af` filters run before the output resampling that `-ar` implies,
+            // so `atrim=end_sample=` counts samples at the INPUT rate. With a
+            // 24 kHz source and a 44.1 kHz render that trimmed to 784,980
+            // samples of 24 kHz audio — 32.7 seconds — which `-ar` then
+            // resampled up to 1,442,401 samples. Exactly target × 44100/24000,
+            // and a scene running 84% too long.
+            //
+            // It never showed while the only audio reaching here came from the
+            // fake synthesizer, which writes at render.audio.sample_rate: input
+            // and output rates were equal, so the domains coincided and the
+            // filter was accidentally right. Resampling inside the chain makes
+            // `end_sample` mean samples at the render rate, which is what every
+            // number downstream already assumes it means.
+            '-af', 'aresample='.$rate.',apad,atrim=end_sample='.$target,
             '-ar', (string) $rate,
             '-ac', (string) (int) $audio['channels'],
             '-c:a', (string) $audio['pcm_codec'],
@@ -120,9 +153,13 @@ class PadSceneAudio
             'output_path' => $outputPath,
             'frames' => $frames,
             'source_samples' => $source,
+            'source_rate' => $sourceRate,
             'target_samples' => $target,
-            'padding_samples' => $target - $source,
-            'padding_ms' => ($target - $source) / ($rate / 1000),
+            // Both expressed at the RENDER rate. Subtracting a source-rate count
+            // from a render-rate one reported 24 kHz scenes as gaining ~358,000
+            // samples of "padding" when the real figure is under one frame.
+            'padding_samples' => $target - $sourceAtRenderRate,
+            'padding_ms' => ($target - $sourceAtRenderRate) / ($rate / 1000),
         ];
     }
 }

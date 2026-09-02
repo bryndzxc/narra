@@ -50,16 +50,29 @@ class FakeSpeechSynthesizer implements SpeechSynthesizer
             mimeType: 'audio/wav',
             durationMs: $durationMs,
             voiceId: $voiceId,
-            usage: new ProviderUsage(
-                provider: 'fake',
+            usage: ProviderUsage::simulated(
                 operation: 'synthesize_speech',
                 category: CostCategory::Asset,
                 quantity: (float) $characters,
                 unit: CostUnit::Characters,
-                usdCost: $characters / 1000 * (float) config('providers.fake.speech_usd_per_1k_chars'),
                 detail: ['words' => $words, 'duration_ms' => $durationMs],
             ),
         );
+    }
+
+    public function providerName(): string
+    {
+        return 'fake';
+    }
+
+    public function isSimulated(): bool
+    {
+        return true;
+    }
+
+    public function modelName(): ?string
+    {
+        return null;
     }
 
     public function voices(): array
@@ -76,7 +89,17 @@ class FakeSpeechSynthesizer implements SpeechSynthesizer
     private function silentWav(int $durationMs): string
     {
         $sampleRate = (int) config('render.audio.sample_rate', 44100);
-        $samples = (int) round($durationMs / 1000 * $sampleRate);
+        // FLOOR — the same invariant as the real synthesizer, approached from
+        // the other side. This one starts from a declared duration and
+        // generates samples for it, so rounding UP would emit audio fractionally
+        // longer than the duration it reports, which is the identical failure:
+        // the frame count derived from the declared value would not contain it.
+        //
+        // Worth being strict about in the FAKE especially. Its habit of agreeing
+        // with config by construction is what hid the 160 wpm error for a whole
+        // phase and hid the sample-rate domain bug for another; it should not
+        // also be the one component that can violate the padding invariant.
+        $samples = (int) floor($durationMs / 1000 * $sampleRate);
         $dataBytes = $samples * 2;
 
         return 'RIFF'

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\FfmpegException;
+use App\Support\Directory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -144,9 +145,7 @@ class Ffmpeg
             $lines[] = "file '".self::concatListPath($file)."'";
         }
 
-        if (! is_dir($directory = dirname($listPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure($directory = dirname($listPath));
 
         file_put_contents($listPath, implode("\n", $lines)."\n");
     }
@@ -157,9 +156,7 @@ class Ffmpeg
      */
     public function concatCopy(string $listPath, string $outputPath, int $timeout): void
     {
-        if (! is_dir($directory = dirname($outputPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure($directory = dirname($outputPath));
 
         $this->run([
             '-y',
@@ -295,6 +292,33 @@ class Ffmpeg
     /**
      * Container-reported duration, in whole milliseconds.
      */
+    /**
+     * The sample rate an audio file is actually stored at.
+     *
+     * Needed because nothing else in the pipeline may assume the source rate
+     * equals the render rate. It did assume that for an entire phase, silently
+     * and correctly, because the only audio that ever reached the renderer came
+     * from the fake synthesizer — which writes at render.audio.sample_rate by
+     * construction. The first real vendor audio arrived at 24 kHz against a
+     * 44.1 kHz render and the assumption broke. See PadSceneAudio.
+     */
+    public function sampleRate(string $file): int
+    {
+        $rate = (int) $this->probe([
+            '-v', 'error',
+            '-select_streams', 'a:0',
+            '-show_entries', 'stream=sample_rate',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            $file,
+        ]);
+
+        if ($rate <= 0) {
+            throw new FfmpegException("Could not read a sample rate from: {$file}");
+        }
+
+        return $rate;
+    }
+
     public function durationMs(string $file): int
     {
         $seconds = (float) $this->probe([

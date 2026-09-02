@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\MotionPreset;
 use App\Enums\SceneStatus;
+use App\Support\NarrationPace;
 use Database\Factories\SceneFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -58,6 +60,27 @@ class Scene extends Model
     public function story(): BelongsTo
     {
         return $this->belongsTo(Story::class);
+    }
+
+    /**
+     * Who is in this frame.
+     *
+     * Recorded when the scene is drafted, from the names the generator put in
+     * the frame resolved against the stored cast — the same resolution that
+     * decides which frozen descriptions get pasted into the image prompt. It
+     * used to be computed for that and then discarded, which left the prompt
+     * prose as the only record of who is in scene 147.
+     *
+     * It is data now because the reference rule depends on it: a scene
+     * featuring a character with no approved face must fail loudly, and that
+     * guarantee cannot rest on grepping an operator-editable text field for
+     * names.
+     *
+     * @return BelongsToMany<Character, $this>
+     */
+    public function characters(): BelongsToMany
+    {
+        return $this->belongsToMany(Character::class)->withTimestamps();
     }
 
     /** @return BelongsTo<Act, $this> */
@@ -139,6 +162,81 @@ class Scene extends Model
         return $this->sceneAudio->isEmpty()
             || $this->sceneAudio->contains(fn (SceneAudio $audio): bool => $audio->timings_json === null)
             || $this->approved_narration_hash !== $this->narrationFingerprint();
+    }
+
+    /**
+     * Whether this scene's audio was made by something other than what is bound
+     * now.
+     *
+     * The gap this closes: idempotency is keyed on the narration TEXT, which is
+     * the right key for "will redoing this cost money" and the wrong key for
+     * "is this the artefact we want". A story narrated by FakeSpeechSynthesizer
+     * — 186 silent WAVs, text unchanged since Gate 2 — reports nothing
+     * outstanding, so binding ElevenLabs and pressing Generate assets does
+     * nothing at all, silently. Which is the same silent-substitution failure
+     * that ran 186 stills through a stand-in, running in the other direction.
+     *
+     * Three rules, in order:
+     *
+     *   Unknown provenance is NOT stale. A null provider means the row predates
+     *   provenance recording and the ledger could not resolve it. Never destroy
+     *   an asset because its provenance is unknown — only because it
+     *   demonstrably changed. That is the same rule narrationChanged() follows,
+     *   and it is what stops this method re-billing a paid asset on a guess.
+     *
+     *   A different provider is stale. This is the point of the method.
+     *
+     *   A different VOICE is stale, on the same provider. A channel keeps one
+     *   narrator; audio generated under a voice the story no longer uses would
+     *   leave the video narrated by two different people, which no listener
+     *   would forgive and no cost check would catch.
+     */
+    public function narrationProvenanceStale(string $provider, ?string $voiceId, ?float $speed = null): bool
+    {
+        $speed ??= NarrationPace::configuredSpeed();
+
+        return $this->sceneAudio->contains(function (SceneAudio $audio) use ($provider, $voiceId, $speed): bool {
+            if ($audio->audio_path === null || $audio->narration_provider === null) {
+                return false;
+            }
+
+            if ($audio->narration_provider !== $provider) {
+                return true;
+            }
+
+            // Only when both sides are known. A row recorded before voices were
+            // tracked must not be regenerated because the column is empty.
+            if ($audio->narration_voice_id !== null
+                && $voiceId !== null
+                && $audio->narration_voice_id !== $voiceId) {
+                return true;
+            }
+
+            // And the SPEED, which is the same argument one level down. The
+            // same narrator reading the same words at two different tempos in
+            // one video is as audible as two different narrators, and it is
+            // invisible to every other check: the provider matches, the voice
+            // matches, the text is unchanged, the ledger balances.
+            return $audio->narration_speed !== null
+                && abs((float) $audio->narration_speed - $speed) >= 0.005;
+        });
+    }
+
+    /**
+     * The same question for the word timings, which are a different provider on
+     * the same row.
+     *
+     * Separate from the narration check because the two swap independently: the
+     * timings can move from a stand-in to WhisperX without the audio changing
+     * hands, and re-timing existing audio is free where re-narrating it is not.
+     */
+    public function timingsProvenanceStale(string $provider): bool
+    {
+        return $this->sceneAudio->contains(
+            fn (SceneAudio $audio): bool => $audio->timings_json !== null
+                && $audio->timings_provider !== null
+                && $audio->timings_provider !== $provider
+        );
     }
 
     /**

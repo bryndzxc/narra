@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\Gate;
+use App\Models\CharacterReference;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Support\RenderWorkspace;
@@ -62,6 +63,87 @@ class StoryController extends Controller
         return view('stories.gate', ['story' => $story, 'gate' => Gate::Scenes]);
     }
 
+    /**
+     * Gate 2's character sheet sub-step.
+     *
+     * Not a fifth gate. The four gates are the product's central promise and
+     * their count is not a detail — this is the sheet an operator picks a face
+     * on while standing at Gate 2, and the stepper still shows four.
+     */
+    public function characters(Story $story): View
+    {
+        return view('stories.characters', ['story' => $story, 'gate' => Gate::Scenes]);
+    }
+
+    /**
+     * Every still a character appears in, side by side, in story order.
+     *
+     * Built for one question: does a face drift? That is the single biggest
+     * quality risk in this format and it is the hardest to see in the medium it
+     * happens in — a drift between scene 40 and scene 90 is thirty minutes
+     * apart in the video and invisible while watching, but obvious when the two
+     * frames are adjacent.
+     *
+     * Grouped per character rather than by scene, because the comparison that
+     * matters is one person against themselves across the whole runtime, not
+     * one scene against its neighbour.
+     *
+     * The endpoint is marked per still because the two are not equally at risk.
+     * A frame with a cast goes through `edit` conditioned on approved
+     * references; a frame with nobody in it has no face to hold and goes
+     * through text-to-image. Mixing them in one grid without saying which is
+     * which would attribute a style difference to drift.
+     */
+    public function faces(Story $story): View
+    {
+        $cast = $story->characters()
+            ->with(['scenes' => fn ($q) => $q->orderBy('sequence')])
+            ->orderBy('name')
+            ->get();
+
+        // Scenes nobody is in: the text-to-image set, shown as its own group
+        // so it can be judged against the referenced frames rather than lost
+        // among them.
+        $castless = $story->scenes()
+            ->whereDoesntHave('characters')
+            ->orderBy('sequence')
+            ->get();
+
+        return view('stories.faces', [
+            'story' => $story,
+            'cast' => $cast,
+            'castless' => $castless,
+            'sceneCount' => $story->scenes()->count(),
+        ]);
+    }
+
+    /**
+     * Serve one candidate reference, for the picker.
+     *
+     * Same posture as the scene stills: the disk is not public and is not going
+     * to become public. A character's face is generated from a description the
+     * operator wrote and lives on a path derived from database ids, and a
+     * listable directory would undo the care taken everywhere else to keep
+     * operator text off the filesystem.
+     */
+    public function candidate(Story $story, CharacterReference $reference): StreamedResponse
+    {
+        abort_unless($reference->character?->story_id === $story->id, 404);
+        abort_unless($reference->exists(), 404, 'That candidate is no longer on disk.');
+
+        $bytes = $reference->bytes();
+
+        return response()->stream(function () use ($bytes): void {
+            echo $bytes;
+        }, 200, [
+            'Content-Type' => $reference->mimeType(),
+            'Content-Length' => (string) strlen($bytes),
+            // A candidate never changes under a fixed id — a new round is a new
+            // batch, never an overwrite — so this is safe to cache hard.
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
     public function preview(Story $story): View
     {
         return view('stories.gate', ['story' => $story, 'gate' => Gate::Preview]);
@@ -105,7 +187,15 @@ class StoryController extends Controller
         return response()->stream(function () use ($path): void {
             readfile($path);
         }, 200, [
-            'Content-Type' => 'image/png',
+            // From the file, not assumed. fal answers a PNG request with a
+            // JPEG, so a hardcoded image/png describes most of this story's
+            // stills wrongly — the same "declared, not observed" mistake the
+            // provider layer already had to learn.
+            'Content-Type' => match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+                'jpg', 'jpeg' => 'image/jpeg',
+                'webp' => 'image/webp',
+                default => 'image/png',
+            },
             'Content-Length' => (string) filesize($path),
             // Stills do not change under a fixed path, and a 200-scene page
             // would otherwise re-fetch every one of them on each render.

@@ -21,6 +21,29 @@ Route::prefix('/stories/{story:slug}')->name('stories.')->group(function () {
     Route::get('/', [StoryController::class, 'show'])->name('show');
     Route::get('/outline', [StoryController::class, 'outline'])->name('outline');
     Route::get('/scenes', [StoryController::class, 'scenes'])->name('scenes');
+
+    /*
+     * Gate 2's sub-step, on its own URL rather than folded into the scenes
+     * page. It is a different decision from a different angle: the scene list
+     * is read scene by scene and 200 rows long, the cast is read character by
+     * character and nine rows long, and stacking them would bury the one screen
+     * in this app where money is authorised under a page the operator scrolls.
+     *
+     * It sits under the gate the decision belongs to, so the stepper still
+     * shows four gates and not five.
+     */
+    Route::get('/characters', [StoryController::class, 'characters'])->name('characters');
+    Route::get('/characters/candidates/{reference}', [StoryController::class, 'candidate'])
+        ->name('characters.candidate');
+    /*
+     * The contact sheet: every still a character appears in, side by side.
+     * Not a gate — an instrument. Face drift across 150-250 stills is the
+     * biggest quality risk in this format and the medium it happens in is the
+     * worst place to look for it; two frames thirty minutes apart are obvious
+     * side by side and invisible while watching.
+     */
+    Route::get('/faces', [StoryController::class, 'faces'])->name('faces');
+
     Route::get('/preview', [StoryController::class, 'preview'])->name('preview');
     Route::get('/metadata', [StoryController::class, 'metadata'])->name('metadata');
 

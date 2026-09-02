@@ -25,6 +25,9 @@ class Act extends Model
         'sequence',
         'title',
         'summary',
+        // What this act makes worse. Each act compounds; none resolves before
+        // the exposure.
+        'escalation_beat',
         'script',
         'is_rehook_written',
         'start_ms',

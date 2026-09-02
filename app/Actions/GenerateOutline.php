@@ -3,9 +3,11 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\RenderStage;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Models\Act;
+use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\Providers\OutlineDraft;
@@ -42,15 +44,37 @@ class GenerateOutline
     ) {}
 
     /**
-     * @param  int|null  $actCount  Defaults per format. An anthology wants
-     *                              3-5 self-contained stories; a single
-     *                              narrative carries 5-8 acts comfortably.
+     * @param  int|null  $actCount  Defaults per format.
+     *
+     * Six for a single narrative, which is the shape this genre needs: the
+     * humiliation compounds act to act, and six gives it room to escalate
+     * without any one act having to carry two turns of the screw.
+     *
+     * Five for an anthology, which fights the genre — escalation cannot
+     * compound across five self-contained stories, so each has a fifth of the
+     * runtime to build and pay off its own. Supported because the operator may
+     * choose it; not the default, and Gate 1 says so.
      */
     public function handle(Story $story, ?int $actCount = null): OutlineDraft
     {
         $this->assertReady($story);
 
         $actCount ??= $story->format === StoryFormat::Anthology ? 5 : 6;
+
+        // Wrapped in a render_jobs row even though this runs synchronously in
+        // the console. Without one, an outline that failed left the progress
+        // page identical to a story nobody had started — and this stage bills an
+        // Opus call, so "did it run" is a question with money behind it.
+        return RenderJob::record(
+            $story->id,
+            RenderStage::Outline,
+            fn (RenderJob $job): OutlineDraft => $this->generate($story, $actCount, $job),
+        );
+    }
+
+    private function generate(Story $story, int $actCount, RenderJob $job): OutlineDraft
+    {
+        $job->note(sprintf('Asking for %d acts on %s.', $actCount, $story->format->value));
 
         $draft = $this->writer->outline($story, $actCount);
 
@@ -93,6 +117,11 @@ class GenerateOutline
                     'sequence' => $act->sequence,
                     'title' => $act->title,
                     'summary' => $act->summary,
+                    // What this act costs the narrator. Stored separately from
+                    // the summary because a summary can describe a sequence of
+                    // events in which nothing gets worse, and that is exactly
+                    // the failure this genre dies of.
+                    'escalation_beat' => $act->escalationBeat,
                     // No script yet, and no rehook — GenerateActScripts writes
                     // both. Gate 1 surfaces `is_rehook_written` so an act that
                     // never got one is visible rather than merely weak.
@@ -101,14 +130,28 @@ class GenerateOutline
                 ]);
             }
 
-            if ($story->title !== $draft->title && trim($draft->title) !== '') {
-                $story->update(['title' => $draft->title]);
+            // The spine, written before the acts are of any use: every
+            // act-generation call reads these four fields off the story, so an
+            // outline that produced acts without them would generate five acts
+            // with no idea what the grievance was.
+            $spine = array_filter($draft->spine(), fn (string $value): bool => trim($value) !== '');
+
+            if ($spine !== [] || (trim($draft->title) !== '' && $story->title !== $draft->title)) {
+                $story->update($spine + (
+                    trim($draft->title) !== '' ? ['title' => $draft->title] : []
+                ));
             }
 
             if ($story->status === StoryStatus::Draft) {
                 $story->transitionTo(StoryStatus::Outlined);
             }
         });
+
+        $job->note(sprintf(
+            '%d acts written. Spine: %s',
+            $draft->actCount(),
+            trim($draft->narratorGrievance) !== '' ? 'recorded' : 'MISSING',
+        ));
 
         return $draft;
     }

@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Models\YoutubeMetadata;
+use App\Support\ChapterRules;
 
 /**
  * YouTube's rules, checked before the operator can approve Gate 4.
@@ -18,6 +19,13 @@ use App\Models\YoutubeMetadata;
  */
 class ValidateYoutubeMetadata
 {
+    public function __construct(
+        // The same four rules GenerateMetadata refuses to spend against. Shared
+        // rather than restated: two copies would eventually let the gate pass
+        // a chapter list the generator would have rejected.
+        private readonly ChapterRules $chapters,
+    ) {}
+
     /**
      * @return array{blocking: array<int, string>, warnings: array<int, string>}
      */
@@ -86,7 +94,7 @@ class ValidateYoutubeMetadata
         }
 
         // -- Chapters ----------------------------------------------------------
-        foreach ($this->chapterProblems($metadata, $limits) as $problem) {
+        foreach ($this->chapters->problems($metadata->chapters(), $limits) as $problem) {
             $blocking[] = $problem;
         }
 
@@ -95,8 +103,29 @@ class ValidateYoutubeMetadata
             $warnings[] = 'No thumbnail still chosen. Flag one at Gate 2 or pick one here.';
         }
 
-        if ($metadata->thumbnail_text_options === null || $metadata->thumbnail_text_options === []) {
+        $overlay = $metadata->thumbnail_text_options ?? [];
+
+        if ($overlay === []) {
             $warnings[] = 'No thumbnail text drafted.';
+        }
+
+        // The word cap was in config from the day the sheet was built and read
+        // by nothing, which made it a limit in name only. A thumbnail phrase is
+        // read at about 200 pixels wide; the constraint is not stylistic.
+        $maxWords = (int) $limits['thumbnail_text_words'];
+
+        foreach ($overlay as $phrase) {
+            $words = count(preg_split('/\s+/', trim((string) $phrase), -1, PREG_SPLIT_NO_EMPTY) ?: []);
+
+            if ($words > $maxWords) {
+                $warnings[] = sprintf(
+                    'Thumbnail phrase "%s" is %d words. Past %d it stops being readable at the size a '
+                    .'thumbnail is actually seen.',
+                    $phrase,
+                    $words,
+                    $maxWords
+                );
+            }
         }
 
         // -- Checklist ----------------------------------------------------------
@@ -108,59 +137,19 @@ class ValidateYoutubeMetadata
             }
         }
 
+        // A checklist item ticked against a field that is empty.
+        //
+        // This is checkable now and was not before: the item asked the operator
+        // to confirm a scheduled time in Eastern while the app had no way to
+        // hold one, so `target_publish_at` was null on every story and the tick
+        // meant nothing either way. A checklist asking about something that
+        // cannot exist is the same defect as a form with no producer, and the
+        // fix was to make the thing exist rather than to stop asking.
+        if (($state['scheduled_time_confirmed_et'] ?? false) && $metadata->story->target_publish_at === null) {
+            $warnings[] = 'You confirmed the scheduled publish time, but no time is recorded above. '
+                .'Either set it, or the confirmation is about something this app cannot show you.';
+        }
+
         return ['blocking' => $blocking, 'warnings' => $warnings];
-    }
-
-    /**
-     * YouTube's four chapter rules, in the order it applies them.
-     *
-     * @param  array<string, mixed>  $limits
-     * @return array<int, string>
-     */
-    private function chapterProblems(YoutubeMetadata $metadata, array $limits): array
-    {
-        $chapters = $metadata->chapters();
-
-        if ($chapters === []) {
-            return ['No chapters. Act timings are filled in by the render, so this means the render has not run.'];
-        }
-
-        $problems = [];
-
-        if ($chapters[0]['start_ms'] !== 0) {
-            $problems[] = 'First chapter must start at 00:00.';
-        }
-
-        if (count($chapters) < $limits['min_chapters']) {
-            $problems[] = sprintf(
-                'Only %d chapters; YouTube ignores a list shorter than %d.',
-                count($chapters),
-                $limits['min_chapters']
-            );
-        }
-
-        $previous = null;
-
-        foreach ($chapters as $chapter) {
-            if ($previous !== null) {
-                if ($chapter['start_ms'] <= $previous['start_ms']) {
-                    $problems[] = sprintf(
-                        'Chapters are not in ascending order: "%s" starts at or before "%s".',
-                        $chapter['title'],
-                        $previous['title']
-                    );
-                } elseif ($limits['min_chapter_ms'] > $chapter['start_ms'] - $previous['start_ms']) {
-                    $problems[] = sprintf(
-                        'Chapter "%s" is shorter than %d seconds.',
-                        $previous['title'],
-                        (int) ($limits['min_chapter_ms'] / 1000)
-                    );
-                }
-            }
-
-            $previous = $chapter;
-        }
-
-        return $problems;
     }
 }

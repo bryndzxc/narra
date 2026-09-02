@@ -68,7 +68,29 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            /*
+             * MUST exceed the longest job on this connection, and the longest
+             * job here is the mux: a full re-encode of 30-40 minutes of 1080p
+             * with burned-in subtitles, which runs for tens of minutes.
+             *
+             * retry_after is the server side of the timeout story and it is the
+             * half that actually works on Windows. `--timeout` needs pcntl and
+             * is silently ineffective; retry_after is enforced by the queue
+             * itself. At the Laravel default of 90 seconds, Redis decided the
+             * mux had died 90 seconds in and made it available again — the
+             * second render worker picked it up, saw attempts > tries=1, and
+             * marked the job failed while the original FFmpeg was still
+             * encoding happily. The story then had a finished file and a failed
+             * row and could never reach `rendered`.
+             *
+             * Worse is the case that did not happen here only by luck: with
+             * tries > 1 the redelivery starts a SECOND FFmpeg writing the same
+             * output file.
+             *
+             * Matched to --max-time=21600 on the render worker, so the job is
+             * recycled by the worker rather than re-delivered by the queue.
+             */
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 21600),
             'block_for' => null,
             'after_commit' => false,
         ],

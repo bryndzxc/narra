@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Actions\DispatchRenderPipeline;
+use App\Exceptions\DispatchRefusedException;
 use App\Models\Story;
 use Illuminate\Console\Command;
 use Throwable;
@@ -34,12 +35,28 @@ class RenderDispatch extends Command
 
         try {
             $result = $dispatcher->handle($story);
+        } catch (DispatchRefusedException $e) {
+            $this->newLine();
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
         } catch (Throwable $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
         }
 
+        // Printed before the summary. The only note that reaches here is
+        // advisory — anything that should have stopped the dispatch already
+        // threw — but "nothing is listening on the render queue" is exactly the
+        // point at which an operator walks away expecting a video in an hour.
+        foreach ($result['notes'] ?? [] as $note) {
+            $note['level'] === 'warn'
+                ? $this->warn($note['message'])
+                : $this->line('<info>OK</info> — '.$note['message']);
+        }
+
+        $this->newLine();
         $this->info(sprintf('Queued %d scene clips for "%s".', $result['scenes'], $story->title));
         $this->line('  batch  : '.$result['batch_id']);
         $this->line('  queue  : '.config('render.queues.render'));

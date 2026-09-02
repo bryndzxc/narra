@@ -63,6 +63,44 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Character reference sheets: the candidate faces and the chosen one.
+         *
+         * Its own disk rather than a folder under `renders`, and that is a
+         * durability decision rather than tidiness. Render scratch is purged
+         * once a final MP4 exists and decodes; a reference must survive that,
+         * because it is cited by every re-render and every still regenerated
+         * after a reopened Gate 2. A purge that could reach these would delete
+         * the only fixed record of what a character looks like and quietly
+         * reintroduce the drift they exist to prevent.
+         */
+        'characters' => [
+            'driver' => 'local',
+            'root' => storage_path('app/characters'),
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * Generated scene assets: the stills and the per-scene narration.
+         *
+         * Its own disk rather than a folder under `renders`, for exactly the
+         * reason `characters` has one: render scratch is purged once a final
+         * MP4 exists and decodes, and these must survive that. A still is ~70%
+         * of a video's cost and a re-render must never re-bill for one. The
+         * purge walks `renderRoot` and cannot reach here.
+         *
+         * Separate from `fixtures` too, which is hand-made Phase 0 input that
+         * nothing in the pipeline may write. This disk is the Phase 2 half of
+         * the same idea, and RenderWorkspace::sourcePath() resolves across both.
+         */
+        'assets' => [
+            'driver' => 'local',
+            'root' => storage_path('app/assets'),
+            'throw' => true,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

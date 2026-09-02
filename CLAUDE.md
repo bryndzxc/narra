@@ -26,9 +26,15 @@ at four fixed gates. Everything between the gates is automated.
      approves tags and chapters.
 2. **No auto-publish.** The app produces a file and a metadata sheet. The human
    uploads and toggles YouTube's "altered or synthetic content" disclosure manually.
-3. **Cost is logged per video.** Every paid API call writes a row. If we can't answer
+3. **Spending is not a gate crossing.** Approving a gate is a quality decision;
+   dispatching paid work is a money decision, and they get separate buttons. A gate
+   crossing can't be re-crossed, so folding dispatch into approval would mean
+   reopening a gate just to retry a handful of failed scenes — which risks
+   regenerating everything else. The spend button must be re-runnable without
+   touching gate state.
+4. **Cost is logged per video.** Every paid API call writes a row. If we can't answer
    "what did this video cost" in one query, the feature is incomplete.
-4. **Nothing is regenerated silently.** Re-running a stage must be an explicit action,
+5. **Nothing is regenerated silently.** Re-running a stage must be an explicit action,
    because re-running costs money.
 
 ---
@@ -42,6 +48,33 @@ changes the architecture in several places, listed below.
 - Watch time drives revenue in this niche far more than upload count.
 - Videos over 8 minutes are eligible for mid-roll ads, and a 30–40 minute runtime
   supports several ad slots rather than one.
+
+**The floor is a preference; the threshold is the law.** 30 minutes is a target
+chosen for ad density, not a constraint anything enforces — the only hard line is
+YouTube's 8-minute mid-roll eligibility, and the reference channels in this niche
+run 44 and 54 minutes, so the upper end was never binding either. Nothing in the
+code refuses a render for being short: `PreviewGate` reports `in_target_window`
+at Gate 3 and leaves the decision to the operator, which is correct and should
+stay that way.
+
+This was decided against a live case rather than in the abstract. Story 9 came
+back at 29:39 — 21 seconds under the floor — because its script was sized at 160
+wpm against a narrator who reads 197. Re-narrating all 186 scenes at speed 0.9 to
+recover those four minutes would have cost 15,303 credits, the entire remaining
+monthly allowance, leaving nothing to retry a single failed scene with. It ships
+at 29:39.
+
+**Never move a target to match a result.** The tempting version of that fix was
+to lower story 9's `target_duration_min` to 29 so Gate 3 reads green. That is the
+false-success pattern in its purest form — adjusting the measurement until the
+outcome passes — and it is why the story keeps its 30-minute target and simply
+reports as under it. The band moved for FUTURE stories, in config, because the
+wpm figure it was derived from was wrong; story 9's record stays honest.
+
+The real fix is upstream: size the next script at the measured 197 wpm rather
+than the assumed 160, which is 7 acts instead of 6 for the same runtime. A
+correct word target costs nothing; re-narrating to correct a wrong one costs a
+month of credits.
 
 **What it costs**
 - Roughly 5,900–6,400 words of narration.
@@ -661,7 +694,11 @@ TranscribeSceneTimings    (fan out, one job per scene)
 RenderSceneClips          (fan out, one job per scene)
 ConcatClips
 MuxAndSubtitle            → gate 3
-GenerateMetadata                     [needs act timestamps from the render]
+PurgeRenderScratch                   [chained after the mux, so a failed render
+                                      never reaches it — scratch is what a
+                                      re-run reuses]
+GenerateMetadata                     [needs act timestamps from the render;
+                                      runs on the `text` queue]
                           → gate 4
 ```
 
@@ -705,6 +742,123 @@ GenerateMetadata                     [needs act timestamps from the render]
 - Money is `decimal(10,4)`, never float.
 - Durations in the DB are integer milliseconds. Convert at the edges only.
 - Migrations are never edited after being run. New change, new migration.
+
+---
+
+## Where bugs actually live
+
+Every dead-code gap found so far sat at a **seam between phases** — a mechanism built
+in one phase with its production caller due in the next, which then arrived without
+wiring it. Nothing inside a phase was ever dead. The asset stage went missing this
+way: three stages declared in the enum, three provider contracts, and
+`ResolveSceneReferences` all existed with no caller, because the render pipeline was
+being fed by the Phase 0 fixture importer the whole time.
+
+Phase-local tests do not catch this. When finishing any phase, run one path that
+crosses the seam end to end, and audit for declared-but-never-called stages,
+contracts, enum cases, and queues before declaring the phase done.
+
+### The audit, run properly once
+
+The sixth instance — Gate 4's form with no generator behind it — prompted a full
+sweep rather than another one-off fix: every Action, contract method, enum case,
+config key, route, queued job and Livewire method checked for a producer or a
+caller. It found five more. **Do this at the end of every phase, not when
+something looks wrong**, because none of these ever looked wrong.
+
+Closed since:
+
+- `GenerateMetadata` — Gate 4's form had no producer. Six.
+- The `text` queue — in config, in `docs/queue-workers.md`, in the NSSM
+  instructions, and receiving nothing. An operator following the setup docs ran
+  a worker that could never get a job. `GenerateMetadataJob` uses it.
+- `PurgeRenderScratchJob` — existed, chained by nobody, so "scratch is purged on
+  successful render" was false and ~700 MB survived every render. Now the last
+  link of the render chain.
+- `RenderStage::Outline`, `ActScripts`, `DraftScenes` — enumerated for a page
+  that could never show them, because the text stages run synchronously and
+  wrote no row. Act scripts dying on act 4 of 6, after billing three Opus calls,
+  left `/renders/{slug}` looking like a story nobody had started. They now write
+  rows through `RenderJob::record()`.
+- `ScenesGate::assetGenerationRefusal()` — computed, rendered nowhere. The panel
+  simply vanished when generation was unavailable, so the page said nothing
+  where it should have said why.
+- `stories.target_publish_at` — two timezone helpers and a display block on the
+  index, and no input anywhere, so the column was null on every story and the
+  block never rendered. Meanwhile the Gate 4 checklist asked the operator to
+  confirm a scheduled publish time the app had no way to hold. **A checklist
+  item about something that cannot exist is the same defect as a form with no
+  producer** — the fix is to make the thing exist or to stop asking, never to
+  leave the question there.
+
+Still open, none blocking, all findable here rather than one gate at a time:
+
+- **`SplitScene` has no production caller.** A full Action with a verbatim
+  recombination guard and six tests, reachable from nothing: no console command,
+  no button on the Gate 2 page beside edit/move/delete. `ScenesMerge` and
+  `ScenesRecut` both got commands and this did not. The 70+-word single-sentence
+  scene it exists to fix is currently unfixable through any interface.
+- **`OperatorAction::ReopenScenesGate` is consulted by nobody.** Its own
+  `callers()` names "ScenesGate::reopen() and its blade"; both call
+  `$status->canReopenScenesGate()` directly instead. Same answer today — the
+  case delegates to that method — which is exactly why it can drift silently.
+- **`CostUnit::InputTokens` has no writer.** The Anthropic writer records one row
+  per call at `OutputTokens` with the split in `detail`. Either use it or drop it.
+- **`providers.whisperx.compute_type`** is documented as "the script passes it
+  through" and the PHP side never sends it.
+
+The same shape recurs in guards: a check that only tests the axis a component is
+already strong on will always pass. The Haiku fallback checked that sentence ranges
+tiled (counting — Haiku's strong axis) and missed that it chopped scenes too short.
+When adding a guard, name the failure mode it is meant to catch and confirm it fires
+against a real instance of that failure.
+
+### False success is a defect class, not a run of bad luck
+
+Five times now the app has reported success while something was silently wrong.
+Note where the fifth one lives: not in the pipeline, but on the PAGE the operator
+watches instead of the pipeline.
+
+| # | What was reported | What was true |
+|---|---|---|
+| 1 | $8.12 of image spend in the ledger | A stand-in generated 186 flat fills; nobody was billed |
+| 2 | 186 stills bought | 185 were placeholders from a fake provider |
+| 3 | 186 scenes narrated | 117 read at speed 1.0 with NULL speed provenance |
+| 4 | An asset run "complete" | 181 alignments had failed inside it |
+| 5 | Subtitles and Mux "1/1 done", mux 506 s | Both stages were chained behind a concat that had just failed and never ran; the rows were 21 h old |
+
+The individual bugs are all different and every fix for them was correct. The
+constant is the reporting, and it has one mechanism behind it:
+
+**Absence is read as agreement.** A NULL provenance column means "unknown", and
+every check in this codebase correctly refuses to destroy an asset on unknown —
+so unknown is preserved, and preserved reads as fine. A stage that never ran
+leaves no failure row. A guard that is not in a worker's loaded code cannot fire,
+and a check that cannot fire is indistinguishable from a check that passed.
+
+Three rules follow, and they are worth more than any individual guard:
+
+1. **A guard must be upstream of the thing it distrusts.** Every defence that
+   failed above was downstream: a worker evaluating whether it was itself stale,
+   a cost row asserting a spend was allowed after the spend. The dispatching
+   process is the only one with fresh code by construction, so that is where
+   staleness is decided. See `PreflightAssetDispatch`.
+
+2. **Prefer arrangements where the bad outcome is unreachable over checks that it
+   did not happen.** `assets:timings` cannot bill because it cannot construct a
+   TTS job, which is a stronger claim than any assertion that it did not.
+
+3. **Keep one number that we did not compute.** An external reading is the only
+   one not derived from our own assumptions, so a disagreement between it and an
+   internal figure is always worth chasing to the end. Chase it to the END,
+   though: a 6,289-credit gap between the vendor usage page and this app's
+   ledger was investigated across every product, model, voice and date range the
+   vendor exposes, and the app's figure reconciled exactly while the gap could
+   not be reproduced at all. An external number is a reason to look, not a
+   verdict on its own.
+
+And when a check cannot run, that is a failure, not a pass. An unreadable quota
+is reported as unreadable and never as "fine" — the same rule, one level up.
 
 ---
 

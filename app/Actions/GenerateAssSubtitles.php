@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Support\AssStyle;
+use App\Support\Directory;
 use App\Support\SubtitleChunker;
 use InvalidArgumentException;
 use RuntimeException;
@@ -27,6 +28,12 @@ use RuntimeException;
  *    timestamp is still the scene offset, which is what anchors the timeline.
  *  - A scene's trailing silence and frame padding get a spacer at the end of
  *    its last line, so the highlight stops when the speech does.
+ *  - Silence BETWEEN words gets one too. This is the case that could not
+ *    arise until real alignment arrived: a hand-written fixture times words
+ *    end-to-start, so the gap was always zero and the spacer was never
+ *    emitted. WhisperX reports the real pauses, and without a spacer for
+ *    them a line's {\k} durations sum to less than the line spans — which
+ *    is what 840 untiled lines and 839 gapped seams looked like.
  *
  * Every line's {\k} durations tile it completely, chunks meet exactly within a
  * scene, and scenes meet exactly across the whole video.
@@ -53,9 +60,7 @@ class GenerateAssSubtitles
         $style = AssStyle::fromConfig();
         $rate = (int) config('render.audio.sample_rate');
 
-        if (! is_dir($directory = dirname($outputPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure(dirname($outputPath));
 
         $handle = fopen($outputPath, 'wb');
 
@@ -105,7 +110,19 @@ class GenerateAssSubtitles
                     // scene's opening chunk, which begins at the scene offset
                     // so the timeline has no gap at the seam.
                     $lineStart = $isFirst ? $sceneStart : $wordStart[$i];
-                    $lineEnd = $isLast ? $sceneEnd : $wordEnd[$j - 1];
+
+                    // A line runs to where the NEXT line BEGINS, not to where
+                    // its own last word stops.
+                    //
+                    // Those are the same instant only when speech is
+                    // gapless, which is true of a hand-written fixture and
+                    // false of every real alignment: WhisperX places words with
+                    // real silence between them, and `absoluteBoundaries()`
+                    // preserves it. Ending the line at its last word left that
+                    // silence belonging to nothing, so line n+1 started after
+                    // line n ended and the timeline lost a few centiseconds at
+                    // every seam — 839 of them, and 24 cs missing from the total.
+                    $lineEnd = $isLast ? $sceneEnd : $wordStart[$j];
 
                     $segments = [];
 
@@ -119,11 +136,30 @@ class GenerateAssSubtitles
                             'k' => $wordEnd[$m] - $wordStart[$m],
                             'text' => $this->assertPlain((string) $sceneWords[$m]['word']),
                         ];
-                    }
 
-                    if ($isLast && $sceneEnd > $wordEnd[count($sceneWords) - 1]) {
-                        $segments[] = ['k' => $sceneEnd - $wordEnd[count($sceneWords) - 1], 'text' => ''];
-                        $spacers++;
+                        // The silence AFTER this word, as its own bare spacer —
+                        // which is this file's stated rule for silence, and
+                        // which `dialogue()` was already written to expect
+                        // between words. It was simply never emitted, because
+                        // fixture timings are contiguous by construction and the
+                        // gap could not occur until a real transcript arrived.
+                        //
+                        // Folding it into the word instead would hold the
+                        // highlight across the pause and report a word as taking
+                        // longer to say than it did. A spacer keeps `{\k}` an
+                        // honest measurement of speech and still tiles the line.
+                        //
+                        // For the last word of the line the gap runs to
+                        // `$lineEnd`, which is the next line's start — or, on the
+                        // scene's final line, the end of its padded audio. So
+                        // the same expression covers the trailing spacer that
+                        // used to be a separate case.
+                        $next = $m + 1 < $j ? $wordStart[$m + 1] : $lineEnd;
+
+                        if ($next > $wordEnd[$m]) {
+                            $segments[] = ['k' => $next - $wordEnd[$m], 'text' => ''];
+                            $spacers++;
+                        }
                     }
 
                     fwrite($handle, $this->dialogue($segments, $lineStart, $lineEnd));

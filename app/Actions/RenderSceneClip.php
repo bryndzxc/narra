@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Enums\MotionPreset;
 use App\Services\Ffmpeg;
+use App\Support\Directory;
 use InvalidArgumentException;
 
 /**
@@ -71,9 +72,7 @@ class RenderSceneClip
         $frames = self::framesFor($audioDurationMs, $fps);
         $filter = $this->filterGraph($motion, $frames);
 
-        if (! is_dir($directory = dirname($outputPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure($directory = dirname($outputPath));
 
         $startedAt = microtime(true);
 

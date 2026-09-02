@@ -3,13 +3,29 @@
 namespace App\Livewire\Gates;
 
 use App\Actions\ApproveScenesGate;
+use App\Actions\DispatchAssetGeneration;
+use App\Actions\EstimateSceneAssets;
 use App\Actions\ReorderScenes;
+use App\Actions\ValidateCharacterSheets;
+use App\Actions\ValidateSceneDrafts;
 use App\Enums\MotionPreset;
+use App\Enums\OperatorAction;
+use App\Enums\RenderJobStatus;
+use App\Enums\RenderStage;
+use App\Enums\SceneStatus;
 use App\Enums\StoryStatus;
+use App\Exceptions\MissingCharacterReferenceException;
+use App\Livewire\Concerns\PaginatesWithProjectTheme;
+use App\Models\Character;
+use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
+use App\Support\SceneAssetEstimate;
 use App\Support\SceneChangeSet;
+use App\Support\StyleNotesGuard;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -28,6 +44,7 @@ use Livewire\WithPagination;
  */
 class ScenesGate extends Component
 {
+    use PaginatesWithProjectTheme;
     use WithPagination;
 
     /** 200+ scenes is the design point. A full list would be unreadable and slow. */
@@ -51,6 +68,18 @@ class ScenesGate extends Component
     public ?string $notice = null;
 
     public bool $confirmingApproval = false;
+
+    /**
+     * Separate from $confirmingApproval, and the separation is the point.
+     *
+     * Approving scenes is a quality decision and generating assets is a money
+     * decision, so they are two buttons with two confirmations rather than one
+     * click that quietly does both. The other half of the reason is retry: a
+     * spend that is not a gate crossing can be pressed again to redo five
+     * failed stills, where re-crossing the gate would put the other 181 at risk
+     * to fix them.
+     */
+    public bool $confirmingGeneration = false;
 
     public function mount(Story $story): void
     {
@@ -125,10 +154,141 @@ class ScenesGate extends Component
         ];
     }
 
+    /**
+     * Whether the spend button is live.
+     *
+     * Keyed on the status predicate that already defines the money line rather
+     * than on `=== ScenesApproved`, so the button survives its own successes: a
+     * story parked at `assets_generating` with five failures, or sitting at
+     * `assets_ready` when the operator spots a bad still, can both be pressed
+     * again. That is the retry path, and it exists precisely so that fixing
+     * five scenes never requires reopening Gate 2 and risking the other 181.
+     *
+     * `rendering` is excluded, and only that. A clip batch is in flight and
+     * regenerating a still out from under it would have the render encode one
+     * image while the row names another.
+     */
+    #[Computed]
+    public function canGenerateAssets(): bool
+    {
+        return OperatorAction::RegenerateAssets->permittedAt($this->story->status);
+    }
+
+    /**
+     * Why the button is not offered, for the operator standing in front of it.
+     *
+     * The same sentence `assets:generate` prints. When the page and the command
+     * phrased this separately they also DECIDED it separately, and drifted: the
+     * button correctly refused past `rendered` while the command accepted any
+     * status and failed at the transition.
+     */
+    #[Computed]
+    public function assetGenerationRefusal(): ?string
+    {
+        return OperatorAction::RegenerateAssets->refusalReason($this->story->status);
+    }
+
+    /**
+     * What generating the outstanding assets is about to cost, itemised.
+     *
+     * The page said "186 image(s) and 186 narration(s) will be generated" for a
+     * long time without ever naming a figure or a mechanism. This is the
+     * number, from the same rate cards the providers price themselves against,
+     * over the same outstanding set the dispatcher will actually queue.
+     */
+    #[Computed]
+    public function assetEstimate(): SceneAssetEstimate
+    {
+        return app(EstimateSceneAssets::class)->handle($this->story);
+    }
+
+    /**
+     * Scenes whose asset generation failed, with the provider's reason.
+     *
+     * Three failures out of 186 must not fail the video, but they must not
+     * vanish either — so they are listed here, on the page with the button that
+     * retries them, rather than only on the render progress page.
+     *
+     * @return Collection<int, array{sequence: int, stage: string, error: string}>
+     */
+    #[Computed]
+    public function failedScenes(): Collection
+    {
+        $failed = $this->story->scenes()
+            ->where('status', SceneStatus::Failed)
+            ->orderBy('sequence')
+            ->get(['id', 'sequence']);
+
+        if ($failed->isEmpty()) {
+            return collect();
+        }
+
+        // The error text lives on render_jobs, which is where every stage
+        // records what happened. Latest row per scene per stage; at three
+        // stages and a handful of failures this is a small set.
+        $errors = RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->whereIn('stage', [RenderStage::Images, RenderStage::SceneNarration, RenderStage::SceneTimings])
+            ->where('status', RenderJobStatus::Failed)
+            ->whereIn('scene_id', $failed->modelKeys())
+            ->orderByDesc('finished_at')
+            ->get(['scene_id', 'stage', 'error']);
+
+        return $failed->map(function (Scene $scene) use ($errors): array {
+            $job = $errors->firstWhere('scene_id', $scene->id);
+
+            return [
+                'sequence' => (int) $scene->sequence,
+                'stage' => $job?->stage->label() ?? 'incomplete',
+                'error' => $job?->error !== null
+                    ? Str::limit((string) $job->error, 300)
+                    : 'No provider error recorded — the scene is missing at least one of its three assets.',
+            ];
+        })->values();
+    }
+
+    /**
+     * Whether every character who appears in a frame has an approved face.
+     *
+     * Surfaced here as well as enforced in ApproveScenesGate, because a refusal
+     * the operator meets only when they press the button is a refusal they were
+     * ambushed by. Same Action behind both, so what the page promises and what
+     * the gate enforces cannot drift apart.
+     *
+     * @return array{ready: bool, missing: Collection<int, Character>, scenes_blocked: int, unused: Collection<int, Character>}
+     */
+    #[Computed]
+    public function castState(): array
+    {
+        return app(ValidateCharacterSheets::class)->handle($this->story);
+    }
+
+    #[Computed]
+    public function castReady(): bool
+    {
+        return $this->castState()['ready'];
+    }
+
+    /** @return Collection<int, Character> */
+    #[Computed]
+    public function castMissing(): Collection
+    {
+        return $this->castState()['missing'];
+    }
+
+    /**
+     * What is wrong with these scenes, in the ways an operator scrolling 200 of
+     * them will not catch.
+     *
+     * The structural checks live in ValidateSceneDrafts — image prompts that
+     * restate their narration, scenes too short for the camera move to
+     * complete, one motion preset used everywhere. This method adds the few
+     * that are about completeness rather than quality.
+     */
     #[Computed]
     public function warnings(): array
     {
-        $warnings = [];
+        $warnings = app(ValidateSceneDrafts::class)->handle($this->story)['warnings'];
 
         $missingPrompt = $this->story->scenes()
             ->where(fn ($q) => $q->whereNull('image_prompt')->orWhere('image_prompt', ''))
@@ -138,12 +298,29 @@ class ScenesGate extends Component
             $warnings[] = "{$missingPrompt} scene(s) have no image prompt.";
         }
 
-        if ($this->story->scenes()->where('is_hook', true)->count() === 0) {
-            $warnings[] = 'No scene is flagged as the opening hook.';
-        }
+        // Stored style_notes, checked here as well as refused at extraction.
+        // A story drafted before that guard existed has the defect baked into
+        // every prompt its character appears in, and throwing at extraction
+        // cannot reach data that is already on disk. This is the last screen
+        // before those prompts are bought.
+        $guard = app(StyleNotesGuard::class);
 
-        if ($this->story->scenes()->where('is_thumbnail_candidate', true)->count() === 0) {
-            $warnings[] = 'No scene flagged as a thumbnail candidate. Gate 4 will ask for one.';
+        foreach ($this->story->characters()->withCount('scenes')->get() as $character) {
+            $violations = $guard->violations($character->style_notes);
+
+            if ($violations === []) {
+                continue;
+            }
+
+            $warnings[] = sprintf(
+                '%s has style_notes that will apply to all %d of their scenes (%s): "%s". '
+                .'style_notes is pasted unchanged into every prompt they appear in, so a prop in it '
+                .'is a prop in every frame. Re-extract the cast and re-draft to clear it — both free.',
+                $character->name,
+                $character->scenes_count,
+                implode('; ', $violations),
+                trim((string) $character->style_notes),
+            );
         }
 
         return $warnings;
@@ -230,20 +407,118 @@ class ScenesGate extends Component
     {
         abort_unless($this->canApprove(), 403, 'Gate 2 is not the gate this story is waiting at.');
 
-        $changes = app(ApproveScenesGate::class)->handle($this->story);
+        try {
+            $changes = app(ApproveScenesGate::class)->handle($this->story);
+        } catch (MissingCharacterReferenceException $e) {
+            // Shown, not thrown at the operator. The gate is refusing for a
+            // reason they can act on from the page they are already on, and a
+            // stack trace is not that.
+            $this->confirmingApproval = false;
+            $this->notice = null;
+            $this->addError('approval', $e->getMessage());
+
+            return;
+        }
 
         $this->story->refresh();
-        unset($this->changes, $this->costPreview);
+        $this->resetComputed();
 
         $this->confirmingApproval = false;
+        // Authorised, not started, and the wording has to say so. This line
+        // used to read "186 image(s) and 186 narration(s) will be generated" —
+        // future tense with no subject, next to a button that dispatched
+        // nothing. Approving unlocks the spend; a second, separate press makes
+        // it, with the bill on screen first.
         $this->notice = $changes->billsAnything()
             ? sprintf(
-                'Gate 2 approved. %d image(s) and %d narration(s) will be generated; %d scene(s) kept what they already had.',
+                'Gate 2 approved. %d image(s), %d narration(s) and %d transcription(s) are now authorised '
+                .'— and none of them have been generated. Nothing bills until you press "Generate assets" '
+                .'below, which itemises the cost first. %d scene(s) keep what they already had.',
                 $changes->needsImage->count(),
                 $changes->needsNarration->count(),
+                $changes->needsTranscription->count(),
                 $changes->preserved()
             )
             : 'Gate 2 approved. Nothing changed, so nothing is regenerated and nothing is billed.';
+    }
+
+    public function askToGenerate(): void
+    {
+        $this->confirmingGeneration = true;
+    }
+
+    public function cancelGeneration(): void
+    {
+        $this->confirmingGeneration = false;
+    }
+
+    /**
+     * Queue the paid asset stages. The money press.
+     *
+     * Deliberately not a gate crossing: nothing here touches gate state, so it
+     * can be pressed as many times as it takes. A run that leaves five scenes
+     * broken parks the story at `assets_generating`, lists them below, and this
+     * same button re-dispatches those five and nothing else.
+     */
+    public function generateAssets(): void
+    {
+        abort_unless($this->canGenerateAssets(), 403, 'This story is not in a state where paid assets may be generated.');
+
+        try {
+            $result = app(DispatchAssetGeneration::class)->handle($this->story);
+        } catch (MissingCharacterReferenceException $e) {
+            // The reference rule, reaching the operator as text on the page
+            // that fixes it rather than as a stack trace. Gate 2 refuses to
+            // open while a character in a frame has no face, so arriving here
+            // means one was deleted or the provider was swapped since.
+            $this->confirmingGeneration = false;
+            $this->notice = null;
+            $this->addError('generation', $e->getMessage());
+
+            return;
+        }
+
+        $this->story->refresh();
+        $this->resetComputed();
+
+        $this->confirmingGeneration = false;
+        $this->notice = $result['dispatched'] === 0
+            ? 'Nothing outstanding — every scene already has its still, narration and word timings. '
+                .'Nothing was queued and nothing was billed.'
+            : sprintf(
+                '%d job(s) queued on the assets queue: %d still(s), %d narration(s), %d transcription(s). '
+                .'Word timings run as a second batch once the narration finishes. Watch it on the render '
+                .'progress page; this page is safe to leave.',
+                $result['dispatched'],
+                $result['images'],
+                $result['narrations'],
+                $result['transcriptions'],
+            );
+    }
+
+    /**
+     * Every #[Computed] this page caches, dropped in one place.
+     *
+     * They were unset by hand at three call sites and the lists had already
+     * drifted apart — reopen forgot two of them. A stale computed on this page
+     * is a cost figure that does not match what the button will spend.
+     */
+    private function resetComputed(): void
+    {
+        unset(
+            $this->changes,
+            $this->costPreview,
+            $this->assetEstimate,
+            $this->failedScenes,
+            $this->canGenerateAssets,
+            $this->canReopen,
+            $this->editable,
+            $this->canApprove,
+            $this->castState,
+            $this->castReady,
+            $this->castMissing,
+            $this->warnings,
+        );
     }
 
     /**
@@ -263,7 +538,7 @@ class ScenesGate extends Component
 
         $this->story->reopenScenesGate();
         $this->story->refresh();
-        unset($this->changes, $this->costPreview, $this->canReopen, $this->editable);
+        $this->resetComputed();
 
         $this->notice = sprintf(
             "Gate 2 reopened from '%s'. Nothing has been deleted. Only scenes whose narration or "

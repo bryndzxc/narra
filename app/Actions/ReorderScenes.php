@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Models\Scene;
 use App\Models\Story;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Moving and removing scenes, with the numbering kept contiguous.
@@ -26,6 +27,18 @@ class ReorderScenes
 {
     /** Sequence numbers start here, so 0 is free to park on. */
     private const SENTINEL = 0;
+
+    /**
+     * Where a whole-story renumber parks its rows on the way past itself.
+     *
+     * High rather than negative, because `scenes.sequence` is an
+     * unsignedSmallInteger: a negative park value is not a temporary state, it
+     * is a range error that aborts the transaction. 30000 sits far above any
+     * real scene count and far below the column's ceiling.
+     */
+    private const PARK_BASE = 30000;
+
+    private const SEQUENCE_MAX = 65535;
 
     /**
      * Swap a scene with its neighbour. Returns its new position, or null if it
@@ -90,8 +103,24 @@ class ReorderScenes
             // Everything to a disjoint range first: 1..n overlaps the numbers
             // currently in use, and the unique index does not care that the end
             // state would have been fine.
+            //
+            // The park range is HIGH, not negative. `scenes.sequence` is an
+            // unsignedSmallInteger, so -1 is not a temporary value, it is a
+            // "Numeric value out of range" that aborts the transaction. This
+            // method was documented as a repair tool nothing in the gate flow
+            // called, so it had never been run against the real column type.
+            if ($scenes->count() > self::PARK_BASE) {
+                throw new RuntimeException(sprintf(
+                    'Cannot renumber %d scenes: the parking range starts at %d and the column tops '
+                    .'out at %d, so the two would overlap.',
+                    $scenes->count(),
+                    self::PARK_BASE,
+                    self::SEQUENCE_MAX,
+                ));
+            }
+
             foreach ($scenes as $index => $scene) {
-                $scene->update(['sequence' => -($index + 1)]);
+                $scene->update(['sequence' => self::PARK_BASE + $index]);
             }
 
             foreach ($scenes as $index => $scene) {

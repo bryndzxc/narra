@@ -70,17 +70,30 @@ class FakeTranscriber implements Transcriber
         return new Transcription($timed, $durationMs, $this->usage($durationMs));
     }
 
+    public function providerName(): string
+    {
+        return 'fake';
+    }
+
+    public function isSimulated(): bool
+    {
+        return true;
+    }
+
+    public function modelName(): ?string
+    {
+        return null;
+    }
+
     private function usage(int $durationMs): ProviderUsage
     {
         $seconds = $durationMs / 1000;
 
-        return new ProviderUsage(
-            provider: 'fake',
+        return ProviderUsage::simulated(
             operation: 'transcribe',
             category: CostCategory::Asset,
             quantity: round($seconds, 4),
             unit: CostUnit::AudioSeconds,
-            usdCost: $seconds / 60 * (float) config('providers.fake.transcribe_usd_per_minute'),
         );
     }
 

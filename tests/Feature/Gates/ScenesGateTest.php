@@ -175,12 +175,16 @@ class ScenesGateTest extends TestCase
         $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
         $story->scenes()->update(['image_prompt' => null, 'is_hook' => false, 'is_thumbnail_candidate' => false]);
 
-        $warnings = Livewire::test(ScenesGate::class, ['story' => $story])->instance()->warnings();
+        $warnings = implode(' ', Livewire::test(ScenesGate::class, ['story' => $story])->instance()->warnings());
 
-        $this->assertCount(3, $warnings);
-        $this->assertStringContainsString('no image prompt', $warnings[0]);
-        $this->assertStringContainsString('opening hook', $warnings[1]);
-        $this->assertStringContainsString('thumbnail', $warnings[2]);
+        // Asserted on content rather than count. Gate 2's warnings now include
+        // the structural scene checks as well as the completeness ones, and a
+        // test pinned to an exact number breaks every time a real check is
+        // added — which trains whoever hits it to loosen the assertion rather
+        // than read it.
+        $this->assertStringContainsString('no image prompt', $warnings);
+        $this->assertStringContainsString('opening hook', $warnings);
+        $this->assertStringContainsString('thumbnail', $warnings);
     }
 
     private function storyWithScenes(StoryStatus $status): Story

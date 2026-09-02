@@ -37,6 +37,13 @@ class Story extends Model
         'title',
         'slug',
         'premise',
+        // The genre spine. Written by the outline generator, edited by the
+        // operator at Gate 1, and read by every act-generation call after it.
+        // See the migration that added them for why each one is load-bearing.
+        'narrator_grievance',
+        'antagonist_justification',
+        'withheld_information',
+        'exposure_moment',
         'format',
         'locale_profile',
         'voice_id',
@@ -287,6 +294,25 @@ class Story extends Model
     {
         if (! $this->canGeneratePaidAssets()) {
             throw GateViolationException::paidAssetsLocked($this->status, $operation);
+        }
+    }
+
+    /**
+     * Whether the cast's reference sheets may be generated yet.
+     *
+     * Unlocked at `scenes_drafted` — the operator is standing at Gate 2 — not
+     * at `scenes_approved`. See StoryStatus::allowsReferenceSpend().
+     */
+    public function canGenerateReferences(): bool
+    {
+        return $this->status->allowsReferenceSpend();
+    }
+
+    /** @throws GateViolationException */
+    public function assertReferenceSpendUnlocked(?string $operation = null): void
+    {
+        if (! $this->canGenerateReferences()) {
+            throw GateViolationException::referenceSpendLocked($this->status, $operation);
         }
     }
 

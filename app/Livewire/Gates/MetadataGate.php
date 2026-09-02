@@ -2,14 +2,24 @@
 
 namespace App\Livewire\Gates;
 
+use App\Actions\AssertWorkersCurrent;
 use App\Actions\ComposeDescription;
 use App\Actions\ValidateYoutubeMetadata;
+use App\Contracts\MetadataWriter;
 use App\Enums\Gate;
 use App\Enums\MetadataStatus;
+use App\Enums\RenderJobStatus;
+use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
+use App\Exceptions\DispatchRefusedException;
+use App\Jobs\GenerateMetadataJob;
+use App\Models\RenderJob;
 use App\Models\Story;
 use App\Models\YoutubeMetadata;
+use App\Support\ChapterRules;
+use App\Support\ModelRoster;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -49,10 +59,32 @@ class MetadataGate extends Component
 
     public string $pinnedComment = '';
 
+    /**
+     * The scheduled publish time, typed in US Eastern.
+     *
+     * Eastern rather than Manila, and that is the whole point of the field.
+     * Peak US viewing is 6-10 PM ET, which is the small hours here — so the
+     * decision is made in ET and the conversion is the app's job, because a
+     * conversion done in somebody's head at 1am is the thing that gets fumbled.
+     * Stored in UTC; both zones are displayed back.
+     *
+     * The column, `Story::targetPublishAtEastern()`, `targetPublishAtManila()`
+     * and a two-timezone block on the stories index all existed before this
+     * input did — so the column was always null, the block never rendered, and
+     * the Gate 4 checklist asked the operator to confirm a time the app had no
+     * way to hold. This is the input those were written for.
+     */
+    public string $publishAtEastern = '';
+
     /** @var array<string, bool> */
     public array $checklist = [];
 
     public ?string $notice = null;
+
+    public ?string $problem = null;
+
+    /** Guard on the drafting button: three billed calls, so it asks first. */
+    public bool $confirmingDraft = false;
 
     public function mount(Story $story): void
     {
@@ -71,6 +103,7 @@ class MetadataGate extends Component
         $this->thumbnailSceneId = $this->metadata->thumbnail_scene_id
             ?? $story->scenes()->where('is_thumbnail_candidate', true)->value('id');
         $this->pinnedComment = (string) $this->metadata->pinned_comment;
+        $this->publishAtEastern = $story->targetPublishAtEastern()?->format('Y-m-d\TH:i') ?? '';
 
         $state = $this->metadata->checklist_state ?? [];
 
@@ -158,6 +191,152 @@ class MetadataGate extends Component
                 'sequence' => $scene->sequence,
                 'flagged' => (bool) $scene->is_thumbnail_candidate,
             ])->all();
+    }
+
+    // -- Drafting ------------------------------------------------------------
+
+    /**
+     * Whether the sheet can be written at all, and why not when it cannot.
+     *
+     * The chapter rules are checked HERE, before the button is offered, rather
+     * than discovered by the stage after it has billed three calls. They are
+     * the same four rules the gate validates and the same object applies them.
+     *
+     * @return array<int, string>
+     */
+    #[Computed]
+    public function draftBlockers(): array
+    {
+        $blockers = app(ChapterRules::class)->problems($this->metadata->chapters());
+
+        if ($this->story->status->rank() < StoryStatus::Rendered->rank()) {
+            $blockers[] = 'The story has not been rendered, so there are no act timings to build '
+                .'chapters from.';
+        }
+
+        if ($this->stale() && ! $this->metadata->hasFreshRender()) {
+            $blockers[] = 'This sheet describes a render that was thrown away. Re-render first.';
+        }
+
+        return array_values(array_unique($blockers));
+    }
+
+    /** Whether pressing the button would overwrite copy that already exists. */
+    #[Computed]
+    public function draftWouldOverwrite(): bool
+    {
+        return ($this->metadata->title_options ?? []) !== [];
+    }
+
+    /** The models the three calls will bill against, named before they run. */
+    #[Computed]
+    public function draftRoster(): array
+    {
+        return app(ModelRoster::class)->lines(ModelRoster::METADATA_OPERATIONS);
+    }
+
+    /** Whether the drafting stage is queued or running right now. */
+    #[Computed]
+    public function drafting(): bool
+    {
+        $job = RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::Metadata)
+            ->whereNull('scene_id')
+            ->latest('id')
+            ->first();
+
+        return $job !== null && $job->status === RenderJobStatus::Running;
+    }
+
+    /** The last drafting run's outcome, for the page to report. */
+    #[Computed]
+    public function lastDraftJob(): ?RenderJob
+    {
+        return RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::Metadata)
+            ->whereNull('scene_id')
+            ->latest('id')
+            ->first();
+    }
+
+    public function askToDraft(): void
+    {
+        $this->authorizeEdit();
+
+        $this->problem = null;
+        $this->confirmingDraft = true;
+    }
+
+    public function cancelDraft(): void
+    {
+        $this->confirmingDraft = false;
+    }
+
+    /**
+     * Queue the three calls that write the sheet.
+     *
+     * Queued rather than run here: one of them is a thinking model at high
+     * effort and a Livewire request is the wrong place to hold that open. It
+     * goes on the `text` queue, which is the queue the setup docs have been
+     * telling operators to run a worker for since Phase 1 and which nothing in
+     * the app had ever dispatched to.
+     *
+     * The worker check is BEFORE the dispatch and not inside the job, for the
+     * reason that guard exists: the dispatching process is the only one with
+     * fresh code by construction, so it is the only one that can honestly
+     * decide whether the worker is stale.
+     */
+    public function draft(): void
+    {
+        $this->authorizeEdit();
+
+        $this->confirmingDraft = false;
+        $this->problem = null;
+
+        if ($this->draftBlockers() !== []) {
+            $this->problem = 'The sheet cannot be written yet: '.implode(' ', $this->draftBlockers());
+
+            return;
+        }
+
+        try {
+            $workers = app(AssertWorkersCurrent::class)->handle((string) config('render.queues.text'));
+        } catch (DispatchRefusedException $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        // A stale worker is a refusal and an ABSENT one is not — nothing is
+        // lost, the job waits. But "queued" and "queued, and nothing is
+        // listening" must not read the same on this page: an operator told the
+        // sheet is being written, watching a page that never changes, is the
+        // reporting failure this project keeps finding rather than a new one.
+        $warnings = array_column(
+            array_filter($workers, fn (array $line): bool => $line['level'] !== 'ok'),
+            'message'
+        );
+
+        GenerateMetadataJob::dispatch($this->story->id, force: $this->draftWouldOverwrite());
+
+        $provider = app(MetadataWriter::class);
+
+        $this->notice = sprintf(
+            'Queued on the "%s" queue against %s. Three calls, and the page will show them when it '
+            .'reloads. Nothing is selected for you — five titles are written and picking one is this '
+            .'gate.',
+            config('render.queues.text'),
+            // From the container, not from config. Those are two different
+            // questions and the one time they disagreed this app reported a
+            // vendor it had never contacted.
+            $provider->isSimulated() ? $provider->providerName().' (SIMULATED — nothing billed)' : $provider->providerName(),
+        );
+
+        if ($warnings !== []) {
+            $this->problem = implode(' ', $warnings);
+        }
     }
 
     public function addTitleOption(): void
@@ -251,9 +430,21 @@ class MetadataGate extends Component
         $this->validate([
             'titleSelected' => ['nullable', 'string', 'max:'.config('youtube.limits.title_hard')],
             'description' => ['nullable', 'string', 'max:'.config('youtube.limits.description')],
+            'publishAtEastern' => ['nullable', 'date_format:Y-m-d\TH:i'],
         ], [
             'titleSelected.max' => 'YouTube truncates titles at :max characters. Shorten it, or the tail is lost.',
             'description.max' => 'The description limit is :max characters.',
+            'publishAtEastern.date_format' => 'Give the publish time as a date and a time, in US Eastern.',
+        ]);
+
+        // Parsed in Eastern and stored in UTC. The column is UTC because a
+        // stored local time is a bug waiting on the next DST change: US Eastern
+        // is UTC-5 in winter and UTC-4 in summer, and the target window is the
+        // same clock time in both.
+        $this->story->update([
+            'target_publish_at' => $this->publishAtEastern === ''
+                ? null
+                : Carbon::createFromFormat('Y-m-d\TH:i', $this->publishAtEastern, 'America/New_York')->utc(),
         ]);
 
         $this->metadata->fill([
@@ -280,7 +471,33 @@ class MetadataGate extends Component
         // has to have watched the render. The sheet can be drafted before that
         // — it just cannot be approved until Gate 3 is.
         $this->metadata->refresh();
+        $this->story->refresh();
         $this->notice ??= 'Saved.';
+    }
+
+    /**
+     * The scheduled publish time in both zones, or null.
+     *
+     * Both, always, and never just one. The schedule is reasoned about in ET
+     * because that is where the viewers are, and executed from Manila where the
+     * operator is — and that window lands in the small hours here, which is
+     * exactly how a publish time gets fumbled.
+     *
+     * @return array{et: string, pht: string}|null
+     */
+    #[Computed]
+    public function publishWindow(): ?array
+    {
+        $et = $this->story->targetPublishAtEastern();
+
+        if ($et === null) {
+            return null;
+        }
+
+        return [
+            'et' => $et->format('D d M Y, H:i').' ET',
+            'pht' => $this->story->targetPublishAtManila()?->format('D d M Y, H:i').' PHT',
+        ];
     }
 
     public function approve(): void

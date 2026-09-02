@@ -99,7 +99,100 @@ return [
     */
 
     'narration' => [
+
+        /*
+        | The FALLBACK rate, and no longer the answer.
+        |
+        | It stayed 160 through an entire real narration run and nothing ever
+        | compared it to what a vendor actually did. It could not: the only
+        | synthesizer that existed was the fake, which DERIVES its duration from
+        | this constant, so the two agreed by construction and the agreement
+        | proved nothing. The first real voice read at 195 wpm — 22% faster —
+        | and the only reason it surfaced was somebody dividing words by minutes
+        | by hand, sixty-nine scenes in.
+        |
+        | So this is now what is used when the narrator is unknown: the fake, a
+        | story with no voice set, a voice with no measured profile yet. A voice
+        | that HAS been measured uses its own figure below.
+        */
         'words_per_minute' => (int) env('NARRATION_WPM', 160),
+
+        /*
+        |----------------------------------------------------------------------
+        | Measured pace, per voice
+        |----------------------------------------------------------------------
+        |
+        | Reading rate is a property of A VOICE AT A SPEED, not of narration in
+        | the abstract, and keeping it as one global constant guaranteed that
+        | casting a second narrator would reopen the same hole. Brian at 0.9 is
+        | not Brian at 1.0 and is not some other voice at either.
+        |
+        | `measured_at_speed` is part of the record rather than decoration: the
+        | figure is only true at that speed, so if ELEVENLABS_SPEED moves and
+        | this does not, the number is stale and the pace check will say so.
+        |
+        | How to add one: run `php artisan narration:bakeoff <story>`, which
+        | reads one scene at several speeds and prints the wpm of each. Put the
+        | winner here.
+        */
+        'voices' => [
+
+            // Brian — deep, resonant, comforting. eleven_multilingual_v2.
+            //
+            // 197 wpm at speed 1.0, and this is now a real measurement rather
+            // than an extrapolation. The previous figure came from ONE scene
+            // (story 9, scene 125: 68 words in 24.0 s at 0.9) with the 1.0 rate
+            // projected from it. This one is the whole of story 9's finished
+            // narration: 5,830 words across 186 scenes in 1,775,676 ms of audio.
+            //
+            //     raw    : 5830 / (1775676/60000)  = 197.0 wpm
+            //     padded : 5830 / (53358/30/60)    = 196.7 wpm
+            //
+            // 197 rather than 196.7 because the pace guard compares against RAW
+            // scene durations — `NarrationPace::measure()` divides by
+            // `duration_ms`, not by the padded frame count. The 0.2% between them
+            // is the per-scene rounding that padding adds and it is nowhere near
+            // the tolerance; using the padded figure here would just make the
+            // guard compare two subtly different things.
+            //
+            // The single-scene estimate said 188. It was 5% low, which is the
+            // argument for measuring pace over a whole story: a scene's rate
+            // swings 23% between neighbours on sentence length alone.
+            'nPczCjzI2devNBz1zQrb' => [
+                'name' => 'Brian',
+                'words_per_minute' => (int) env('NARRATION_WPM_BRIAN', 197),
+                'measured_at_speed' => 1.0,
+            ],
+        ],
+
+        /*
+        |----------------------------------------------------------------------
+        | Pace check
+        |----------------------------------------------------------------------
+        |
+        | How far the real narration may drift from the figure the script was
+        | SIZED against before the run is stopped.
+        |
+        | This is the guard that did not exist, and its absence is why a 22%
+        | error survived sixty-nine paid scenes. Named for the failure it
+        | catches: the script writer is given a word target derived from a wpm
+        | figure, and nothing downstream ever checked that the voice honoured
+        | it. A 5,781-word story sized for 36:08 came back reading 29:41.
+        |
+        | Measured CUMULATIVELY across the story, never on one scene, and that
+        | is what makes it usable. Four consecutive real scenes from story 9
+        | read 189, 201, 233 and 206 wpm — a 23% spread between neighbours,
+        | caused by nothing but sentence length and how much short dialogue a
+        | scene carries. A per-scene threshold tight enough to catch a 22%
+        | systematic drift would have cancelled a healthy batch at scene four.
+        |
+        | The running average settles within a couple of scenes and still fires
+        | early: story 9's first scene alone carries 56 words, past the
+        | threshold on its own, so the drift that cost sixty-nine scenes would
+        | have stopped the run on the first one.
+        */
+        'pace_tolerance' => (float) env('NARRATION_PACE_TOLERANCE', 0.12),
+        'pace_min_words' => (int) env('NARRATION_PACE_MIN_WORDS', 50),
     ],
 
     'audio' => [
@@ -180,6 +273,28 @@ return [
         'render' => env('RENDER_QUEUE', 'render'),
         'assets' => env('ASSETS_QUEUE', 'assets'),
         'text' => env('TEXT_QUEUE', 'text'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generated scene assets
+    |--------------------------------------------------------------------------
+    |
+    | Where the paid stills and per-scene narration are filed.
+    |
+    | The disk is deliberately NOT `renders`. Render scratch is purged once a
+    | final MP4 exists and decodes; a still is ~70% of a video's cost and a
+    | re-render must never re-bill for one, so paid assets live on a disk the
+    | purge cannot reach - the same argument that gave character sheets theirs.
+    |
+    | How many run at once is decided by how many `assets` workers are started,
+    | not by a setting here - Bus::batch queues the whole set and the workers
+    | draw from it. A knob for it would be a second answer to the same question.
+    |
+    */
+
+    'assets' => [
+        'disk' => env('ASSETS_DISK', 'assets'),
     ],
 
     /*

@@ -66,6 +66,14 @@ class StoryFactory extends Factory
         return $this->status(StoryStatus::ScenesApproved);
     }
 
+    /**
+     * The default shape for this genre: one narrator, one grievance, escalating.
+     */
+    public function single(): static
+    {
+        return $this->state(fn (): array => ['format' => StoryFormat::Single]);
+    }
+
     public function anthology(): static
     {
         return $this->state(fn (): array => ['format' => StoryFormat::Anthology]);

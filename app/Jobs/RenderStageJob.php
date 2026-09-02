@@ -52,10 +52,27 @@ abstract class RenderStageJob implements ShouldQueue
      */
     public function __construct(public int $storyId, public ?int $sceneId = null)
     {
-        $this->onQueue(config('render.queues.render'));
+        $this->onQueue($this->queueName());
     }
 
     abstract protected function stage(): RenderStage;
+
+    /**
+     * Which of the three queues this stage runs on.
+     *
+     * Overridable rather than hardcoded, because the split is a real
+     * requirement and not a naming convention: a 40-minute mux must never block
+     * an image batch, and there are only one or two `render` workers for it to
+     * block. The asset stages wait on somebody else's HTTP server and can run
+     * many at a time; the render stages are CPU-bound and cannot.
+     *
+     * Defaults to `render` so every FFmpeg stage keeps the queue it already
+     * had. The paid stages override it.
+     */
+    protected function queueName(): string
+    {
+        return (string) config('render.queues.render');
+    }
 
     /**
      * Do the work. Returns [output path, one-line log] for the render_jobs row.

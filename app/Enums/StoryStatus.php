@@ -79,11 +79,33 @@ enum StoryStatus: string
             // rather than a walk back through `rendering` and
             // `assets_generating`, because both of those mean "jobs are in
             // flight" and passing through them would lie to the progress page.
-            self::Rendered => [self::MetadataReady, self::Rendering, self::ScenesDrafted],
+            //
+            // `assets_generating` is on this list because replacing an asset on
+            // a story that has already rendered is a SPEND, not a gate
+            // crossing. The spec makes that a non-negotiable, and the reason is
+            // this exact move: routing it through Gate 2 would mean reopening
+            // the gate to fix narration, which puts all 150-250 paid stills
+            // back in play to correct the audio. It also drops the story below
+            // `rendered`, which is correct — a Gate 3 approval given to a
+            // silent render says nothing about the narrated one, and the
+            // approval IS this transition, so losing it is automatic.
+            self::Rendered => [self::MetadataReady, self::Rendering, self::ScenesDrafted, self::AssetsGenerating],
 
             // Gate 4. Metadata can be regenerated as often as the operator
             // likes — it is text, it is free — and publishing is manual.
-            self::MetadataReady => [self::Published, self::Rendered, self::ScenesDrafted],
+            //
+            // The same two edges as `rendered`, directly rather than through
+            // it. Both are reachable in two hops via `rendered` already, but
+            // nothing performed that walk, and a caller doing it implicitly
+            // would be a status change as a side effect of another status
+            // change — which is exactly what this table exists to prevent.
+            self::MetadataReady => [
+                self::Published,
+                self::Rendered,
+                self::ScenesDrafted,
+                self::AssetsGenerating,
+                self::Rendering,
+            ],
 
             // Terminal. The file is uploaded by a human, outside this app.
             self::Published => [],
@@ -171,6 +193,25 @@ enum StoryStatus: string
     public function allowsPaidAssets(): bool
     {
         return $this->rank() >= self::ScenesApproved->rank();
+    }
+
+    /**
+     * Whether character reference sheets may be generated at this status.
+     *
+     * One status earlier than paid assets, and that gap is the whole feature.
+     * The operator picks a face while standing at Gate 2, before the 199 stills
+     * that will be conditioned on it are authorised — which is the only order
+     * in which picking it is useful. See CostCategory::Reference for why this
+     * sharpens the Gate 2 rule rather than punching through it.
+     *
+     * `>=` rather than `===` so a story that has already crossed Gate 2 can
+     * still re-generate a sheet: a face that turns out wrong at scene 90 is
+     * exactly when you most need to be able to fix it, and by then the story is
+     * well past `scenes_drafted`.
+     */
+    public function allowsReferenceSpend(): bool
+    {
+        return $this->rank() >= self::ScenesDrafted->rank();
     }
 
     /**

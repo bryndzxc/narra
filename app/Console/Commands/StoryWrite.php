@@ -9,6 +9,7 @@ use App\Enums\StoryFormat;
 use App\Exceptions\LocaleViolationException;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\ModelRoster;
 use App\Support\Providers\ActScriptDraft;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -32,7 +33,7 @@ class StoryWrite extends Command
         {story? : Story slug or id. Omit to create a new one from --premise.}
         {--premise= : Premise for a new story.}
         {--title= : Working title for a new story.}
-        {--format=anthology : single or anthology.}
+        {--format=single : single or anthology. Single is the default: this genre needs one continuous narrative to escalate.}
         {--acts= : Number of acts. Defaults to 5 for anthology, 6 for single.}
         {--min=30 : Target minimum runtime, minutes.}
         {--max=40 : Target maximum runtime, minutes.}
@@ -59,7 +60,11 @@ class StoryWrite extends Command
         $this->line("  locale          {$story->locale_profile}");
         $this->line("  target runtime  {$story->target_duration_min}-{$story->target_duration_max} min");
         $this->line("  status          {$story->status->value}");
-        $this->line('  provider        '.config('providers.script_writer').' / '.config('providers.anthropic.model'));
+        $this->line('  provider        '.config('providers.script_writer'));
+
+        foreach (app(ModelRoster::class)->lines(ModelRoster::SCRIPT_OPERATIONS) as $line) {
+            $this->line('  '.$line);
+        }
         $this->line('');
 
         if (! $this->confirmSpend($story)) {
@@ -175,7 +180,7 @@ class StoryWrite extends Command
         $this->warn(sprintf(
             'This makes %d billed API calls against %s and writes a cost row for each.',
             $calls,
-            config('providers.anthropic.model')
+            app(ModelRoster::class)->summary(ModelRoster::SCRIPT_OPERATIONS)
         ));
 
         return $this->confirm('Continue?', true);
@@ -300,7 +305,13 @@ class StoryWrite extends Command
             'premise' => $premise,
             'format' => StoryFormat::from((string) $this->option('format')),
             'locale_profile' => config('locale.default'),
-            'voice_id' => 'narrator-us-01',
+            // NOT a hard-coded id any more. 'narrator-us-01' lived here since
+            // Phase 1 and is a string FakeSpeechSynthesizer invented to have
+            // something to record — it is not a voice on any vendor, and every
+            // story written before this carried it. Null is the honest default:
+            // GenerateSceneNarration refuses to synthesize without a voice, and
+            // `voices:list --set` is how one gets chosen from the real account.
+            'voice_id' => config('providers.default_voice_id'),
             'target_duration_min' => (int) $this->option('min'),
             'target_duration_max' => (int) $this->option('max'),
         ]);

@@ -1,0 +1,80 @@
+<?php
+
+namespace App\Actions;
+
+use App\Models\Scene;
+use App\Models\Story;
+use App\Support\AssetRateCard;
+use App\Support\SceneAssetEstimate;
+use App\Support\SceneChangeSet;
+use App\Support\SceneSelection;
+use Illuminate\Support\Collection;
+
+/**
+ * Price a story's outstanding scene assets before any of them are generated.
+ *
+ * The counterpart to EstimateCharacterSheets, for the far larger spend behind
+ * Gate 2's other button. "Nothing is regenerated silently" has a corollary that
+ * only bites once assets exist: nothing is GENERATED silently either, and at
+ * 186 stills that is the difference between a decision and a discovery.
+ *
+ * The outstanding set is read from SceneChangeSet rather than recomputed here,
+ * and that is the point rather than a convenience. SceneChangeSet is what the
+ * Gate 2 approval confirmation already reads, and it is what DispatchAssetGeneration
+ * dispatches from. One computation, three readers: the number on the button,
+ * the jobs that run, and the bill. Two implementations of "what still needs
+ * generating" would eventually disagree, and the failure mode is quoting an
+ * operator one figure and charging them another.
+ */
+class EstimateSceneAssets
+{
+    public function __construct(private readonly AssetRateCard $rates) {}
+
+    /**
+     * @param  SceneSelection|null  $only  Price only this subset, for a limited run.
+     */
+    public function handle(Story $story, ?SceneSelection $only = null): SceneAssetEstimate
+    {
+        $changes = SceneChangeSet::for($story, $only);
+
+        return new SceneAssetEstimate(
+            scenesTotal: $changes->sceneCount,
+            imagesPending: $changes->needsImage->count(),
+            narrationsPending: $changes->needsNarration->count(),
+            transcriptionsPending: $changes->needsTranscription->count(),
+            // Characters of the text that will actually be sent, not of the
+            // whole story: TTS bills for what it reads, and the scenes keeping
+            // their existing audio are not read again.
+            speechCharacters: $this->characters($changes->needsNarration),
+            transcriptionWords: $this->words($changes->needsTranscription),
+            usdPerImage: $this->rates->usdPerImage(),
+            usdPerThousandSpeechCharacters: $this->rates->usdPerThousandSpeechCharacters(),
+            usdPerTranscribedMinute: $this->rates->usdPerTranscribedMinute(),
+            wordsPerMinute: (int) config('render.narration.words_per_minute'),
+            imageProvider: $this->rates->imageProvider(),
+            speechProvider: $this->rates->speechProvider(),
+            transcriberProvider: $this->rates->transcriberProvider(),
+            imageModel: $this->rates->imageModel(),
+            rateIsDeclared: $this->rates->isDeclaredRatherThanBilled(),
+            simulatedStages: $this->rates->simulatedStages(),
+            selection: $changes->selection?->describe(),
+            deferred: $changes->deferred,
+        );
+    }
+
+    /**
+     * @param  Collection<int, Scene>  $scenes
+     */
+    private function characters(Collection $scenes): int
+    {
+        return (int) $scenes->sum(fn (Scene $scene): int => mb_strlen((string) $scene->narration_text));
+    }
+
+    /**
+     * @param  Collection<int, Scene>  $scenes
+     */
+    private function words(Collection $scenes): int
+    {
+        return (int) $scenes->sum(fn (Scene $scene): int => str_word_count((string) $scene->narration_text));
+    }
+}

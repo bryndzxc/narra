@@ -145,6 +145,56 @@
     button.gate { background: color-mix(in srgb, var(--money) 20%, var(--panel-2)); border-color: color-mix(in srgb, var(--money) 55%, transparent); font-weight: 600; }
     button.tiny { padding: 3px 8px; font-size: 12px; }
 
+    /*
+     * Pagination. Text controls only, no icons.
+     *
+     * The framework's default paginator draws its arrows as inline SVG sized by
+     * Tailwind utility classes. There is no Tailwind here, so those SVGs
+     * rendered at the height of the viewport on the 199-scene Gate 2 page. A
+     * text arrow cannot be mis-sized by a stylesheet that never loaded, and
+     * this app has exactly one stylesheet to lose.
+     */
+    .pagination {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        margin: 16px 0;
+    }
+
+    .pagination .page {
+        display: inline-flex;
+        align-items: center;
+        min-width: 30px;
+        justify-content: center;
+        padding: 4px 9px;
+        font-size: 12px;
+        font-family: inherit;
+        line-height: 1.4;
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .pagination a.page:hover,
+    .pagination button.page:hover { border-color: var(--muted); }
+
+    .pagination .page.current {
+        color: var(--run);
+        border-color: color-mix(in srgb, var(--run) 55%, transparent);
+        background: color-mix(in srgb, var(--run) 14%, var(--panel-2));
+        font-weight: 600;
+        cursor: default;
+    }
+
+    .pagination .page.disabled { opacity: .4; cursor: not-allowed; }
+
+    .pagination .page.gap { border-color: transparent; background: none; cursor: default; }
+
+    .pagination-count { margin-left: 8px; }
+
     .checks label { display: flex; align-items: flex-start; gap: 8px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); margin-bottom: 8px; }
     .checks input { margin-top: 3px; }
 
@@ -173,7 +223,14 @@
     /* Scene list */
     .scene { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
     .scene:last-child { border-bottom: none; }
-    .scene .still { width: 128px; height: 72px; object-fit: cover; border-radius: 4px; background: var(--panel-2); flex: none; }
+    /* Stills are 16:9 sources at whatever the image model emits — Seedream
+       returns 3416x1920 — so the box is always declared here and never left to
+       the intrinsic size. This rule used to be scoped `.scene .still`, which
+       meant the Gate 4 thumbnail picker, whose markup has no `.scene` ancestor,
+       matched nothing and painted a 3416px-wide image into the layout. */
+    .still { display: block; width: 128px; height: 72px; max-width: 100%; object-fit: cover; border-radius: 4px; background: var(--panel-2); flex: none; }
+    /* The Gate 4 chooser, where the operator is judging the picture itself. */
+    .still.pick { width: 208px; height: 117px; }
     .scene .seq { font-family: ui-monospace, Consolas, monospace; color: var(--muted); font-size: 12px; width: 34px; flex: none; }
     .scene .body { flex: 1; min-width: 0; }
     .scene .narration { margin: 0 0 6px; }

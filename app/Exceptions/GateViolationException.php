@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use App\Enums\Gate;
+use App\Enums\OperatorAction;
 use App\Enums\StoryStatus;
 use DomainException;
 
@@ -63,12 +64,48 @@ class GateViolationException extends DomainException
      * situation. Both refusals have a specific next action behind them and the
      * message says which.
      */
+    /**
+     * An operator capability refused because it is not available at this status.
+     *
+     * The general form of cannotReopenScenesGate(), for every other capability
+     * on OperatorAction. It exists so that a refusal decided by the shared
+     * predicate throws the same domain exception a refusal decided by the
+     * transition table does — a caller that had to distinguish "refused because
+     * the guard said no" from "refused because the machine said no" would be
+     * back to two sources of truth for one rule.
+     */
+    public static function actionUnavailable(OperatorAction $action, StoryStatus $status): self
+    {
+        return new self((string) $action->refusal($status));
+    }
+
     public static function cannotReopenScenesGate(StoryStatus $from): self
     {
         return new self(sprintf(
             "Gate 2 cannot be reopened from '%s': %s",
             $from->value,
             $from->reopenRefusalReason() ?? 'no reason given, which is itself a bug.'
+        ));
+    }
+
+    /**
+     * A character sheet asked for before the story has any scenes to stand in
+     * front of.
+     *
+     * Separate from paidAssetsLocked() because it names a different line. Both
+     * are money guards; this one unlocks at `scenes_drafted` rather than
+     * `scenes_approved`, and an operator told the wrong threshold will go
+     * looking for the wrong button.
+     */
+    public static function referenceSpendLocked(StoryStatus $status, ?string $operation = null): self
+    {
+        return new self(sprintf(
+            '%s is blocked: the story is at \'%s\' and character reference sheets cannot be '
+            .'generated before \'%s\'. The sheet is a Gate 2 decision, so the scenes it will be '
+            .'used on have to exist before it is worth paying for a face.',
+            $operation === null ? 'Reference generation' : "Reference operation '{$operation}'",
+            $status->value,
+            StoryStatus::ScenesDrafted->value
         ));
     }
 

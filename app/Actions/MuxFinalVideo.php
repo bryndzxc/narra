@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Exceptions\FfmpegException;
 use App\Services\Ffmpeg;
+use App\Support\Directory;
 use InvalidArgumentException;
 
 /**
@@ -79,9 +80,7 @@ class MuxFinalVideo
         $fps = (int) $video['fps'];
         $rate = (int) $audio['sample_rate'];
 
-        if (! is_dir($directory = dirname($outputPath))) {
-            mkdir($directory, 0775, true);
-        }
+        Directory::ensure($directory = dirname($outputPath));
 
         $startedAt = microtime(true);
 

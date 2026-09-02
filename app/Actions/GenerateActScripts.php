@@ -3,12 +3,15 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\RenderStage;
 use App\Models\Act;
+use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
 use Closure;
+use Illuminate\Database\Eloquent\Collection;
 use RuntimeException;
 
 /**
@@ -56,6 +59,31 @@ class GenerateActScripts
             );
         }
 
+        // The stage this row matters most for. It is the longest text stage —
+        // six sequential Opus calls, minutes each — the only one that cannot
+        // fan out, and the one that fails halfway: acts 1-3 written and billed,
+        // act 4 dead, and until now nothing on the progress page to say so.
+        // Each act writes its own note as it lands, so the row shows how far it
+        // got rather than only that it stopped.
+        return RenderJob::record(
+            $story->id,
+            RenderStage::ActScripts,
+            fn (RenderJob $job): array => $this->writeActs($story, $acts, $only, $progress, $job),
+        );
+    }
+
+    /**
+     * @param  Collection<int, Act>  $acts
+     * @param  array<int, int>  $only
+     * @return array<int, ActScriptDraft>
+     */
+    private function writeActs(
+        Story $story,
+        Collection $acts,
+        array $only,
+        ?Closure $progress,
+        RenderJob $job,
+    ): array {
         $outline = $acts->map(fn (Act $act): ActOutline => new ActOutline(
             sequence: $act->sequence,
             title: (string) $act->title,
@@ -77,9 +105,15 @@ class GenerateActScripts
                 // exists rather than a hole in the running context.
                 $priorSummaries[] = $this->summaryFor($act);
                 $progress?->__invoke($act, null, 'kept existing script');
+                $job->note(sprintf('Act %d of %d — kept existing script.', $act->sequence, $acts->count()));
 
                 continue;
             }
+
+            // Before the call, not after. A note written only on success says
+            // nothing about the act that was in flight when the stage died,
+            // which is the exact act somebody will want named.
+            $job->note(sprintf('Act %d of %d — writing...', $act->sequence, $acts->count()));
 
             $draft = $this->writer->actScript(
                 story: $story,
@@ -117,6 +151,14 @@ class GenerateActScripts
             $drafts[] = $draft;
 
             $progress?->__invoke($act, $draft, sprintf('%s words', number_format($draft->wordCount())));
+
+            $job->note(sprintf(
+                'Act %d of %d — %s words%s.',
+                $act->sequence,
+                $acts->count(),
+                number_format($draft->wordCount()),
+                trim($draft->rehookLine) !== '' ? ', rehook written' : ', NO REHOOK',
+            ));
         }
 
         return $drafts;

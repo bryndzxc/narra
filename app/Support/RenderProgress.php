@@ -40,7 +40,7 @@ class RenderProgress
     public static function for(Story $story): array
     {
         $counts = self::stageCounts($story->id);
-        $stages = self::stages($counts);
+        $stages = self::stages($counts, self::spendByStage($story->id), $story->scenes()->count());
 
         return [
             'story' => $story,
@@ -139,7 +139,56 @@ class RenderProgress
     /**
      * @return array<int, array<string, mixed>>
      */
-    private static function stages(Collection $counts): array
+    /**
+     * What each stage actually cost, from the ledger rather than from the enum.
+     *
+     * `RenderStage::isPaid()` says a stage CAN spend money. It cannot say
+     * whether this run did, and the page was tagging stages "paid" that had
+     * been served entirely by stand-ins at $0.00. That is the same mislabel
+     * that let $8.12 of phantom spend look like a bill — a static property of
+     * the stage standing in for a fact about the run.
+     *
+     * @return array<string, array{real: float, simulated: float, calls: int, simulated_calls: int}>
+     */
+    private static function spendByStage(int $storyId): array
+    {
+        $operations = [
+            'generate_image' => RenderStage::Images->value,
+            'synthesize_speech' => RenderStage::SceneNarration->value,
+            'transcribe' => RenderStage::SceneTimings->value,
+        ];
+
+        $rows = DB::table('cost_entries')
+            ->where('story_id', $storyId)
+            ->whereIn('operation', array_keys($operations))
+            ->selectRaw('operation, simulated, COUNT(*) as calls, SUM(usd_cost) as usd')
+            ->groupBy('operation', 'simulated')
+            ->get();
+
+        $spend = [];
+
+        foreach ($rows as $row) {
+            $stage = $operations[$row->operation];
+            $spend[$stage] ??= ['real' => 0.0, 'simulated' => 0.0, 'calls' => 0, 'simulated_calls' => 0];
+
+            $spend[$stage]['calls'] += (int) $row->calls;
+
+            if ((bool) $row->simulated) {
+                $spend[$stage]['simulated'] += (float) $row->usd;
+                $spend[$stage]['simulated_calls'] += (int) $row->calls;
+            } else {
+                $spend[$stage]['real'] += (float) $row->usd;
+            }
+        }
+
+        return $spend;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $spend
+     * @return array<int, array<string, mixed>>
+     */
+    private static function stages(Collection $counts, array $spend = [], int $sceneCount = 0): array
     {
         $stages = [];
 
@@ -175,6 +224,20 @@ class RenderProgress
                 // shape a hung FFmpeg takes. Nothing else will report it.
                 'stale' => $running > 0 && $lastActivity->lt(Carbon::now()->subMinutes(RenderJob::staleAfterMinutes())),
                 'quiet_for' => $running > 0 ? $lastActivity->diffInSeconds(Carbon::now()) : null,
+                // What this stage actually cost on this story, and whether a
+                // stand-in produced it. Null for the free render stages.
+                'usd' => $spend[$stage->value]['real'] ?? null,
+                'simulated_calls' => $spend[$stage->value]['simulated_calls'] ?? 0,
+                'billed_calls' => isset($spend[$stage->value])
+                    ? $spend[$stage->value]['calls'] - $spend[$stage->value]['simulated_calls']
+                    : 0,
+                // Fan-out stages run one job per scene, so the story's scene
+                // count is the honest denominator. A stage total that is lower
+                // means some scenes never ran a job for it — skipped by
+                // idempotency, or lost with truncated job history — and saying
+                // "185/185" for a 186-scene story hides that rather than
+                // showing it.
+                'scene_count' => $stage->fansOut() ? $sceneCount : null,
             ];
         }
 
@@ -234,10 +297,32 @@ class RenderProgress
                 'total' => (int) $batch->total_jobs,
                 'pending' => (int) $batch->pending_jobs,
                 'failed' => (int) $batch->failed_jobs,
-                'processed' => (int) $batch->total_jobs - (int) $batch->pending_jobs,
+                // Jobs that have actually RUN, which is not total-minus-pending.
+                //
+                // Laravel's incrementFailedJobs() does not decrement
+                // pending_jobs — a failed job stays counted as pending so it can
+                // be retried into the batch. So a batch of 371 with 44 failures
+                // reads as 327 pending-adjusted forever, understating what ran
+                // and, worse, never setting finished_at. Adding the failures
+                // back is what makes this the number of jobs that happened.
+                'processed' => (int) $batch->total_jobs - (int) $batch->pending_jobs + (int) $batch->failed_jobs,
                 'percent' => $batch->total_jobs === 0
                     ? 0
-                    : (int) floor(((int) $batch->total_jobs - (int) $batch->pending_jobs) / (int) $batch->total_jobs * 100),
+                    : (int) floor((((int) $batch->total_jobs - (int) $batch->pending_jobs + (int) $batch->failed_jobs) / (int) $batch->total_jobs) * 100),
+                // Whether anything is genuinely still queued, as opposed to a
+                // batch record that cannot close.
+                //
+                // `finished_at === null` is not "in flight". An allowFailures
+                // batch whose failures were never retried into it stays open
+                // permanently by design, and the page was reporting that as
+                // work in progress long after every worker had exited — which
+                // is exactly the sort of claim that gets an operator to wait
+                // for something that is never going to happen.
+                'in_flight' => ((int) $batch->pending_jobs - (int) $batch->failed_jobs) > 0 && $batch->cancelled_at === null,
+                'abandoned' => $batch->finished_at === null
+                    && $batch->cancelled_at === null
+                    && ((int) $batch->pending_jobs - (int) $batch->failed_jobs) === 0
+                    && (int) $batch->failed_jobs > 0,
                 'cancelled_at' => $batch->cancelled_at ? Carbon::createFromTimestamp($batch->cancelled_at) : null,
                 'finished_at' => $batch->finished_at ? Carbon::createFromTimestamp($batch->finished_at) : null,
                 'created_at' => Carbon::createFromTimestamp($batch->created_at),

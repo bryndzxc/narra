@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CostCategory;
+use App\Enums\CostUnit;
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Models\Act;
+use App\Models\CostEntry;
 use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
@@ -79,6 +82,99 @@ class RenderProgressPageTest extends TestCase
         $this->assertSame(12, $report['batches'][0]['total']);
         $this->assertSame(1, $report['batches'][0]['failed']);
         $this->assertSame("scene-clips:{$story->slug}", $report['batches'][0]['name']);
+    }
+
+    public function test_a_batch_whose_failures_were_never_retried_is_not_reported_as_in_flight(): void
+    {
+        // Laravel's incrementFailedJobs() does not decrement pending_jobs — a
+        // failed job stays counted as pending so it can be retried into the
+        // batch — so an allowFailures batch with unretried failures never gets
+        // finished_at. The page read that as "in flight" and had an operator
+        // waiting on workers that had already exited.
+        $story = Story::factory()->status(StoryStatus::AssetsGenerating)->create(['slug' => 'abandoned-batch']);
+        $act = Act::factory()->for($story)->atSequence(1)->create();
+        $scene = Scene::factory()->forAct($act)->atSequence(1)->create();
+
+        DB::table('job_batches')->insert([
+            'id' => 'batch-abandoned',
+            'name' => "scene-assets:{$story->slug}",
+            'total_jobs' => 371,
+            // Every job ran: 327 succeeded, 44 failed and stayed "pending".
+            'pending_jobs' => 44,
+            'failed_jobs' => 44,
+            'failed_job_ids' => '[]',
+            'created_at' => now()->subMinutes(30)->timestamp,
+            'finished_at' => null,
+        ]);
+
+        DB::table('render_jobs')->insert([
+            'story_id' => $story->id, 'scene_id' => $scene->id,
+            'stage' => RenderStage::Images->value, 'status' => RenderJobStatus::Succeeded->value,
+            'batch_id' => 'batch-abandoned', 'started_at' => now()->subMinutes(20),
+            'finished_at' => now()->subMinutes(19), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $batch = RenderProgress::for($story)['batches'][0];
+
+        $this->assertFalse($batch['in_flight'], 'Nothing is queued; this must not read as in flight.');
+        $this->assertTrue($batch['abandoned']);
+
+        // And the count reflects what RAN, not total-minus-pending, which
+        // understated a finished batch by exactly its failure count.
+        $this->assertSame(371, $batch['processed']);
+        $this->assertSame(100, $batch['percent']);
+
+        $this->get(route('renders.show', $story->slug))
+            ->assertOk()
+            ->assertSee('closed with failures')
+            ->assertDontSee('in flight');
+    }
+
+    public function test_a_stage_is_labelled_by_what_it_cost_not_by_what_it_could_cost(): void
+    {
+        // RenderStage::isPaid() says a stage CAN spend money. Only the ledger
+        // says whether this run did. Tagging a stand-in run "paid" is the same
+        // class of mislabel that let phantom spend read as a bill.
+        $story = Story::factory()->status(StoryStatus::AssetsReady)->create(['slug' => 'stage-labels']);
+        $act = Act::factory()->for($story)->atSequence(1)->create();
+        $scene = Scene::factory()->forAct($act)->atSequence(1)->create();
+
+        foreach ([
+            [RenderStage::Images, 'generate_image'],
+            [RenderStage::SceneNarration, 'synthesize_speech'],
+        ] as [$stage, $operation]) {
+            DB::table('render_jobs')->insert([
+                'story_id' => $story->id, 'scene_id' => $scene->id,
+                'stage' => $stage->value, 'status' => RenderJobStatus::Succeeded->value,
+                'started_at' => now()->subMinute(), 'finished_at' => now(),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        // A real still, and a stand-in narration.
+        CostEntry::create([
+            'story_id' => $story->id, 'provider' => 'fal', 'simulated' => false,
+            'operation' => 'generate_image', 'category' => CostCategory::Asset,
+            'quantity' => 1, 'unit' => CostUnit::Images, 'usd_cost' => 0.035,
+        ]);
+        CostEntry::create([
+            'story_id' => $story->id, 'provider' => 'fake', 'simulated' => true,
+            'operation' => 'synthesize_speech', 'category' => CostCategory::Asset,
+            'quantity' => 100, 'unit' => CostUnit::Characters, 'usd_cost' => 0.0,
+        ]);
+
+        $stages = collect(RenderProgress::for($story)['stages'])->keyBy(fn (array $s): string => $s['stage']->value);
+
+        $this->assertSame(1, $stages[RenderStage::Images->value]['billed_calls']);
+        $this->assertEqualsWithDelta(0.035, $stages[RenderStage::Images->value]['usd'], 0.0001);
+
+        $this->assertSame(0, $stages[RenderStage::SceneNarration->value]['billed_calls']);
+        $this->assertSame(1, $stages[RenderStage::SceneNarration->value]['simulated_calls']);
+
+        $this->get(route('renders.show', $story->slug))
+            ->assertOk()
+            ->assertSee('paid $0.0350')
+            ->assertSee('simulated $0.00');
     }
 
     public function test_a_silent_heartbeat_is_surfaced_as_its_own_alarm(): void

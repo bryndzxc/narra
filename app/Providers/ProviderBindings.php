@@ -5,14 +5,23 @@ namespace App\Providers;
 use Anthropic\Client;
 use Anthropic\RequestOptions;
 use App\Contracts\ImageGenerator;
+use App\Contracts\MetadataWriter;
+use App\Contracts\ReferenceImageGenerator;
 use App\Contracts\ScriptWriter;
 use App\Contracts\SpeechSynthesizer;
 use App\Contracts\Transcriber;
+use App\Services\Claude\ClaudeMetadataWriter;
 use App\Services\Claude\ClaudeScriptWriter;
+use App\Services\ElevenLabs\ElevenLabsImageGenerator;
+use App\Services\ElevenLabs\ElevenLabsSpeechSynthesizer;
 use App\Services\Fake\FakeImageGenerator;
+use App\Services\Fake\FakeMetadataWriter;
+use App\Services\Fake\FakeReferenceImageGenerator;
 use App\Services\Fake\FakeScriptWriter;
 use App\Services\Fake\FakeSpeechSynthesizer;
 use App\Services\Fake\FakeTranscriber;
+use App\Services\Fal\FalSeedreamImageGenerator;
+use App\Services\WhisperX\WhisperXTranscriber;
 use App\Support\LocaleGuard;
 use GuzzleHttp\Client as Guzzle;
 use Illuminate\Support\ServiceProvider;
@@ -27,9 +36,11 @@ use RuntimeException;
  *     interface binds to its Fake, unconditionally, before config is consulted.
  *     A test that misconfigures itself gets a fake, not a bill.
  *
- *  2. **Nothing bills by accident.** Phase 2a is script generation only. The
- *     other three default to `fake` in config, so images, TTS and transcription
- *     cannot start spending because someone wired up a job early.
+ *  2. **Nothing bills by accident.** Every provider but the script writer
+ *     defaults to `fake` in config, so images, reference sheets, TTS and
+ *     transcription cannot start spending because someone wired up a job early.
+ *     Switching one on is an edit to .env, which is a decision with a date on
+ *     it rather than a side effect of deploying.
  *
  * Fakes are singletons so a test can resolve one, run a stage, and read the
  * calls it recorded.
@@ -41,23 +52,74 @@ class ProviderBindings extends ServiceProvider
         $this->app->singleton(LocaleGuard::class);
 
         $this->bind(ScriptWriter::class, 'script_writer', [
-            'fake' => fn (): FakeScriptWriter => new FakeScriptWriter,
+            'fake' => fn (): FakeScriptWriter => $this->app->make(FakeScriptWriter::class),
             'anthropic' => fn (): ClaudeScriptWriter => new ClaudeScriptWriter(
                 $this->anthropic(),
                 $this->app->make(LocaleGuard::class),
             ),
         ]);
 
+        // The publish sheet. Its own contract rather than three more methods on
+        // ScriptWriter: that interface writes the story, at `draft` through
+        // `scripted`, and this writes the packaging, after the render. Same
+        // vendor, same rate cards, different phase and different question.
+        $this->bind(MetadataWriter::class, 'metadata_writer', [
+            'fake' => fn (): FakeMetadataWriter => $this->app->make(FakeMetadataWriter::class),
+            'anthropic' => fn (): ClaudeMetadataWriter => new ClaudeMetadataWriter(
+                $this->anthropic(),
+                $this->app->make(LocaleGuard::class),
+            ),
+        ]);
+
+        // One class implements both image contracts, and it is registered as a
+        // singleton once rather than built twice. The reference it uploads
+        // during a sheet and the reference it cites during a still are the same
+        // provider session; two instances would be two clients and, on a
+        // provider that caches uploads per client, two uploads.
+        // Every fake is a container singleton, because the docblock above
+        // promises a test can resolve one and read the calls it recorded — and
+        // for three of them that promise was false. `new FakeScriptWriter`
+        // inside the binding handed the pipeline one instance and
+        // `app(FakeScriptWriter::class)` a different one, so a test that armed
+        // the fake armed an object nothing ever called. It did not fail; it
+        // passed, against a fake that had never been configured.
+        $this->app->singleton(FakeScriptWriter::class);
+        $this->app->singleton(FakeMetadataWriter::class);
+        $this->app->singleton(FakeSpeechSynthesizer::class);
+        $this->app->singleton(FakeTranscriber::class);
+
+        $this->app->singleton(ElevenLabsImageGenerator::class);
+        $this->app->singleton(ElevenLabsSpeechSynthesizer::class);
+        $this->app->singleton(WhisperXTranscriber::class);
+        $this->app->singleton(FalSeedreamImageGenerator::class);
+        $this->app->singleton(FakeImageGenerator::class);
+        $this->app->singleton(FakeReferenceImageGenerator::class);
+
         $this->bind(ImageGenerator::class, 'image_generator', [
-            'fake' => fn (): FakeImageGenerator => new FakeImageGenerator,
+            'fake' => fn (): FakeImageGenerator => $this->app->make(FakeImageGenerator::class),
+            'elevenlabs' => fn (): ElevenLabsImageGenerator => $this->app->make(ElevenLabsImageGenerator::class),
+            'fal' => fn (): FalSeedreamImageGenerator => $this->app->make(FalSeedreamImageGenerator::class),
+        ]);
+
+        $this->bind(ReferenceImageGenerator::class, 'reference_image_generator', [
+            'fake' => fn (): FakeReferenceImageGenerator => $this->app->make(FakeReferenceImageGenerator::class),
+            'elevenlabs' => fn (): ElevenLabsImageGenerator => $this->app->make(ElevenLabsImageGenerator::class),
+            'fal' => fn (): FalSeedreamImageGenerator => $this->app->make(FalSeedreamImageGenerator::class),
         ]);
 
         $this->bind(SpeechSynthesizer::class, 'speech_synthesizer', [
-            'fake' => fn (): FakeSpeechSynthesizer => new FakeSpeechSynthesizer,
+            'fake' => fn (): FakeSpeechSynthesizer => $this->app->make(FakeSpeechSynthesizer::class),
+            'elevenlabs' => fn (): ElevenLabsSpeechSynthesizer => $this->app->make(ElevenLabsSpeechSynthesizer::class),
         ]);
 
+        // `whisperx` rather than a generic 'local', because the name is what
+        // lands in cost_entries.provider and on the confirmation screen, and it
+        // has to be the thing that actually ran. It is NOT registered as
+        // simulated: it produces real timings from real audio for $0.00, which
+        // is a different row from a stand-in's zero.
         $this->bind(Transcriber::class, 'transcriber', [
-            'fake' => fn (): FakeTranscriber => new FakeTranscriber,
+            'fake' => fn (): FakeTranscriber => $this->app->make(FakeTranscriber::class),
+            'whisperx' => fn (): WhisperXTranscriber => $this->app->make(WhisperXTranscriber::class),
         ]);
     }
 

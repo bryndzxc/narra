@@ -28,6 +28,17 @@ final class ProviderUsage
      *                                                        Provider-specific breakdown for the log — input vs output tokens,
      *                                                        cache hits, the model actually served by. Never used for money;
      *                                                        `usdCost` is the money.
+     * @param  bool  $simulated
+     *                           Whether a stand-in produced this rather than a vendor. Carried
+     *                           on the usage rather than inferred from `$provider === 'fake'`
+     *                           downstream, because the ledger has to be able to answer "what
+     *                           did this video actually cost" without anyone remembering which
+     *                           provider names are real. A simulated usage MUST carry
+     *                           `usdCost: 0.0`; RecordProviderCost refuses it otherwise.
+     * @param  string|null  $model
+     *                              The model that actually served the call, from the instance that ran
+     *                              — not from config, which describes what is configured now rather
+     *                              than what was called then.
      */
     public function __construct(
         public readonly string $provider,
@@ -37,7 +48,38 @@ final class ProviderUsage
         public readonly CostUnit $unit,
         public readonly float $usdCost,
         public readonly array $detail = [],
+        public readonly bool $simulated = false,
+        public readonly ?string $model = null,
     ) {}
+
+    /**
+     * A stand-in call: no vendor contacted, no artefact produced, nothing owed.
+     *
+     * Always zero, by construction rather than by configuration. Fake providers
+     * used to price themselves from a `providers.fake.*` rate card so that a
+     * fixture run produced a "realistic" breakdown. That made `cost_entries`
+     * unable to answer the only question it exists for: a run that never
+     * touched the network wrote $8.12 to the ledger, indistinguishable at a
+     * glance from a real one.
+     */
+    public static function simulated(
+        string $operation,
+        CostCategory $category,
+        float $quantity,
+        CostUnit $unit,
+        array $detail = [],
+    ): self {
+        return new self(
+            provider: 'fake',
+            operation: $operation,
+            category: $category,
+            quantity: $quantity,
+            unit: $unit,
+            usdCost: 0.0,
+            detail: $detail,
+            simulated: true,
+        );
+    }
 
     /**
      * A call that genuinely cost nothing — a fake, or a cache-only response.

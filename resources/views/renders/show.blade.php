@@ -87,8 +87,22 @@
                 <tr>
                     <td>
                         {{ $stage['stage']->label() }}
-                        @if ($stage['stage']->isPaid())
-                            <span class="badge warn" title="This stage spends money">paid</span>
+                        {{-- What this stage COST, not what it is capable of costing.
+                             The enum's isPaid() says a stage can spend money; only the
+                             ledger says whether this run did. Tagging a stand-in run
+                             "paid" is the mislabel that let phantom spend read as a bill. --}}
+                        @if ($stage['billed_calls'] > 0)
+                            <span class="badge warn" title="Real money, from cost_entries">
+                                paid ${{ number_format((float) $stage['usd'], 4) }}
+                            </span>
+                        @elseif ($stage['simulated_calls'] > 0)
+                            <span class="badge" title="Served by a stand-in: no vendor contacted, nothing billed">
+                                simulated $0.00
+                            </span>
+                        @elseif ($stage['stage']->isPaid())
+                            <span class="badge muted" title="This stage can spend money; nothing recorded yet">
+                                billable
+                            </span>
                         @endif
                         @if ($stage['stale'])
                             <span class="badge warn">no heartbeat</span>
@@ -103,7 +117,18 @@
                             <span class="busy" style="width: {{ floor($stage['running'] / max(1, $stage['total']) * 100) }}%"></span>
                         </div>
                     </td>
-                    <td class="mono">{{ $stage['succeeded'] }}/{{ $stage['total'] }}</td>
+                    <td class="mono">
+                        {{ $stage['succeeded'] }}/{{ $stage['total'] }}
+                        @if ($stage['scene_count'] !== null && $stage['total'] < $stage['scene_count'])
+                            {{-- One job per scene is the design, so a lower total means
+                                 some scenes never ran this stage. Shown rather than hidden:
+                                 "185/185" against a 186-scene story is the question this
+                                 answers before it gets asked. --}}
+                            <span class="muted" title="This story has {{ $stage['scene_count'] }} scenes; {{ $stage['scene_count'] - $stage['total'] }} never ran a job for this stage">
+                                of {{ $stage['scene_count'] }} scenes
+                            </span>
+                        @endif
+                    </td>
                     <td class="mono {{ $stage['failed'] > 0 ? '' : 'muted' }}">{{ $stage['failed'] }}</td>
                     <td class="mono muted">
                         {{ $stage['running'] }}@if ($stage['running'] > 0 && $stage['quiet_for'] !== null)
@@ -190,8 +215,19 @@
                         <td class="muted mono">
                             @if ($batch['cancelled_at'])
                                 cancelled {{ $batch['cancelled_at']->diffForHumans() }}
+                            @elseif ($batch['finished_at'])
+                                {{ $batch['finished_at']->diffForHumans() }}
+                            @elseif ($batch['abandoned'])
+                                {{-- Every job ran; the record cannot close because Laravel
+                                     keeps failed jobs counted as pending so they can be
+                                     retried into the batch. Nothing is queued. Saying
+                                     "in flight" here had an operator waiting on workers
+                                     that had already exited. --}}
+                                <span title="All {{ $batch['total'] }} jobs ran; {{ $batch['failed'] }} failed and were never retried into this batch, so it never closes. Nothing is queued.">
+                                    closed with failures
+                                </span>
                             @else
-                                {{ $batch['finished_at']?->diffForHumans() ?? 'in flight' }}
+                                in flight
                             @endif
                         </td>
                     </tr>

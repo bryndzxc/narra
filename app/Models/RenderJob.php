@@ -102,6 +102,112 @@ class RenderJob extends Model
         return $job;
     }
 
+    /**
+     * Run a SYNCHRONOUS stage inside a row, so it is visible while it runs.
+     *
+     * The queued stages get their bookkeeping from RenderStageJob. The three
+     * text stages do not go through a queue at all — `story:write` and
+     * `story:scenes` call their Actions in the console process — and for a long
+     * time that meant they wrote no row, which made them invisible on the only
+     * page this platform has instead of a Horizon dashboard. An outline that
+     * failed, or act scripts that died on act 4 of 6 after billing three Opus
+     * calls, left `/renders/{slug}` looking exactly like a story nobody had
+     * started. `RenderStage::Outline`, `ActScripts` and `DraftScenes` were all
+     * enumerated for a page that could never show them.
+     *
+     * Synchronous is the reason this is needed, not a reason to skip it: an
+     * operator watching a console is one terminal, and the progress page is
+     * where anyone else looks — including the same operator tomorrow, asking
+     * why act 5 has no script.
+     *
+     * The closure is handed its own row so it can call `note()` as it goes; a
+     * seven-minute act call with nothing between start and finish is
+     * indistinguishable from a hung one.
+     *
+     * @template TReturn
+     *
+     * @param  \Closure(self): TReturn  $work
+     * @return TReturn
+     */
+    public static function record(int $storyId, RenderStage $stage, \Closure $work): mixed
+    {
+        $job = self::open($storyId, $stage);
+
+        try {
+            $result = $work($job);
+        } catch (Throwable $e) {
+            // Written before the rethrow, because the row is the thing the
+            // operator reads and the exception is going to the console of
+            // whoever happens to be watching.
+            $job->fail($e);
+
+            throw $e;
+        }
+
+        $job->succeed(null, $job->log);
+
+        return $result;
+    }
+
+    /**
+     * Append a line to the running log, and beat the heart while doing it.
+     *
+     * Both halves matter and they are the same write. The line is what the page
+     * shows ("act 4 of 6, 1,340 words"); touching `updated_at` is what keeps
+     * `isStale()` from reporting a working stage as hung. A progress note that
+     * did not refresh the heartbeat would make a healthy long stage look dead
+     * every time it went quiet between acts.
+     */
+    public function note(string $line): void
+    {
+        $this->forceFill([
+            'log' => trim(($this->log === null ? '' : $this->log."\n").$line),
+        ])->save();
+    }
+
+    /**
+     * Put the stages a new dispatch is about to run back to `Queued`.
+     *
+     * **The false success this removes.** `open()` is an updateOrCreate keyed on
+     * (story, stage, scene), so there is exactly one row per stage and it
+     * survives every dispatch. A stage that succeeded on a previous render and
+     * does NOT run in this one keeps its old `succeeded` row — and the progress
+     * page, which counts rows by stage with no notion of which dispatch they
+     * belong to, reports it as complete.
+     *
+     * That is not hypothetical. A render whose concat failed showed Subtitles
+     * 1/1 and Mux 1/1 "done", with a 506-second mux duration, for stages that
+     * could not possibly have run: they are chained off concat, and concat had
+     * just failed. The rows were 21 hours old, from a silent fixture render, and
+     * the operator page presented them as the current run.
+     *
+     * Queued rather than deleted: the operator should see that these stages are
+     * expected and pending, not that they have vanished. And a row that says
+     * `queued` cannot be mistaken for one that says `succeeded`, which is the
+     * only property that actually matters here.
+     *
+     * @param  array<int, RenderStage>  $stages
+     * @return int Rows reset.
+     */
+    public static function queueStages(int $storyId, array $stages): int
+    {
+        if ($stages === []) {
+            return 0;
+        }
+
+        return self::query()
+            ->where('story_id', $storyId)
+            ->whereIn('stage', array_map(fn (RenderStage $s): string => $s->value, $stages))
+            ->update([
+                'status' => RenderJobStatus::Queued,
+                'started_at' => null,
+                'finished_at' => null,
+                'output_path' => null,
+                'error' => null,
+                'log' => null,
+            ]);
+    }
+
     public function succeed(?string $outputPath = null, ?string $log = null): void
     {
         $this->forceFill([
@@ -114,6 +220,20 @@ class RenderJob extends Model
 
     public function fail(Throwable $e): void
     {
+        // Progress notes are KEPT, and the trace goes below them.
+        //
+        // This used to overwrite `log` outright, which is fine for a stage whose
+        // whole story is one FFmpeg call and wrong for one that reports as it
+        // goes. Act scripts is six sequential calls: "acts 1 and 2 written, act
+        // 3 in flight" is the most useful sentence on the row, and a stack trace
+        // that replaced it would answer where the code broke while destroying
+        // the answer to how far the story got.
+        $progress = trim((string) $this->log);
+
+        $log = $progress === ''
+            ? $e->getTraceAsString()
+            : $progress."\n\n--- trace ---\n".$e->getTraceAsString();
+
         $this->forceFill([
             'status' => RenderJobStatus::Failed,
             'finished_at' => Carbon::now(),
@@ -122,7 +242,7 @@ class RenderJob extends Model
             // enough, and both are on the row rather than only in a log file
             // the operator would have to go and find.
             'error' => Str::limit($e->getMessage(), 60000),
-            'log' => Str::limit($e->getTraceAsString(), 60000),
+            'log' => Str::limit($log, 60000),
         ])->save();
     }
 

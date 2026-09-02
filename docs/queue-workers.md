@@ -28,6 +28,99 @@ They are separate processes so a 40-minute mux can never block a script draft.
 hours of CPU, and from Phase 2 it is real money. Retrying is an operator
 decision, not an automatic one.
 
+### `--tries=3` on `assets` does not apply to the paid stages
+
+The three stages that spend money — stills, narration, word timings — set
+`$tries = 1` on the job class, and a property beats the flag. That is not an
+oversight and the flag is left at 3 for anything else that ever runs on this
+queue.
+
+An automatic retry of a call that already billed is an automatic second charge,
+and the worker cannot tell "the provider never answered" from "the provider
+answered, billed, and something after that threw". Transient failures are
+retried where they can still be retried for free: inside the provider, at the
+HTTP layer, before the call has succeeded — `providers.fal.max_retries` and its
+equivalents. A job that gets past that has spent something, so it stops and
+flags the scene instead.
+
+Which is why the retry is a button. A failed scene lands at `SceneStatus::Failed`
+and is listed on the Gate 2 page; pressing **Generate assets** again
+re-dispatches exactly those scenes and nothing else. Every asset action is
+idempotent, so even a job that runs against a finished scene declines to bill.
+
+## A running worker does not see your `.env` change
+
+`queue:work` is a daemon. It boots the framework once, resolves its container
+once, and then loops. **Editing `.env`, editing config, or deploying code
+changes nothing for a worker that is already running** — it keeps the bindings
+it started with until it exits.
+
+This is not a footnote. It produced the most expensive mistake in the project
+so far:
+
+1. `PROVIDER_IMAGE_GENERATOR` was set to `fal` and the CLI correctly quoted
+   $6.51 against `fal-ai/bytedance/seedream/v5/lite/edit`.
+2. An `assets` worker had been running since hours earlier, from before the
+   change. It was still bound to `FakeImageGenerator`.
+3. It took 185 of the 186 image jobs and produced flat-fill placeholder PNGs.
+   The vendor was never contacted. The dashboard showed zero credits consumed.
+
+**After any change to `.env`, `config/providers.php`, or provider code:**
+
+```bash
+php artisan queue:restart          # asks workers to exit after the current job
+# then CONFIRM they actually exited before dispatching anything:
+Get-CimInstance Win32_Process -Filter "Name='php.exe'" |
+  Where-Object { $_.CommandLine -like '*queue:work*' } |
+  Select-Object ProcessId, CreationDate
+```
+
+`queue:restart` is a cache flag, not a signal — a worker notices it between
+jobs, so a worker mid-encode takes as long as that job takes. Check the process
+list; do not assume. If workers run as NSSM services, restart the services.
+
+### The guard, for when you forget
+
+Every paid asset job carries the provider name that was quoted to the operator,
+pinned into the job payload at dispatch. Before generating anything, the job
+compares it against what its own process resolves, and refuses loudly if they
+differ:
+
+> This job was queued against provider "fal" but this worker resolves "fake".
+
+Nothing is generated and nothing is billed when that fires. It fails the scene,
+which puts it in the retry set on the Gate 2 page. The point is that the failure
+is now loud and immediate on job one, rather than 185 silent substitutions
+discovered afterwards on a vendor dashboard.
+
+The guard is a backstop, not a substitute for restarting the workers.
+
+## `retry_after` must be longer than your longest job
+
+This is the server-side half of the timeout story, and on this platform it is
+the half that actually works — `--timeout` needs `pcntl` and does nothing, but
+`retry_after` is enforced by the queue itself.
+
+It is set on the **connection**, in `config/queue.php`:
+
+```php
+'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 21600),
+```
+
+Laravel's default is **90 seconds**. The mux is a full re-encode of 30-40
+minutes of 1080p with burned-in subtitles and runs for tens of minutes. At 90
+seconds the queue concluded the job had died, made it available again, and the
+second render worker picked it up, saw `attempts > tries`, and marked it
+**failed while the original FFmpeg was still encoding**. The result was a story
+with a growing `final.mp4` and a failed job row, unable to reach `rendered`.
+
+The case that did not happen only by luck: with `tries > 1` the redelivery does
+not fail fast — it starts a **second FFmpeg writing the same output file**.
+
+The rule: `retry_after` > the longest job, and ideally equal to the worker's
+`--max-time`, so a stuck job is recycled by the worker rather than re-delivered
+by the queue.
+
 ## `--timeout` does nothing here — read this
 
 Laravel enforces `--timeout` with a `pcntl` alarm. Without `pcntl` the flag is

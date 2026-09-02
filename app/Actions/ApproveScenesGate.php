@@ -5,10 +5,10 @@ namespace App\Actions;
 use App\Enums\AssetStatus;
 use App\Enums\Gate;
 use App\Enums\SceneStatus;
+use App\Exceptions\MissingCharacterReferenceException;
 use App\Models\Scene;
 use App\Models\SceneAudio;
 use App\Models\Story;
-use App\Support\RenderWorkspace;
 use App\Support\SceneChangeSet;
 use Illuminate\Support\Facades\DB;
 
@@ -39,22 +39,28 @@ use Illuminate\Support\Facades\DB;
 class ApproveScenesGate
 {
     /** Rebuilt from scratch whenever anything at all changed. Free — CPU only. */
-    private const WHOLE_VIDEO_ARTIFACTS = [
-        'silent.mp4',
-        'narration.wav',
-        'narration.mp3',
-        'narration.txt',
-        'clips.txt',
-        'subs.ass',
-        'scene_audio.json',
-        'final.mp4',
-    ];
+    public function __construct(
+        private readonly ValidateCharacterSheets $sheets,
+        // Shared with DispatchAssetGeneration. Two copies of "what is stale"
+        // would eventually disagree about it, and the disagreement would be a
+        // finished-looking video that no longer matches its assets.
+        private readonly DiscardRenderArtifacts $artifacts,
+    ) {}
 
     /**
      * @return SceneChangeSet What was applied, so the caller can report it.
      */
     public function handle(Story $story): SceneChangeSet
     {
+        // Before anything else, and before the transaction: crossing this gate
+        // authorises 150-250 paid stills, and a still cannot be generated for a
+        // scene whose characters have no approved face. That failure has to
+        // happen HERE, where nothing has been spent and the operator is on the
+        // screen that fixes it — not inside the image batch, ninety images
+        // deep, where the same check runs as a backstop and is a far worse
+        // place to learn it.
+        $this->assertCastIsReferenced($story);
+
         $changes = SceneChangeSet::for($story);
 
         DB::transaction(function () use ($story, $changes): void {
@@ -162,36 +168,48 @@ class ApproveScenesGate
      */
     private function deleteStaleFiles(Story $story, SceneChangeSet $changes): void
     {
-        if ($story->slug === null || $changes->isEmpty()) {
+        if ($changes->isEmpty()) {
             return;
         }
 
-        $workspace = RenderWorkspace::for($story);
+        $this->artifacts->handle(
+            story: $story,
+            scenes: $changes->needsClip,
+            wholeVideo: $changes->videoIsStale(),
+            // A reorder refiles every clip under a different number, so the
+            // survivors belong to scenes that no longer sit at those sequences.
+            sweepDirectories: $changes->sceneSetChanged,
+        );
+    }
 
-        foreach ($changes->needsClip as $scene) {
-            /** @var Scene $scene */
-            @unlink($workspace->clipPath($scene));
-            @unlink($workspace->paddedAudioPath($scene));
-        }
+    /**
+     * Refuse the gate while a character in a frame has no face on file.
+     *
+     * The alternative is not "generate it from text" — that option does not
+     * exist anywhere in this feature, by design. A face drawn from a
+     * description looks correct in isolation and drifts across the video, and
+     * the drift is not visible until every still has been paid for.
+     *
+     * @throws MissingCharacterReferenceException
+     */
+    private function assertCastIsReferenced(Story $story): void
+    {
+        $state = $this->sheets->handle($story);
 
-        // A reorder refiles every clip under a different number, so the ones
-        // left behind belong to scenes that no longer sit at those sequences.
-        // Sweeping the directories is simpler than reasoning about which
-        // survivors are misfiled, and costs only CPU to rebuild.
-        if ($changes->sceneSetChanged) {
-            foreach (['clips', 'padded'] as $directory) {
-                foreach (glob($workspace->path($directory).'/*') ?: [] as $file) {
-                    @unlink($file);
-                }
-            }
-        }
-
-        if (! $changes->videoIsStale()) {
+        if ($state['ready']) {
             return;
         }
 
-        foreach (self::WHOLE_VIDEO_ARTIFACTS as $artifact) {
-            @unlink($workspace->path($artifact));
-        }
+        throw new MissingCharacterReferenceException(sprintf(
+            'Gate 2 cannot be approved: %d character%s in this story appear in scenes but have no '
+            .'reference image picked (%s), which blocks %d of %d scenes. Approving would authorise '
+            .'paid stills that cannot be generated. Generate and pick their character sheets first '
+            .'— that step is on this page and costs a fraction of the stills it protects.',
+            $state['missing']->count(),
+            $state['missing']->count() === 1 ? '' : 's',
+            $state['missing']->pluck('name')->implode(', '),
+            $state['scenes_blocked'],
+            $story->scenes()->count(),
+        ));
     }
 }

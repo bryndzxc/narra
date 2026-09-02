@@ -31,7 +31,13 @@ class SceneAudio extends Model
         'scene_id',
         'audio_track_id',
         'audio_path',
+        'narration_provider',
+        'narration_voice_id',
+        'narration_speed',
+        'narration_simulated',
         'timings_json',
+        'timings_provider',
+        'timings_simulated',
         'duration_ms',
         'padded_duration_ms',
         'frames',
@@ -48,6 +54,12 @@ class SceneAudio extends Model
     {
         return [
             'timings_json' => 'array',
+            // Nullable booleans, and the null matters: "provenance unknown" is
+            // a third state, not a synonym for false. The staleness rule reads
+            // it as "leave the asset alone".
+            'narration_speed' => 'float',
+            'narration_simulated' => 'boolean',
+            'timings_simulated' => 'boolean',
             'duration_ms' => 'integer',
             'padded_duration_ms' => 'integer',
             'frames' => 'integer',

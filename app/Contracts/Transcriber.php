@@ -16,7 +16,7 @@ use App\Support\Providers\Transcription;
  * is aligning against turns an open transcription problem into an alignment
  * one, which is both cheaper and considerably more accurate on proper nouns.
  */
-interface Transcriber
+interface Transcriber extends ProviderIdentity
 {
     /**
      * @param  string  $audioPath  A readable local path to one scene's audio.

@@ -3,6 +3,11 @@
 .env
 .env.backup
 .env.production
+# Any dated backup an edit leaves behind. `.env.backup` alone did not cover
+# `.env.bak-1787977778`, which held four live API keys and was one `git add .`
+# away from a public repository.
+.env.bak*
+.env.*.bak
 .phpactor.json
 .phpunit.result.cache
 /.fleet

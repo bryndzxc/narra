@@ -2,10 +2,14 @@
 
 namespace App\Contracts;
 
+use App\Models\Act;
 use App\Models\Story;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\Providers\CharacterCast;
+use App\Support\Providers\CharacterProfile;
 use App\Support\Providers\OutlineDraft;
+use App\Support\Providers\SceneDraftSet;
 
 /**
  * Writes the story: the act outline first, then each act in turn.
@@ -27,6 +31,11 @@ use App\Support\Providers\OutlineDraft;
  *
  * There is no one-shot `script(Story)` method here, deliberately. Adding one
  * would be the first thing that had to be rewritten.
+ *
+ * Scene drafting lives here too rather than behind its own interface: it is the
+ * same provider, the same model and the same rate card, and it reads the script
+ * this interface wrote. Splitting it out would mean two implementations that
+ * have to agree about the story.
  */
 interface ScriptWriter
 {
@@ -63,4 +72,57 @@ interface ScriptWriter
         array $priorSummaries,
         int $targetWords,
     ): ActScriptDraft;
+
+    /**
+     * Extract every recurring character, with a fixed physical description each.
+     *
+     * Runs BEFORE any scene is drafted, and that order is the whole mechanism.
+     * Character consistency across 150-250 stills is the single biggest quality
+     * risk in this format; the fix is that one description is written once and
+     * then pasted verbatim into every prompt the character appears in. A scene
+     * drafted before the cast exists has to invent a description for whoever is
+     * in it, and two scenes inventing separately is precisely the drift.
+     *
+     * Each description must be physical and unchanging — age, build, hair,
+     * face, habitual clothing. Never mood, posture or action: those belong to
+     * the frame and change every scene.
+     *
+     * @param  array<int, string>  $scripts  Every act's script, in order.
+     */
+    /**
+     * @param  array<int, string>  $rejectionNotes
+     *                                              What was wrong with a previous attempt, fed back verbatim.
+     *                                              Empty on the first try. It exists because style_notes has a
+     *                                              hard invariant a prompt alone did not hold: the field is
+     *                                              pasted into every prompt its character appears in, so a prop
+     *                                              in it is a prop in all 36 of their scenes — and re-asking
+     *                                              without saying what failed just re-rolls the same mistake.
+     */
+    public function characters(Story $story, array $scripts, array $rejectionNotes = []): CharacterCast;
+
+    /**
+     * Split one act's script into scenes, with a composed frame for each.
+     *
+     * Scenes are returned as SENTENCE RANGES into `$sentences`, never as
+     * narration text. The script was approved at Gate 1 and a paid TTS call
+     * will read it aloud; a model asked to echo 1,000 words verbatim will
+     * sometimes paraphrase, and that is invisible. Indices make the narration
+     * verbatim by construction.
+     *
+     * The `frame` on each draft describes what is IN the picture. It must not
+     * restate the narration: a prompt that transcribes its line produces a
+     * literal illustration of a sentence, and two hundred of those in a row
+     * read as a slideshow of captions rather than a film.
+     *
+     * @param  array<int, string>  $sentences  1-indexed act script sentences.
+     * @param  array<int, CharacterProfile>  $cast  Names the frames may use.
+     * @param  int  $targetScenes  Derived from the act's word count.
+     */
+    public function scenes(
+        Story $story,
+        Act $act,
+        array $sentences,
+        array $cast,
+        int $targetScenes,
+    ): SceneDraftSet;
 }

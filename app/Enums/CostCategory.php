@@ -26,6 +26,11 @@ namespace App\Enums;
  *
  * So the guard keys off this, not off status alone. `Asset` is gated; `Text`
  * is logged from the first call. Both are logged.
+ *
+ * `Reference` was added when character sheets landed and sits between them:
+ * real image spend, but unlocked one status early, at `scenes_drafted`. See
+ * the case for why that is a sharpening of the Gate 2 rule rather than a hole
+ * in it.
  */
 enum CostCategory: string
 {
@@ -45,10 +50,55 @@ enum CostCategory: string
      */
     case Asset = 'asset';
 
+    /**
+     * Candidate reference images for the cast, generated AT Gate 2.
+     *
+     * Paid image generation, and it deliberately runs before the gate is
+     * approved. The reason is the same one that exempts `Text`, applied to the
+     * one asset the operator has to see in order to make the Gate 2 decision
+     * at all.
+     *
+     * The Gate 2 rule was never "no image may ever be billed before
+     * scenes_approved" — it is that 150-250 stills plus per-scene TTS must not
+     * be committed against scenes no human has read. Every clause of that
+     * fails to describe a character sheet: it is about three dozen images, not
+     * two hundred and fifty; it is fired by an explicit operator click with the
+     * cost on screen, not by a batch; and its output is the thing being
+     * reviewed, since a face that is wrong is cheaper to find here than at
+     * scene 90.
+     *
+     * Generating the cast's faces first is also what makes the expensive stage
+     * cheaper: every scene still is conditioned on an approved reference, which
+     * is the mechanism against the drift the spec names as the single biggest
+     * quality risk in this format.
+     *
+     * Unlocked at `scenes_drafted` and not one status earlier. A story that has
+     * not drafted its scenes has nothing for the operator to be standing in
+     * front of, and this must not become a way to spend money at `draft`.
+     */
+    case Reference = 'reference';
+
     /** Whether Gate 2 must have been passed before this may be spent. */
     public function requiresPaidAssetsUnlocked(): bool
     {
         return $this === self::Asset;
+    }
+
+    /**
+     * Whether the operator must at least be standing at Gate 2 to spend this.
+     *
+     * The weaker of the two guards, and the only category that uses it. Gate 2
+     * has to be reachable — scenes drafted — but not yet crossed.
+     */
+    public function requiresScenesDrafted(): bool
+    {
+        return $this === self::Reference;
+    }
+
+    /** Whether this category buys a file rather than tokens. */
+    public function isSpendOnAssets(): bool
+    {
+        return $this !== self::Text;
     }
 
     public function label(): string
