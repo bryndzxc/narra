@@ -4,7 +4,7 @@
     @endif
 
     @if ($problem)
-        <div class="alert err" style="white-space:pre-line">{{ $problem }}</div>
+        <div class="alert err pre-line">{{ $problem }}</div>
     @endif
 
     @php($facts = $this->renderFacts())
@@ -31,18 +31,18 @@
             {{-- Rendered, never swallowed. A panel that simply vanishes when an
                  action is unavailable says nothing where it should say why —
                  the same defect as a form with no producer. --}}
-            <div class="alert warn" style="margin-top:10px">
+            <div class="alert warn mt-4">
                 <strong>The render cannot be dispatched from here.</strong>
                 {{ $this->dispatchRefusal() }}
             </div>
         @elseif ($confirming === 'dispatch')
-            <div class="alert warn" style="margin-top:10px">
+            <div class="alert warn mt-4">
                 <strong>{{ $story->scenes()->count() }} scene clip(s)</strong>, then concat, subtitles and
                 a full re-encode at the mux. That is the longest single operation in the pipeline.
                 @if ($facts['exists'])
                     <br>This story already has a finished render. Dispatching again re-encodes over it.
                 @endif
-                <div style="margin-top:10px">
+                <div class="mt-4">
                     <button type="button" class="primary" wire:click="dispatchRender">
                         Queue the render
                     </button>
@@ -50,7 +50,7 @@
                 </div>
             </div>
         @else
-            <div class="actions" style="margin-top:10px">
+            <div class="actions mt-4">
                 <button type="button" class="primary" wire:click="askTo('dispatch')">
                     {{ $facts['exists'] ? 'Render again' : 'Dispatch the render' }}
                 </button>
@@ -60,11 +60,11 @@
 
         @if ($this->canCancelRender())
             @if ($confirming === 'cancel')
-                <div class="alert err" style="margin-top:10px">
+                <div class="alert err mt-4">
                     Cancelling marks the batch, and each job checks that before it starts. The one already
                     inside FFmpeg finishes; the rest never begin. Clips already encoded are kept &mdash;
                     scratch is what a re-run reuses.
-                    <div style="margin-top:10px">
+                    <div class="mt-4">
                         <button type="button" class="danger" wire:click="cancelRender">
                             Cancel the in-flight batch
                         </button>
@@ -72,7 +72,7 @@
                     </div>
                 </div>
             @else
-                <div class="actions" style="margin-top:10px">
+                <div class="actions mt-4">
                     <button type="button" class="danger" wire:click="askTo('cancel')">
                         Cancel the in-flight batch
                     </button>
@@ -88,7 +88,7 @@
     @if (! $facts['exists'])
         <div class="alert warn">
             No finished render for this story yet.
-            <div class="small" style="margin-top:6px">
+            <div class="small mt-2">
                 Progress shows on the <a href="{{ route('renders.show', $story->slug) }}">render page</a>.
                 A render is tens of minutes; nothing here polls for it.
             </div>
@@ -133,11 +133,11 @@
             </div>
 
             @if ($facts['mux_log'])
-                <pre class="sheet" style="margin-top:12px">{{ $facts['mux_log'] }}</pre>
+                <pre class="sheet mt-5">{{ $facts['mux_log'] }}</pre>
             @endif
 
             @unless ($facts['in_target_window'])
-                <div class="muted small" style="margin-top:10px">
+                <div class="muted small mt-4">
                     Outside the 30&ndash;40 minute window is fine for a fixture run. For a real video it
                     matters: watch time drives the revenue in this niche, and over eight minutes is what
                     makes mid-roll ads possible at all.
@@ -146,7 +146,7 @@
         </div>
 
         <h2>Chapters &mdash; from the act timings the render produced</h2>
-        <div class="panel" style="padding:0">
+        <div class="panel flush">
             <table>
                 <thead><tr><th style="width:110px">Start</th><th>Act title</th></tr></thead>
                 <tbody>
@@ -163,7 +163,7 @@
         </div>
 
         <div class="panel">
-            <p class="muted small" style="margin-top:0">
+            <p class="muted small mt-none">
                 Nothing automated stands in for this gate. The pipeline can prove the frame count is exact
                 and the subtitles land to the centisecond and still hand back 35 minutes where a character
                 changes face at scene 90, or the narration reads as somebody else's country. Watch it.

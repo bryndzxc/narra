@@ -15,14 +15,14 @@
                 Nothing here yet. A story starts with a premise &mdash; the one thing the app will not
                 write for you.
             </p>
-            <a href="{{ route('stories.create') }}" class="primary" style="display:inline-block">New story</a>
-            <div class="muted small" style="margin-top:10px">
+            <a href="{{ route('stories.create') }}" class="primary">New story</a>
+            <div class="muted small mt-4">
                 The fixture pipeline still has its own door:
                 <span class="mono">php artisan render:import sample-story</span>
             </div>
         </div>
     @else
-        <div class="row" style="margin-bottom:12px">
+        <div class="row mb-5">
             <div class="grow">
                 @if ($needing > 0)
                     <span class="badge money">{{ $needing }} on this page need you</span>
@@ -33,7 +33,7 @@
             <a href="{{ route('stories.create') }}" class="primary">New story</a>
         </div>
 
-        <div class="panel" style="padding:0">
+        <div class="panel flush">
             <table>
                 <thead>
                 <tr>
@@ -85,7 +85,7 @@
                             </a>
                             <div class="muted small">{{ $n->summary }}</div>
                             @foreach ($n->warnings as $warning)
-                                <div class="small" style="margin-top:4px"><span class="badge fail">!</span> {{ $warning }}</div>
+                                <div class="small mt-1"><span class="badge fail">!</span> {{ $warning }}</div>
                             @endforeach
                         </td>
 
@@ -114,7 +114,7 @@
 
         {{ $stories->links() }}
 
-        <div class="muted small" style="margin-top:12px">
+        <div class="muted small mt-5">
             The <em>Next</em> column names the action, never performs it. Approving a gate is an editorial
             judgement made in front of the thing being judged, so all four live on their own pages.
         </div>

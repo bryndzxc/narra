@@ -23,11 +23,11 @@
     @if ($rows->isEmpty())
         <div class="panel">
             <p class="muted" style="margin:0 0 8px">No stories yet.</p>
-            <p class="mono" style="margin:0">php artisan render:import sample-story</p>
-            <p class="mono" style="margin:0">php artisan render:dispatch sample-story</p>
+            <p class="mono m-none">php artisan render:import sample-story</p>
+            <p class="mono m-none">php artisan render:dispatch sample-story</p>
         </div>
     @else
-        <div class="panel" style="padding:0">
+        <div class="panel flush">
             <table>
                 <thead>
                 <tr>

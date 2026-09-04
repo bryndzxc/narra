@@ -19,8 +19,8 @@
 @endphp
 
 <x-layouts.app :title="$story->title">
-    <div class="row" style="margin-bottom:4px">
-        <h1 style="margin:0">{{ $story->title }}</h1>
+    <div class="row mb-1">
+        <h1 class="m-none">{{ $story->title }}</h1>
         <span class="badge">{{ $story->status->value }}</span>
         @if ($waiting)
             <span class="badge money">{{ $waiting->label() }} awaiting you</span>
@@ -51,9 +51,12 @@
                 $current = $waiting === $g;
                 $class = $current ? 'current' : ($passed ? 'passed' : 'locked');
             @endphp
+            {{-- `viewing` is a real rule now. It was written here from the
+                 start and defined nowhere, so this tag carried an inline
+                 border-colour to do the job its own class was already asking
+                 for. --}}
             <a href="{{ route($routes[$g->value], $story) }}"
-               class="{{ $class }} {{ $g === $gate ? 'viewing' : '' }}"
-               style="{{ $g === $gate ? 'border-color: var(--run)' : '' }}">
+               class="{{ $class }} {{ $g === $gate ? 'viewing' : '' }}">
                 <div class="num">Gate {{ $g->value }}</div>
                 <div class="name">{{ $g->name }}</div>
                 <div class="muted small">{{ $blurbs[$g->value] }}</div>

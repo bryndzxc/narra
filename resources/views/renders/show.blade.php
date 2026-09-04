@@ -10,8 +10,8 @@
 @endphp
 
 <x-layouts.render :title="$story->title" :refresh="$working">
-    <div class="row" style="margin-bottom:6px">
-        <h1 style="margin:0">{{ $story->title }}</h1>
+    <div class="row mb-2">
+        <h1 class="m-none">{{ $story->title }}</h1>
         <span class="badge {{ $overall['failed'] > 0 ? 'fail' : ($overall['active'] ? 'run' : 'ok') }}">
             {{ $story->status->value }}
         </span>
@@ -43,13 +43,13 @@
     @if ($stale)
         <div class="alert warn">
             <strong>{{ count($stale) }} job(s) with a silent heartbeat.</strong>
-            <div class="muted" style="margin-top:4px">
+            <div class="muted mt-1">
                 A running job that has not touched its row for
                 {{ \App\Models\RenderJob::staleAfterMinutes() }} minutes is almost certainly hung.
                 <code>queue:work --timeout</code> is enforced with a pcntl alarm and pcntl does not exist
                 in Windows PHP, so nothing else will report this.
             </div>
-            <table style="margin-top:8px">
+            <table class="mt-3">
                 <thead><tr><th>Stage</th><th>Scene</th><th>Started</th><th>Quiet for</th></tr></thead>
                 <tbody>
                 @foreach ($stale as $job)
@@ -83,7 +83,7 @@
             </span>
             <span class="right mono">{{ $overall['percent'] }}%</span>
         </div>
-        <div class="bar" style="margin-top:10px">
+        <div class="bar mt-4">
             <span class="done" style="width: {{ $overall['total'] === 0 ? 0 : floor($overall['succeeded'] / $overall['total'] * 100) }}%"></span>
             <span class="bad" style="width: {{ $overall['total'] === 0 ? 0 : floor($overall['failed'] / $overall['total'] * 100) }}%"></span>
             <span class="busy" style="width: {{ $overall['total'] === 0 ? 0 : floor($overall['running'] / $overall['total'] * 100) }}%"></span>
@@ -91,7 +91,7 @@
     </div>
 
     <h2>Stages</h2>
-    <div class="panel" style="padding:0">
+    <div class="panel flush">
         <table>
             <thead>
             <tr>
@@ -192,7 +192,7 @@
 
     @if ($failures)
         <h2>Failures</h2>
-        <div class="panel" style="padding:0">
+        <div class="panel flush">
             <table>
                 <thead><tr><th style="width:150px">Stage</th><th style="width:70px">Scene</th><th>Error</th></tr></thead>
                 <tbody>
@@ -216,7 +216,7 @@
 
     <h2>Batches</h2>
     @if ($batches)
-        <div class="panel" style="padding:0">
+        <div class="panel flush">
             <table>
                 <thead>
                 <tr><th>Name</th><th style="width:160px">Progress</th><th>Processed</th><th>Failed</th><th>Finished</th></tr>
@@ -261,7 +261,7 @@
     @endif
 
     @if (! $overall['active'] && $overall['total'] > 0 && $overall['failed'] === 0 && $story->status->value === 'rendered')
-        <div class="alert warn" style="margin-top:14px">
+        <div class="alert warn mt-6">
             <strong>Gate 3.</strong> The render is finished and waiting for a human to watch it.
             Nothing advances past this point on its own.
         </div>

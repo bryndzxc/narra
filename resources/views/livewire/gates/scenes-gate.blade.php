@@ -4,7 +4,7 @@
     @endif
 
     @if ($problem)
-        <div class="alert err" style="white-space:pre-line">{{ $problem }}</div>
+        <div class="alert err pre-line">{{ $problem }}</div>
     @endif
 
     {{-- The scene draft. `story:scenes` held the only copy of this, so a story
@@ -14,7 +14,7 @@
         <div class="panel money">
             <label>{{ $story->scenes()->exists() ? 'Draft the scenes again' : 'Extract the cast and draft the scenes' }}</label>
 
-            <div class="muted small" style="margin-top:4px; max-width:78ch">
+            <div class="muted small mt-1" style="max-width:78ch">
                 The cast is extracted first and always: a character description is pasted verbatim into
                 every image prompt, so a scene drafted before the cast exists has to invent one — and an
                 invented description is a face that drifts across 150&ndash;250 stills. Text only. Nothing
@@ -24,7 +24,7 @@
             <x-worker-health :queues="[$this->textWorkers()]" :compact="true" />
 
             @if ($confirmingDraft)
-                <div class="alert warn" style="margin-top:10px">
+                <div class="alert warn mt-4">
                     @if ($story->scenes()->exists())
                         <strong>This replaces the {{ $story->scenes()->count() }} scene(s) already
                         drafted</strong>, including every edit made to them on this page. The act scripts
@@ -33,7 +33,7 @@
                         Billed calls against the script writer: one for the cast, then the acts are cut
                         into scenes. One cost row each.
                     @endif
-                    <div style="margin-top:10px">
+                    <div class="mt-4">
                         <button type="button" class="primary"
                                 wire:click="draftScenes({{ $story->scenes()->exists() ? 'true' : 'false' }})">
                             {{ $story->scenes()->exists() ? 'Replace the scenes' : 'Queue the draft' }}
@@ -42,7 +42,7 @@
                     </div>
                 </div>
             @else
-                <div class="actions" style="margin-top:10px">
+                <div class="actions mt-4">
                     <button type="button" class="primary" wire:click="askToDraft">
                         {{ $story->scenes()->exists() ? 'Re-draft the scenes' : 'Draft the scenes' }}
                     </button>
@@ -83,14 +83,14 @@
                 Reopening deletes nothing. Only a scene whose narration or image prompt you actually
                 change is regenerated when you approve again; everything else keeps what it already
                 paid for.
-                <div style="margin-top:8px">
+                <div class="mt-3">
                     <button wire:click="reopen"
                             wire:confirm="Reopen Gate 2? Nothing is deleted now. When you approve again, only the scenes you actually changed are regenerated.">
                         Reopen Gate 2
                     </button>
                 </div>
             @else
-                <div class="small" style="margin-top:6px">
+                <div class="small mt-2">
                     Gate 2 cannot be reopened from
                     <span class="mono">{{ $story->status->value }}</span>: {{ $this->reopenRefusal() }}
                 </div>
@@ -119,9 +119,9 @@
     --}}
     <div class="alert {{ $this->castReady() ? 'ok' : 'warn' }}">
         <div class="row">
-            <div style="flex:1">
+            <div class="grow">
                 <strong>Character sheets</strong>
-                <div class="small" style="margin-top:4px">
+                <div class="small mt-1">
                     @if ($this->castReady())
                         Every character who appears in a scene has an approved reference image. Their
                         stills will be generated against it rather than from their description.
@@ -149,7 +149,7 @@
     @if ($this->canApprove())
         <div class="alert money">
             <strong>This is the last free gate.</strong>
-            <div class="small" style="margin-top:6px">
+            <div class="small mt-2">
                 Approving authorises paid generation for
                 <span class="mono">{{ $this->costPreview()['images'] }}</span> images,
                 <span class="mono">{{ $this->costPreview()['narrations'] }}</span> narrations and
@@ -163,7 +163,7 @@
                 @endif
             </div>
 
-            <div style="margin-top:10px">
+            <div class="mt-4">
                 @if ($confirmingApproval)
                     {{--
                         The itemised list, not a generic warning. After a reopen
@@ -185,7 +185,7 @@
                 @endif
             </div>
 
-            <div class="small muted" style="margin-top:8px">
+            <div class="small muted mt-3">
                 Approving unlocks the spend. It does not start it &mdash; generating the assets is a
                 separate press below, with the bill itemised first.
             </div>
@@ -219,7 +219,7 @@
         @if ($estimate->hasSimulatedStage())
             <div class="alert warn">
                 <strong>These are not real assets.</strong>
-                <div class="small" style="margin-top:4px">
+                <div class="small mt-1">
                     {{ ucfirst(implode(' and ', $estimate->simulatedStages)) }}
                     {{ count($estimate->simulatedStages) === 1 ? 'is' : 'are' }} served by a
                     <span class="mono">fake</span> provider: a flat-fill PNG and a silent WAV, generated
@@ -229,7 +229,7 @@
                         Every stage is simulated, so this run produces a complete video made of
                         placeholders.
                     @endif
-                    <div style="margin-top:6px">
+                    <div class="mt-2">
                         Set <span class="mono">PROVIDER_IMAGE_GENERATOR</span>,
                         <span class="mono">PROVIDER_SPEECH_SYNTHESIZER</span> and
                         <span class="mono">PROVIDER_TRANSCRIBER</span> in
@@ -243,9 +243,9 @@
 
         <div class="alert money">
             <div class="row">
-                <div style="flex:1">
+                <div class="grow">
                     <strong>Generate assets</strong>
-                    <div class="small" style="margin-top:4px">
+                    <div class="small mt-1">
                         @if ($estimate->billsAnything())
                             <span class="mono">{{ $estimate->scenesPending() }}</span> of
                             <span class="mono">{{ $estimate->scenesTotal }}</span> scenes still need
@@ -258,14 +258,14 @@
                         @endif
                     </div>
                 </div>
-                <div style="text-align:right">
+                <div class="tr">
                     <div class="mono" style="font-size:1.4em">${{ number_format($estimate->usdTotal(), 2) }}</div>
                     <div class="small muted">{{ $estimate->jobsTotal() }} job(s)</div>
                 </div>
             </div>
 
             @if ($estimate->billsAnything())
-                <table class="small" style="margin-top:10px; width:100%">
+                <table class="small mt-4" style="width:100%">
                     <tbody>
                         <tr>
                             <td>Stills</td>
@@ -292,7 +292,7 @@
                 </table>
 
                 @if ($estimate->preserved() > 0)
-                    <div class="small" style="margin-top:6px">
+                    <div class="small mt-2">
                         <span class="mono">{{ $estimate->preserved() }}</span> scene(s) keep the assets
                         they already have and are not billed again.
                     </div>
@@ -306,7 +306,7 @@
                         estimate the operator knows to reconcile is worth more
                         than one they trust.
                     --}}
-                    <div class="small muted" style="margin-top:6px">
+                    <div class="small muted mt-2">
                         These rates are <strong>declared in config, not billed back by the provider</strong>
                         &mdash; no image API returns a cost on the response. Reconcile once against the
                         real usage page and correct <span class="mono">config/providers.php</span>.
@@ -314,7 +314,7 @@
                 @endif
             @endif
 
-            <div style="margin-top:10px">
+            <div class="mt-4">
                 @if ($confirmingGeneration)
                     <ul class="small" style="margin:0 0 8px 18px">
                         @forelse ($estimate->summary() as $line)
@@ -359,8 +359,8 @@
         @if ($this->assetGenerationRefusal())
             <div class="alert">
                 <strong>Asset generation is not available here.</strong>
-                <div class="small" style="margin-top:4px">{{ $this->assetGenerationRefusal() }}</div>
-                <div class="small muted" style="margin-top:6px">
+                <div class="small mt-1">{{ $this->assetGenerationRefusal() }}</div>
+                <div class="small muted mt-2">
                     The story is at <span class="mono">{{ $story->status->value }}</span>. This is the
                     same sentence <span class="mono">php artisan assets:generate</span> prints, from the
                     same predicate &mdash; the page and the command decide it together so they cannot
@@ -385,7 +385,7 @@
         <div class="panel">
             <label>Word timings only &mdash; free</label>
 
-            <div class="muted small" style="margin-top:4px; max-width:78ch">
+            <div class="muted small mt-1" style="max-width:78ch">
                 {{ $this->pendingTimings() }} scene(s) have narration audio and no usable word timings.
                 Alignment runs locally through WhisperX: no vendor is contacted and nothing is billed.
                 @if ($this->narrationsTheAssetButtonWouldRebill() > 0)
@@ -398,11 +398,11 @@
             </div>
 
             @if ($confirmingAlignment)
-                <div class="alert warn" style="margin-top:10px">
+                <div class="alert warn mt-4">
                     {{ $this->pendingTimings() }} alignment job(s) on the
                     <span class="mono">{{ config('render.queues.assets') }}</span> queue. Free, local, and
                     slow &mdash; roughly seven seconds per scene once the model is warm.
-                    <div style="margin-top:10px">
+                    <div class="mt-4">
                         <button type="button" class="primary" wire:click="alignTimings">
                             Queue {{ $this->pendingTimings() }} alignment(s)
                         </button>
@@ -410,7 +410,7 @@
                     </div>
                 </div>
             @else
-                <div class="actions" style="margin-top:10px">
+                <div class="actions mt-4">
                     <button type="button" wire:click="askToAlign">
                         Re-run word timings only
                     </button>
@@ -430,11 +430,11 @@
     @if ($this->failedScenes()->isNotEmpty())
         <div class="alert warn">
             <strong>{{ $this->failedScenes()->count() }} scene(s) failed asset generation.</strong>
-            <div class="small" style="margin-top:4px">
+            <div class="small mt-1">
                 The rest of the story is unaffected and is not re-billed. The button above re-runs
                 only these.
             </div>
-            <table class="small" style="margin-top:8px; width:100%">
+            <table class="small mt-3" style="width:100%">
                 <thead>
                     <tr><th style="width:60px">Scene</th><th style="width:140px">Stage</th><th>Error</th></tr>
                 </thead>
@@ -469,7 +469,7 @@
                         <div class="field">
                             <label>Image prompt</label>
                             <textarea wire:model="imagePrompt" rows="3"></textarea>
-                            <div class="muted small" style="margin-top:4px">
+                            <div class="muted small mt-1">
                                 Reaches a paid API and, slugged, the filesystem. Keep character descriptions
                                 consistent with the locked seeds &mdash; drift here is what makes a face change
                                 at scene 90.
@@ -486,13 +486,13 @@
                                 </select>
                             </div>
 
-                            <div class="checks" style="margin-top:18px">
+                            <div class="checks mt-8">
                                 <label><input type="checkbox" wire:model="isHook"> <span>Opening hook</span></label>
                                 <label><input type="checkbox" wire:model="isThumbnailCandidate"> <span>Thumbnail candidate</span></label>
                             </div>
                         </div>
 
-                        <div class="row" style="margin-top:8px">
+                        <div class="row mt-3">
                             <button class="primary" wire:click="saveScene">Save scene</button>
                             <button wire:click="cancelEdit">Cancel</button>
                         </div>
@@ -511,7 +511,7 @@
                     @endif
 
                     <div class="body">
-                        <div class="row small" style="gap:8px; margin-bottom:4px">
+                        <div class="row small mb-1" style="gap:8px">
                             <span class="badge">act {{ $scene->act->sequence }}</span>
                             <span class="badge">{{ $scene->motion_preset->value }}</span>
                             @if ($scene->is_hook) <span class="badge run">hook</span> @endif

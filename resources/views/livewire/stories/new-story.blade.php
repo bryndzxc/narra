@@ -1,6 +1,6 @@
 <div>
     @if ($problem)
-        <div class="alert err" style="white-space:pre-line">{{ $problem }}</div>
+        <div class="alert err pre-line">{{ $problem }}</div>
     @endif
 
     <div class="panel">
@@ -14,9 +14,9 @@
         </div>
         <textarea id="premise" rows="6" wire:model.blur="premise"
                   placeholder="My younger brother and his wife moved into our late mother's house without asking&hellip;"></textarea>
-        @error('premise') <div class="alert err" style="margin-top:8px">{{ $message }}</div> @enderror
+        @error('premise') <div class="alert err mt-3">{{ $message }}</div> @enderror
 
-        <label for="cast-age" style="margin-top:16px">Cast age range <span class="muted small">optional</span></label>
+        <label class="mt-7" for="cast-age">Cast age range <span class="muted small">optional</span></label>
         <div class="muted small" style="margin:0 0 8px">
             Read by the character extraction, which is where each character's age is decided and
             frozen &mdash; that description is then pasted into every one of the 150&ndash;250 stills
@@ -31,7 +31,7 @@
         </div>
         <textarea id="cast-age" rows="2" wire:model.blur="castAgeProfile"
                   placeholder="Spouses in their late twenties and thirties. Workplace and marriage settings. No elderly characters carrying plot."></textarea>
-        @error('castAgeProfile') <div class="alert err" style="margin-top:8px">{{ $message }}</div> @enderror
+        @error('castAgeProfile') <div class="alert err mt-3">{{ $message }}</div> @enderror
     </div>
 
     <div class="panel">
@@ -40,15 +40,15 @@
                 <label for="title">Working title <span class="muted small">optional</span></label>
                 <input id="title" type="text" wire:model.blur="title"
                        placeholder="Left blank, the first 60 characters of the premise are used.">
-                <div class="muted small" style="margin-top:4px">
+                <div class="muted small mt-1">
                     Not the YouTube title. That one is written after the render, five variants of it, and
                     picking one is Gate 4.
                 </div>
-                @error('title') <div class="alert err" style="margin-top:8px">{{ $message }}</div> @enderror
+                @error('title') <div class="alert err mt-3">{{ $message }}</div> @enderror
             </div>
         </div>
 
-        <div class="row" style="margin-top:14px">
+        <div class="row mt-6">
             <div>
                 <label for="locale">Setting</label>
                 <select id="locale" wire:model.live="localeProfile">
@@ -56,7 +56,7 @@
                         <option value="{{ $key }}">{{ $label }}</option>
                     @endforeach
                 </select>
-                <div class="muted small" style="margin-top:4px; max-width:52ch">
+                <div class="muted small mt-1" style="max-width:52ch">
                     Where the story is set. The narration is American English either way &mdash; this
                     changes the world, not the language.
                     <strong>China</strong> is the translated-web-novel register a large part of this
@@ -67,11 +67,11 @@
                     &mdash; the outline, then the acts, then the cast &mdash; so there is no later
                     point where changing it leaves a story consistent.
                 </div>
-                @error('localeProfile') <div class="alert err" style="margin-top:8px">{{ $message }}</div> @enderror
+                @error('localeProfile') <div class="alert err mt-3">{{ $message }}</div> @enderror
             </div>
         </div>
 
-        <div class="row" style="margin-top:14px">
+        <div class="row mt-6">
             <div>
                 <label for="format">Format</label>
                 <select id="format" wire:model.live="format">
@@ -79,7 +79,7 @@
                         <option value="{{ $case->value }}">{{ $case->label() }}</option>
                     @endforeach
                 </select>
-                <div class="muted small" style="margin-top:4px; max-width:52ch">
+                <div class="muted small mt-1" style="max-width:52ch">
                     <strong>Single</strong> is one continuous narrative across every act &mdash; this genre
                     needs it to escalate. <strong>Anthology</strong> is 3&ndash;5 self-contained stories, one
                     per act: easier to write, lower coherence risk, and the chapter titles become natural
@@ -91,13 +91,13 @@
                 <label for="acts">Acts <span class="muted small">optional</span></label>
                 <input id="acts" type="number" min="3" max="8" wire:model.blur="acts"
                        placeholder="{{ $this->estimate()['acts'] }}">
-                <div class="muted small" style="margin-top:4px; max-width:46ch">
+                <div class="muted small mt-1" style="max-width:46ch">
                     One chapter per act. The default is sized for 30&ndash;40 minutes at the narrator's
                     measured pace &mdash; if that pace was measured wrong, the fix is more acts here, not
                     re-narrating later. Story 9 came back 21 seconds short and re-reading it would have
                     cost the entire remaining monthly allowance.
                 </div>
-                @error('acts') <div class="alert err" style="margin-top:8px">{{ $message }}</div> @enderror
+                @error('acts') <div class="alert err mt-3">{{ $message }}</div> @enderror
             </div>
         </div>
     </div>
@@ -111,7 +111,7 @@
 
     <div class="panel money">
         <label>What this spends</label>
-        <table style="margin-top:8px">
+        <table class="mt-3">
             <tbody>
             <tr>
                 <td>Billed calls</td>
@@ -135,7 +135,7 @@
             </tbody>
         </table>
 
-        <div class="muted small" style="margin-top:10px">
+        <div class="muted small mt-4">
             Text only. Nothing here generates an image or a second of audio &mdash; that is behind Gate 2,
             where 150&ndash;250 stills are roughly 70% of a video's cost.
         </div>
@@ -157,7 +157,7 @@
                     Nothing is listening on that queue right now &mdash; the jobs will wait, and nothing is
                     lost, but nothing happens until a worker starts.
                 @endif
-                <div style="margin-top:10px">
+                <div class="mt-4">
                     <button type="button" class="primary" wire:click="create">
                         Queue it &mdash; {{ $this->estimate()['calls'] }} call(s)
                     </button>
@@ -174,7 +174,7 @@
             button in this app that carries a story through a gate.
         </div>
         @if ($existing > 0)
-            <div class="small" style="margin-top:8px">
+            <div class="small mt-3">
                 <a href="{{ route('stories.index') }}">{{ $existing }} story/stories already here</a>
             </div>
         @endif

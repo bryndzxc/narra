@@ -208,6 +208,76 @@ class StrandedQueueTest extends TestCase
      * The queue's own answer, faked. Nothing here reaches Redis: the point of
      * the test is what the app does with the number, not that predis works.
      */
+    /**
+     * Three queues in the same state produce ONE alert, and it still names all
+     * three.
+     *
+     * The reading to prevent is the opposite of the usual one here. This file
+     * is otherwise a list of things that were too quiet; this is the one place
+     * the console was too loud in a way that made it quieter. With every worker
+     * down — the ordinary state of a machine that has just booted — the panel
+     * emitted three full alerts whose only differences were a queue name and a
+     * service name, and the ~60 words of shared explanation about `--max-time`
+     * and NSSM appeared three times.
+     *
+     * Three copies of one message is not three times as loud. It is one message
+     * nobody finishes, with the two facts that actually differ pushed a
+     * paragraph apart.
+     *
+     * So this asserts both halves, because either alone can be satisfied by the
+     * wrong fix: the explanation appears ONCE (not summarised away, not
+     * repeated), and every affected queue is still named with its own command.
+     */
+    public function test_queues_in_the_same_state_collapse_into_one_alert(): void
+    {
+        $this->queueDepthIs(0);
+
+        $html = $this->get(route('renders.index'))->getContent();
+
+        // All three queues are absent, so all three must still be named.
+        foreach (['text', 'assets', 'render'] as $queue) {
+            $this->assertStringContainsString(
+                'Nothing is listening on &quot;'.$queue.'&quot;',
+                $html,
+                $queue.' is not named on the page.',
+            );
+            $this->assertStringContainsString(
+                'nssm start Narra'.ucfirst($queue),
+                $html,
+                $queue.' has no pasteable fix.',
+            );
+        }
+
+        // …in one alert box rather than three.
+        $this->assertSame(
+            1,
+            substr_count($html, 'class="alert warn mt-4"'),
+            'Three queues in the same state should collapse into a single alert.',
+        );
+    }
+
+    /**
+     * And never ACROSS states, which is the collapse getting it wrong.
+     *
+     * Stale, stranded and absent want opposite reactions — stale refuses the
+     * next dispatch, stranded means the pipeline has stopped right now, absent
+     * is a note about a queue with nobody on it and nothing in it. Folding them
+     * into one box would be the "calmer than the truth" edit the stylesheet's
+     * one rule forbids, dressed up as tidying.
+     */
+    public function test_different_states_stay_in_different_alerts(): void
+    {
+        $this->queueDepthIs(152);
+
+        // Every queue reads STRANDED at this depth with no workers, so the
+        // page carries the loud box and not the quiet one.
+        $html = $this->get(route('renders.index'))->getContent();
+
+        $this->assertStringContainsString('class="alert err mt-4"', $html);
+        $this->assertStringNotContainsString('class="alert warn mt-4"', $html);
+        $this->assertStringContainsString('152 job(s) stranded', $html);
+    }
+
     private function queueDepthIs(int $jobs): void
     {
         Queue::shouldReceive('connection')

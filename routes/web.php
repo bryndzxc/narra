@@ -4,7 +4,17 @@ use App\Http\Controllers\RenderProgressController;
 use App\Http\Controllers\StoryController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => redirect()->route('stories.index'));
+/*
+ * The landing page.
+ *
+ * `/` used to redirect to `/stories`, which is a list — the right shape for
+ * finding a particular video and the wrong one for the question actually asked
+ * on opening this app: is anything waiting on me, and has anything stopped.
+ * Both answers can be on page three of a list, and a story stalled for a day
+ * looks exactly like one that finished yesterday.
+ */
+Route::get('/', fn () => redirect()->route('dashboard'));
+Route::view('/dashboard', 'dashboard')->name('dashboard');
 
 /*
  * The operator's four gates. Every one of them is a human decision the app is

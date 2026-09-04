@@ -16,7 +16,7 @@
     <div class="alert money">
         <strong>Character reference sheets &mdash; the first paid assets in this video.</strong>
 
-        <div class="small" style="margin-top:8px">
+        <div class="small mt-3">
             Generated from the description already stored for each character, so nothing has to be
             written or uploaded here. A sheet is
             <span class="mono">{{ $this->estimate()->imagesPerSheet() }}</span> candidate images at
@@ -24,7 +24,7 @@
             <span class="mono">${{ number_format($this->estimate()->usdPerSheet(), 4) }}</span> per character.
         </div>
 
-        <div class="small" style="margin-top:6px">
+        <div class="small mt-2">
             @if ($this->estimate()->billsAnything())
                 <span class="mono">{{ $this->estimate()->pendingCount() }}</span> of
                 <span class="mono">{{ $this->estimate()->castSize }}</span> characters still need a face.
@@ -38,7 +38,7 @@
             @endif
         </div>
 
-        <div class="muted small" style="margin-top:8px">
+        <div class="muted small mt-3">
             Provider <span class="mono">{{ $this->estimate()->provider }}</span>@if ($this->estimate()->model),
             model <span class="mono">{{ $this->estimate()->model }}</span>@endif.
 
@@ -90,9 +90,9 @@
     <h2>Cast &mdash; {{ $this->cast()->count() }}</h2>
 
     @forelse ($this->cast() as $character)
-        <div class="panel" style="margin-bottom:14px">
+        <div class="panel mb-6">
             <div class="row" style="gap:10px; align-items:flex-start">
-                <div style="flex:1">
+                <div class="grow">
                     <div class="row small" style="gap:8px">
                         <strong>{{ $character->name }}</strong>
 
@@ -126,12 +126,12 @@
                                 sure". An operator shown the same aggregate
                                 warning every time stops reading it.
                             --}}
-                            <div class="small" style="text-align:right">
+                            <div class="small tr">
                                 <div>
                                     {{ $this->estimate()->imagesPerSheet() }} images,
                                     <strong class="mono">${{ number_format($this->estimate()->usdPerSheet(), 4) }}</strong>
                                 </div>
-                                <div class="muted" style="margin-bottom:6px">
+                                <div class="muted mb-2">
                                     Every candidate is billed, including ones you discard.
                                 </div>
                                 <button class="gate" wire:click="generate({{ $character->id }})">
@@ -149,7 +149,7 @@
             </div>
 
             @if ($character->references->isNotEmpty())
-                <div class="row" style="flex-wrap:wrap; gap:10px; margin-top:12px">
+                <div class="row mt-5" style="flex-wrap:wrap; gap:10px">
                     @foreach ($character->references as $reference)
                         <div style="width:150px">
                             @if ($reference->isUsable())
@@ -167,7 +167,7 @@
                                 </div>
                             @endif
 
-                            <div class="small" style="margin-top:4px">
+                            <div class="small mt-1">
                                 <span class="muted mono">b{{ $reference->batch }}&middot;{{ $reference->sequence }}</span>
                                 <span class="muted mono">${{ number_format((float) $reference->usd_cost, 4) }}</span>
                             </div>

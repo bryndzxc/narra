@@ -1035,6 +1035,35 @@ GenerateMetadata                     [needs act timestamps from the render;
   Gate 2 on a 168-scene story emits fourteen `style_notes` advisories in a row,
   and the fix for a column of identical amber boxes is to close the gaps, never
   to quieten any of them.
+
+  **That rule is measured now, not just stated.** `tools/theme-audit.php`
+  reports how far each loud surface separates from the ordinary panel beside
+  it, in both themes, and every one of them is a token in the stylesheet so
+  the tool reads what the CSS paints rather than carrying its own copy of a
+  wash percentage. It caught the money panel at 1.07x on a white ground —
+  visually the same surface as the panel above it, on the screen where an
+  operator authorises spending, which is `.panel.money`'s original defect
+  reintroduced by a theme.
+
+- **Two themes, one set of names, and the raw values live exactly once.** Light
+  and dark are a remapping (`--panel: var(--d-panel)`), not a second
+  stylesheet. CSS cannot express one dark block answering both
+  `[data-theme="dark"]` and `prefers-color-scheme`, so the REMAP is written
+  twice — but it holds no literals, and the audit fails if the two copies stop
+  being identical.
+
+  **Every status colour has an `-ink` twin, and that split is load-bearing.**
+  One token per status served as border, tint AND text while the ground was
+  near-black: #f0c258 gold is legible on #171a22. On white it measures 1.8:1.
+  A warning whose text silently fails contrast is the single worst thing a
+  light theme could introduce here, so the hue and the ink are separate. In
+  dark they are the same value and nothing changed.
+
+  The dark theme is checked against its pre-redesign self declaration by
+  declaration — `theme-audit.php --against=<baseline>` — because splitting one
+  palette into two is exactly the kind of change that gets waved through for
+  looking obviously safe, and one mistyped hex in two hundred token lines
+  shifts a surface by an amount no reviewer catches and no test fails on.
 - Money is `decimal(10,4)`, never float.
 - Durations in the DB are integer milliseconds. Convert at the edges only.
 - Migrations are never edited after being run. New change, new migration.
@@ -1099,6 +1128,44 @@ Closed since:
   method — a missing method throws. Found during the console restyle by
   extracting every class combination the views use and diffing it against the
   rules that exist; that diff is worth re-running when a phase ends.
+
+  **That diff is now `tools/class-audit.php`** rather than a thing somebody
+  remembers to do. Re-running it during the visual redesign found three more
+  live instances immediately, which is the argument for making it a tool: it
+  had been "worth re-running" for a phase and nobody had.
+
+- **`.warnfill` was defined only inside a progress bar, and written on two
+  surfaces that have none.** The largest of the three, and a pure instance of
+  the false-success shape rather than a cosmetic one.
+
+  `.bar .warnfill` is a fill inside a progress bar. Two places wrote the class
+  standalone: the worker-health panel, marked whenever any queue is stale,
+  absent or STRANDED, and a story row on the index carrying failed jobs or a
+  silent heartbeat. Neither had ever rendered anything. A token-level grep says
+  `warnfill` is defined — which is exactly why the audit reduces every rule to
+  its SUBJECT compound and asks whether it can reach a given element, rather
+  than asking whether the name appears somewhere in the file.
+
+  The panel's explicit alerts still fired underneath it, so the stranded case
+  was never invisible; the ambient "something on this page is wrong" was, and
+  on the stories index that tint was the only marking a warning row got beyond
+  a badge in one cell. Nothing about WHEN it fires changed — only whether
+  looking at the page tells you it did.
+
+- **`button.primary` could not match the two anchors that ask for it.** The
+  "New story" call to action, on the empty state and above the table: both
+  `<a class="primary">`, both rendered as plain blue text links. The front door
+  of the app, styled as a footnote, on the page whose job is to say what to do
+  next. The button look is element-agnostic now — a control that says it is
+  primary is a primary control whatever tag it is made of. The audit reports
+  this kind as TAG rather than UNDEFINED, because the rule exists and simply
+  cannot reach.
+
+- **`.gates .viewing` was undefined and the blade worked around it.** The gate
+  stepper writes `viewing` on the tile for the page you are on, and carried an
+  inline `style="border-color: var(--run)"` doing the job its own class was
+  already asking for. The workaround is why it went unnoticed for a phase: the
+  page looked right, so nobody asked whether the class did anything.
 
 - **`StyleNotesGuard` checked one of the two fields it needed to.** `description`
   carried the identical defects in production the whole time: two leads whose
@@ -1328,6 +1395,21 @@ Still open, none blocking, all findable here rather than one gate at a time:
   per call at `OutputTokens` with the split in `detail`. Either use it or drop it.
 - **`providers.whisperx.compute_type`** is documented as "the script passes it
   through" and the PHP side never sends it.
+
+- **`ScriptWriter` is the only provider contract that does not extend
+  `ProviderIdentity`.** Every other one does, so every other provider can be
+  asked its own name and whether it is a stand-in; neither `ClaudeScriptWriter`
+  nor `FakeScriptWriter` implements those methods, so calling them is a fatal
+  error rather than a wrong answer.
+
+  Found by the dashboard's provider panel, which needed exactly that question
+  answered for the text role. It reports the resolved CLASS and says plainly
+  that the instance cannot identify itself, rather than falling back to
+  `config('providers.script_writer')` — that substitution is the $8.12 of
+  phantom spend, and a summary page is the worst possible place to reintroduce
+  it. Left open because widening a provider contract is a pipeline change and
+  it was found during a visual redesign; the fix is three methods on two
+  classes.
 
 **A guard can be measuring correctly and still be certain about the wrong
 thing.** `NarrationPace` compared story 21's en-CN narration against 197 wpm

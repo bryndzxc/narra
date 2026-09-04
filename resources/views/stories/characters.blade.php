@@ -4,8 +4,8 @@
 @endphp
 
 <x-layouts.app :title="$story->title.' — character sheets'">
-    <div class="row" style="margin-bottom:4px">
-        <h1 style="margin:0">{{ $story->title }}</h1>
+    <div class="row mb-1">
+        <h1 class="m-none">{{ $story->title }}</h1>
         <span class="badge">{{ $story->status->value }}</span>
         <span class="badge money">Gate 2 &mdash; character sheets</span>
         <span class="right small">

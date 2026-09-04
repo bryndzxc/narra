@@ -12,8 +12,8 @@
 @endphp
 
 <x-layouts.app :title="$story->title.' — faces'">
-    <div class="row" style="margin-bottom:4px">
-        <h1 style="margin:0">Faces</h1>
+    <div class="row mb-1">
+        <h1 class="m-none">Faces</h1>
         <span class="badge">{{ $story->status->value }}</span>
         <span class="right small">
             <a href="{{ route('stories.scenes', $story) }}">scenes</a> &middot;
@@ -30,7 +30,7 @@
         last frame.</strong>
     </p>
 
-    <div class="panel" style="padding:10px; margin-bottom:14px">
+    <div class="panel mb-6" style="padding:10px">
         <span class="badge">edit</span>
         <span class="small muted">conditioned on the approved reference &mdash; every frame with a cast</span>
         &nbsp;&nbsp;
@@ -43,8 +43,8 @@
 
     @foreach ($cast as $character)
         @continue($character->scenes->isEmpty())
-        <h2 style="margin-bottom:2px">{{ $character->name }}</h2>
-        <p class="muted small" style="margin-top:0">
+        <h2 class="mb-hair">{{ $character->name }}</h2>
+        <p class="muted small mt-none">
             {{ $character->scenes->count() }} scenes &middot;
             first at #{{ $character->scenes->first()->sequence }},
             last at #{{ $character->scenes->last()->sequence }}
@@ -53,13 +53,13 @@
             @endif
         </p>
 
-        <div class="panel" style="padding:10px; margin-bottom:18px">
+        <div class="panel mb-8" style="padding:10px">
             <div style="display:flex; gap:10px; align-items:flex-start">
                 {{-- The reference the whole row was generated against, pinned on
                      the left so every frame is compared to the same thing rather
                      than to its neighbour. --}}
                 <div style="flex:0 0 150px; position:sticky; left:0">
-                    <div class="small muted" style="margin-bottom:4px">approved reference</div>
+                    <div class="small muted mb-1">approved reference</div>
                     @if ($character->reference_image_path)
                         <img src="{{ route('stories.characters.candidate', [$story, $character->references()->whereNotNull('selected_at')->value('id')]) }}"
                              alt="{{ $character->name }} reference"
@@ -69,7 +69,7 @@
                     @endif
                 </div>
 
-                <div style="flex:1; overflow-x:auto">
+                <div class="grow" style="overflow-x:auto">
                     <div style="display:flex; gap:6px; padding-bottom:6px">
                         @foreach ($character->scenes as $scene)
                             <a href="{{ route('stories.still', [$story, $scene]) }}" target="_blank"
@@ -78,7 +78,7 @@
                                      loading="lazy"
                                      alt="scene {{ $scene->sequence }}"
                                      style="height:120px; border-radius:3px; display:block">
-                                <div class="small mono muted" style="text-align:center">
+                                <div class="small mono muted tc">
                                     {{ $scene->sequence }}
                                 </div>
                             </a>
@@ -89,8 +89,8 @@
         </div>
     @endforeach
 
-    <h2 style="margin-bottom:2px">Frames with nobody in them</h2>
-    <p class="muted small" style="margin-top:0">
+    <h2 class="mb-hair">Frames with nobody in them</h2>
+    <p class="muted small mt-none">
         {{ $castless->count() }} of {{ $sceneCount }} scenes &mdash; establishing shots, objects, empty
         rooms. Generated <span class="badge warn">t2i</span> with no reference, because there is no
         face in them to keep consistent. What to judge here is whether they read as the same film as
@@ -106,7 +106,7 @@
                          loading="lazy"
                          alt="scene {{ $scene->sequence }}"
                          style="height:110px; border-radius:3px; display:block">
-                    <div class="small mono muted" style="text-align:center">{{ $scene->sequence }}</div>
+                    <div class="small mono muted tc">{{ $scene->sequence }}</div>
                 </a>
             @endforeach
         </div>

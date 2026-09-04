@@ -4,7 +4,7 @@
     @endif
 
     @if ($problem)
-        <div class="alert err" style="white-space:pre-line">{{ $problem }}</div>
+        <div class="alert err pre-line">{{ $problem }}</div>
     @endif
 
     {{-- The writing panel. This stage was `story:write` and nothing else for
@@ -18,7 +18,7 @@
             <div class="panel money">
                 <label>{{ $estimate['outline'] ? 'Write the outline and the act scripts' : 'Finish the act scripts' }}</label>
 
-                <div class="muted small" style="margin-top:4px; max-width:78ch">
+                <div class="muted small mt-1" style="max-width:78ch">
                     @if ($estimate['outline'])
                         Nothing has been written yet. The outline comes first, then every act in order —
                         each one written knowing the ones before it, because a single call cannot hold
@@ -35,7 +35,7 @@
 
                 <x-worker-health :queues="[$this->workers()]" :compact="true" />
 
-                <table style="margin-top:10px">
+                <table class="mt-4">
                     <tbody>
                     <tr>
                         <td>Billed calls</td>
@@ -49,14 +49,14 @@
                 </table>
 
                 @if ($confirmingWrite)
-                    <div class="alert warn" style="margin-top:10px">
+                    <div class="alert warn mt-4">
                         <strong>{{ $estimate['calls'] }} billed call(s)</strong> queued on the
                         <span class="mono">{{ $this->workers()['queue'] }}</span> queue.
                         @if ($this->workers()['state'] === \App\Support\WorkerHealth::ABSENT)
                             Nothing is listening on it right now — the jobs will wait and nothing is lost,
                             but nothing happens until a worker starts.
                         @endif
-                        <div style="margin-top:10px">
+                        <div class="mt-4">
                             <button type="button" class="primary" wire:click="write">
                                 Queue it — {{ $estimate['calls'] }} call(s)
                             </button>
@@ -64,7 +64,7 @@
                         </div>
                     </div>
                 @else
-                    <div class="actions" style="margin-top:10px">
+                    <div class="actions mt-4">
                         <button type="button" class="primary" wire:click="askToWrite">
                             {{ $estimate['outline'] ? 'Write this story' : 'Write the missing act(s)' }}
                         </button>
@@ -89,7 +89,7 @@
             The outline is locked &mdash; Gate 1 has been approved and the act scripts are written
             against it. Reopening is legal and explicit; the scripts do not disappear, but
             regenerating them costs money from Phase 2 onward.
-            <div style="margin-top:8px">
+            <div class="mt-3">
                 @if ($this->canReopen())
                     <button wire:click="reopen" wire:confirm="Reopen Gate 1? Scripts written against this outline stay on record.">
                         Reopen Gate 1
@@ -106,7 +106,7 @@
     <div class="panel">
         {{-- The setting, read-only. Chosen at creation, and every act on this
              page was written against it — so it is shown rather than edited. --}}
-        <div class="muted small" style="margin-bottom:12px">
+        <div class="muted small mb-5">
             Setting: <strong>{{ $this->localeLabel() }}</strong>
             &middot; fixed at creation, because the outline and the acts were generated against it.
         </div>
@@ -116,7 +116,7 @@
             <textarea id="premise" wire:model="premise" rows="4"
                       @disabled(! $this->editable())></textarea>
             @error('premise') <div class="error">{{ $message }}</div> @enderror
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 Everything downstream is generated from this: the acts, then 5,500&ndash;8,000 words of
                 script, then 150&ndash;250 stills. It is the cheapest thing here to change.
             </div>
@@ -127,7 +127,7 @@
              to state. After that, changing it means reopening Gate 1 and
              re-extracting, which rewrites every description the scene prompts
              were built from. --}}
-        <div class="field" style="margin-top:16px">
+        <div class="field mt-7">
             <label for="cast-age">
                 Cast age range
                 <span class="muted small">optional</span>
@@ -136,7 +136,7 @@
                       placeholder="Spouses in their late twenties and thirties. Workplace and marriage settings. No elderly characters carrying plot."
                       @disabled(! $this->editable())></textarea>
             @error('castAgeProfile') <div class="error">{{ $message }}</div> @enderror
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 Steers the ages the script does not state outright. Where the script does state one,
                 the script wins &mdash; a picture that contradicts the narration is worse than one
                 outside the intended range. The art style cannot carry this: one style line is shared
@@ -161,7 +161,7 @@
     @if ($this->spineReview()['problems'])
         <div class="alert fail">
             <strong>The outline is missing part of its structure.</strong>
-            <ul style="margin:6px 0 0 18px">
+            <ul class="indent">
                 @foreach ($this->spineReview()['problems'] as $problem)
                     <li>{{ $problem }}</li>
                 @endforeach
@@ -175,7 +175,7 @@
     @if ($this->localeWarnings())
         <div class="alert warn">
             <strong>{{ count($this->localeWarnings()) }} term(s) read wrong for {{ $this->localeLabel() }}.</strong>
-            <ul style="margin:6px 0 0 18px">
+            <ul class="indent">
                 @foreach ($this->localeWarnings() as $hit)
                     <li>
                         Act {{ $hit['act'] }} &mdash; <code>{{ $hit['term'] }}</code>
@@ -183,7 +183,7 @@
                     </li>
                 @endforeach
             </ul>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 None of these block anything. Each has a legitimate reading, which is why the stage
                 was not failed &mdash; the unambiguous terms are refused before an act is ever
                 stored. Judging these is yours.
@@ -194,12 +194,12 @@
     @if ($this->spineReview()['warnings'])
         <div class="alert warn">
             <strong>Structural warnings.</strong>
-            <ul style="margin:6px 0 0 18px">
+            <ul class="indent">
                 @foreach ($this->spineReview()['warnings'] as $warning)
                     <li>{{ $warning }}</li>
                 @endforeach
             </ul>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 None of these block approval. They are the ways this format is actually written wrong,
                 and they are all cheaper to fix here than at Gate 3.
             </div>
@@ -250,7 +250,7 @@
     @if ($this->actsMissingRehooks())
         <div class="alert warn">
             <strong>{{ count($this->actsMissingRehooks()) }} act(s) have no re-hook written.</strong>
-            <div class="muted small" style="margin-top:4px">
+            <div class="muted small mt-1">
                 A 15-second opening hook is not enough over 35 minutes. Every act after the first has to
                 open with a line that carries the viewer forward, or the retention graph falls off at
                 the act boundary &mdash; which is also exactly where a chapter marker invites them to leave.
@@ -269,7 +269,7 @@
 
     @foreach ($acts as $i => $act)
         <div class="panel">
-            <div class="row" style="margin-bottom:10px">
+            <div class="row mb-4">
                 <span class="badge">Act {{ $act['sequence'] }}</span>
                 @if ($act['phase'])
                     {{-- The direction of the act, and the one thing the script
@@ -295,7 +295,7 @@
                 <label for="act-summary-{{ $i }}">Summary</label>
                 <textarea id="act-summary-{{ $i }}" wire:model="acts.{{ $i }}.summary" rows="3"
                           @disabled(! $this->editable())></textarea>
-                <div class="muted small" style="margin-top:6px">
+                <div class="muted small mt-2">
                     Fed to the next act's generation call. This is the mechanism that stops 7,000 words
                     drifting, repeating, or contradicting themselves.
                 </div>
@@ -307,7 +307,7 @@
                 </label>
                 <textarea id="act-beat-{{ $i }}" wire:model="acts.{{ $i }}.escalation_beat" rows="2"
                           @disabled(! $this->editable())></textarea>
-                <div class="muted small" style="margin-top:6px">
+                <div class="muted small mt-2">
                     @if (in_array($act['phase'], ['search', 'refusal'], true))
                         The narrator is already gone, so the cost runs the other way: each attempt has
                         to take more from the antagonist than the last &mdash; money, standing, the

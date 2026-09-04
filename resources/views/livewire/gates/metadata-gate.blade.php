@@ -16,7 +16,7 @@
     @if ($this->stale())
         <div class="alert fail">
             <strong>This sheet describes a render that no longer exists.</strong>
-            <div class="small" style="margin-top:6px">
+            <div class="small mt-2">
                 Gate 2 was reopened on
                 <span class="mono">{{ $this->metadata->stale_at?->format('Y-m-d H:i') }}</span>,
                 which invalidated the act timings every chapter timestamp below is derived from.
@@ -33,7 +33,7 @@
             </div>
 
             @if ($this->editable())
-                <div style="margin-top:8px">
+                <div class="mt-3">
                     <button wire:click="regenerate"
                             @disabled(! $this->canRegenerate())
                             wire:confirm="Rebuild the chapter list and footer from the current act timings?">
@@ -50,7 +50,7 @@
     @if ($validation['blocking'])
         <div class="alert fail">
             <strong>{{ count($validation['blocking']) }} thing(s) block approval.</strong>
-            <ul class="small" style="margin:6px 0 0 18px">
+            <ul class="small indent">
                 @foreach ($validation['blocking'] as $problem)
                     <li>{{ $problem }}</li>
                 @endforeach
@@ -81,7 +81,7 @@
         @if ($this->drafting())
             <div class="alert warn">
                 <strong>Writing the sheet now.</strong>
-                <div class="small" style="margin-top:4px">
+                <div class="small mt-1">
                     Three calls on the <span class="mono">{{ config('render.queues.text') }}</span> queue.
                     <a href="{{ route('renders.show', $story->slug) }}">Watch it</a>, then reload this page.
                 </div>
@@ -89,12 +89,12 @@
         @elseif ($this->draftBlockers())
             <div class="alert fail">
                 <strong>Not yet.</strong>
-                <ul class="small" style="margin:6px 0 0 18px">
+                <ul class="small indent">
                     @foreach ($this->draftBlockers() as $blocker)
                         <li>{{ $blocker }}</li>
                     @endforeach
                 </ul>
-                <div class="small muted" style="margin-top:6px">
+                <div class="small muted mt-2">
                     Checked before the button rather than after the bill. Chapters come from act timings
                     and act timings come from the mux, which is why this stage runs last.
                 </div>
@@ -105,12 +105,12 @@
             @if ($job && $job->status->value === 'failed')
                 <div class="alert fail">
                     <strong>The last run failed.</strong>
-                    <div class="small mono" style="margin-top:4px">{{ $job->error }}</div>
+                    <div class="small mono mt-1">{{ $job->error }}</div>
                 </div>
             @elseif ($job && $job->log)
                 <div class="alert warn">
                     <strong>Last run trimmed something.</strong>
-                    <div class="small" style="margin-top:4px">{{ $job->log }}</div>
+                    <div class="small mt-1">{{ $job->log }}</div>
                 </div>
             @endif
 
@@ -123,7 +123,7 @@
                 </tbody>
             </table>
 
-            <div class="muted small" style="margin-top:8px">
+            <div class="muted small mt-3">
                 Three calls, not one. The titles and the description's opening lines are the judgement
                 — they are the promise that gets the click, and in this genre the title states the
                 ending. The overlay text and the pinned comment are short copy written against that
@@ -132,9 +132,9 @@
             </div>
 
             @if ($this->editable())
-                <div style="margin-top:10px">
+                <div class="mt-4">
                     @if ($confirmingDraft)
-                        <div class="small" style="margin-bottom:8px">
+                        <div class="small mb-3">
                             @if ($this->draftWouldOverwrite())
                                 <strong>This replaces the {{ count($titleOptions) }} title variant(s) and the
                                 description opening that are already here</strong>, including anything you have
@@ -166,7 +166,7 @@
                 <span class="mono">{{ mb_strlen($titleSelected) }}/{{ $limits['title_hard'] }}</span>
             </label>
             <input id="title" type="text" wire:model.blur="titleSelected" @disabled(! $this->editable())>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 Target {{ $limits['title_target'] }} characters. Past that the tail stops being visible in
                 search and on mobile, so the emotional hook goes on the left where it survives truncation.
             </div>
@@ -196,12 +196,12 @@
         @endif
 
         @if ($this->editable())
-            <div class="row" style="margin-top:10px">
+            <div class="row mt-4">
                 <input type="text" class="grow" placeholder="Add a variant worth keeping"
                        wire:model="newTitleOption" wire:keydown.enter="addTitleOption">
                 <button wire:click="addTitleOption">Add variant</button>
             </div>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 Five variants is the target, and the sheet is drafted with five. Keeping the ones you did
                 not pick is what turns this into data on what actually performs &mdash; and nothing above
                 picks one for you, because picking it is the gate.
@@ -216,7 +216,7 @@
                 <span class="mono">{{ number_format(mb_strlen($description)) }}/{{ number_format($limits['description']) }}</span>
             </label>
             <textarea id="description" wire:model.blur="description" rows="14" @disabled(! $this->editable())></textarea>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 The opening two or three sentences are the real payload &mdash; they show in search and above
                 the fold. Write them as a hook, not a summary. Everything below the chapter list is
                 boilerplate.
@@ -233,7 +233,7 @@
     </div>
 
     <h2>Chapters &mdash; derived, not stored</h2>
-    <div class="panel" style="padding:0">
+    <div class="panel flush">
         <table>
             <thead><tr><th style="width:110px">Start</th><th>Title</th></tr></thead>
             <tbody>
@@ -265,7 +265,7 @@
             </span>
         </div>
 
-        <div class="muted small" style="margin-top:8px">
+        <div class="muted small mt-3">
             {{ count($budget['tags']) }} tags. The budget is enforced rather than silently truncated at
             upload. Worth knowing: tags carry far less weight than the title, the thumbnail and the first
             lines of the description &mdash; write them, do not agonise over them.
@@ -277,7 +277,7 @@
         <div class="field">
             <label for="thumbtext">Overlay text options &mdash; one per line, 3&ndash;5 words each</label>
             <textarea id="thumbtext" wire:model.blur="thumbnailTextInput" rows="4" @disabled(! $this->editable())></textarea>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 Kept for the record and for a title that has to agree with the picture. The composed
                 thumbnails below carry no text &mdash; in this format the title is the hook, and words
                 burned into the image compete with it at the size anyone actually sees.
@@ -291,7 +291,7 @@
         <label>Composed thumbnails &mdash; 1280&times;720, from stills you already own</label>
 
         @if ($this->thumbnailBlocker())
-            <div class="alert warn" style="margin-top:6px">
+            <div class="alert warn mt-2">
                 <strong>Thumbnails cannot be composed.</strong> {{ $this->thumbnailBlocker() }}
             </div>
         @else
@@ -335,13 +335,13 @@
                                 </span>
                             @endforeach
                             @foreach ($option['reasons'] ?? [] as $reason)
-                                <span style="display:block; margin-top:4px">{{ $reason }}</span>
+                                <span class="mt-1" style="display:block">{{ $reason }}</span>
                             @endforeach
                         </span>
                     </label>
                 @endforeach
             </div>
-            <div class="muted small" style="margin-top:6px">
+            <div class="muted small mt-2">
                 The pick is copied to the delivery folder as <span class="mono">&lt;slug&gt;.jpg</span>
                 when you save, beside the video. Ranked by how well each still is likely to read at
                 thumbnail size &mdash; who is recorded in the frame, and how the frame was written &mdash;
@@ -350,10 +350,10 @@
             </div>
         @endif
 
-        <label style="margin-top:16px">Recommended still</label>
+        <label class="mt-7">Recommended still</label>
         <div class="row">
             @forelse ($this->thumbnailChoices() as $choice)
-                <label style="text-transform:none; letter-spacing:0; text-align:center">
+                <label class="tc" style="text-transform:none; letter-spacing:0">
                     <input type="radio" wire:model.live="thumbnailSceneId" value="{{ $choice['id'] }}"
                            @disabled(! $this->editable())>
                     <img class="still pick" loading="lazy"
@@ -392,7 +392,7 @@
             </table>
         @endif
 
-        <div class="muted small" style="margin-top:8px">
+        <div class="muted small mt-3">
             Typed in Eastern because that is where the viewers are &mdash; peak is roughly 6&ndash;10 PM ET
             &mdash; and stored in UTC. Both zones are shown back because that window lands in the small
             hours in Manila, which is exactly how a publish time gets fumbled. Nothing here uploads:
@@ -416,7 +416,7 @@
                     @if ($item['required']) <span class="badge warn">required</span> @endif
 
                     @if ($item['answerable'] && $item['value'] !== null)
-                        <div class="mono" style="margin-top:2px">
+                        <div class="mono mt-hair">
                             <span class="muted small">set to</span> <strong>{{ $item['value'] }}</strong>
                         </div>
                         @if ($item['detail'])
@@ -426,7 +426,7 @@
                         {{-- Never blank. A blank beside a tick box reads as
                              "nothing needed here", which is the absence-as-
                              agreement mistake in miniature. --}}
-                        <div class="small" style="margin-top:2px">
+                        <div class="small mt-hair">
                             <span class="badge warn">nothing to enter</span>
                             <span class="muted">{{ $item['detail'] }}</span>
                         </div>
@@ -435,7 +435,7 @@
             </label>
         @endforeach
 
-        <div class="muted small" style="margin-top:8px">
+        <div class="muted small mt-3">
             Every one of these happens on YouTube, not here. The values are this channel's, from
             <code>config/youtube.php</code> &mdash; change them there, not per upload. The two marked
             required have consequences outside this app: the disclosure is a platform obligation, and
