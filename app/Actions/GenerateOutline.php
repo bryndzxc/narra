@@ -39,15 +39,52 @@ use RuntimeException;
 class GenerateOutline
 {
     /**
-     * Seven for a single narrative, and the seventh act is the reversal.
+     * Six for a single narrative, and all three reversal phases still fit.
      *
-     * It was six while the arc was escalation -> exposure -> end. Adding the
-     * departure, the search and the refusal needs somewhere for them to go, and
-     * taking that room out of the escalation instead would trade one missing
-     * phase for another. At seven the plan is escalation 1-4, departure 5,
-     * search 6, refusal 7 — see ActPhase::planFor().
+     * ---------------------------------------------------------------------
+     * IT WAS SEVEN, AND BOTH REASONS BELONG ON THE RECORD
+     * ---------------------------------------------------------------------
+     *
+     * The move from six to seven was made FOR THE REVERSAL PHASE, and that
+     * reasoning was right: the arc had been escalation -> exposure -> end, and
+     * the departure, the search and the refusal needed somewhere to go.
+     *
+     * What nobody had measured at the time is how long an act actually comes
+     * back. It is ~1,100 words almost regardless of what the prompt asks for —
+     * story 21 was asked for 800 and wrote 1,152; a probe was asked for 985 and
+     * wrote 1,123; the fitted slope across five observations is **+0.30**, so a
+     * hundred more words asked buys about thirty. **The word target is
+     * advisory. The act count is not.** Seven acts of natural length is ~7,900
+     * words, which is 39.9 minutes against a 30-40 window: inside it by seconds,
+     * at the ceiling rather than the midpoint, and one long act puts it over.
+     *
+     * ---------------------------------------------------------------------
+     * WHAT SIX COSTS, EXACTLY
+     * ---------------------------------------------------------------------
+     *
+     * NOT a reversal phase. `ActPhase::departureActFor()` clamps the departure
+     * to `$actCount - 2`, so there are always two acts behind it — the search
+     * and the refusal — at every count. Six gives escalation 1-3, departure 4,
+     * search 5, refusal 6. All three reversal phases survive intact.
+     *
+     * What it costs is **one escalation act, four down to three**: 25% of the
+     * escalation, not a missing phase. The humiliation compounds over three
+     * beats before the departure instead of four.
+     *
+     * ---------------------------------------------------------------------
+     * WHY THIS SIDE OF THE WINDOW
+     * ---------------------------------------------------------------------
+     *
+     * Six and seven both put three of five measured stories inside the window.
+     * They fail on OPPOSITE sides: six lands two under the floor, seven lands
+     * two over the ceiling. This file's own position decides it — the floor is
+     * a preference and the 8-minute mid-roll threshold is the only law, and the
+     * reference channels in this niche run 44 and 54 minutes. Over the ceiling
+     * costs nothing measurable; under the floor costs ad density.
+     *
+     * At six, an act of natural length gives 6,738 words and 34.2 minutes.
      */
-    public const DEFAULT_ACTS_SINGLE = 7;
+    public const DEFAULT_ACTS_SINGLE = 6;
 
     /**
      * Five for an anthology, which fights the genre: escalation cannot compound
@@ -64,10 +101,34 @@ class GenerateOutline
      * pre-spend estimate was a hand-written `6` beside this one's `6`, agreeing
      * only for as long as nobody changed either — which is the shape this
      * project has been bitten by more than once.
+     *
+     * **And it had been bitten again, twice, before this was checked.** Both
+     * remaining copies were on money screens and both UNDERSTATED the bill for
+     * a single story, which is the expensive direction:
+     *
+     *   NewStory::estimate()        said 6 acts / 7 calls · the run made 8
+     *   StoryWrite::confirmSpend()  said 5 acts / 6 calls · the run made 8
+     *
+     * Both agreed with this method for an anthology and disagreed for a single,
+     * which is why nobody noticed: the shape that is wrong only on one branch
+     * is the shape that survives a spot-check. Both read this now.
      */
     public static function defaultActCountFor(Story $story): int
     {
-        return $story->format === StoryFormat::Anthology
+        return self::defaultActCountForFormat($story->format);
+    }
+
+    /**
+     * The same answer for a story that does not exist yet.
+     *
+     * The new-story form is estimating a spend before there is a row to ask
+     * about, and the alternative to this overload is the form keeping its own
+     * copy of the number — which is exactly what it was doing, and exactly what
+     * was wrong with it.
+     */
+    public static function defaultActCountForFormat(StoryFormat $format): int
+    {
+        return $format === StoryFormat::Anthology
             ? self::DEFAULT_ACTS_ANTHOLOGY
             : self::DEFAULT_ACTS_SINGLE;
     }

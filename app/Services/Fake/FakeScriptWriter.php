@@ -254,13 +254,26 @@ class FakeScriptWriter implements ScriptWriter
                 $act->sequence
             ),
             rehookLine: 'The second invoice came the morning after I told her I could not do this again.',
-            usage: new ProviderUsage(
-                provider: 'fake',
+            // ZERO, THROUGH simulated(), AND BOTH HALVES OF THAT MATTER.
+            //
+            // The quantity was `$targetWords` under a token unit — a word count
+            // filed as tokens, so a ledger summing tokens by operation added a
+            // number that is not one. Nothing was spent, so nothing is counted;
+            // the target the stand-in was asked for stays in `detail`, where it
+            // is a note about the call rather than a measurement of it.
+            //
+            // And `new ProviderUsage(provider: 'fake', ...)` leaves `simulated`
+            // at its false default, so this would have written a fake row the
+            // ledger could not tell from a real one at the flag. It cost
+            // nothing yet — all 372 fake rows in the ledger came from providers
+            // that use this factory — but "$8.12 of image spend that nobody was
+            // billed for" is the entry this project keeps at the top of its
+            // false-success table, and that row was flagged the same way.
+            usage: ProviderUsage::simulated(
                 operation: 'generate_act_script',
                 category: CostCategory::Text,
-                quantity: (float) $targetWords,
-                unit: CostUnit::OutputTokens,
-                usdCost: 0.0,
+                quantity: 0.0,
+                unit: CostUnit::TotalTokens,
                 detail: ['target_words' => $targetWords],
             ),
         );
@@ -360,13 +373,14 @@ class FakeScriptWriter implements ScriptWriter
 
         return new SceneDraftSet(
             $scenes,
-            new ProviderUsage(
-                provider: 'fake',
+            // Same again: this counted SCENES under a token unit. The scene
+            // count is a fact about the draft and belongs in detail, not in a
+            // column whose whole job is "how much did the vendor meter".
+            ProviderUsage::simulated(
                 operation: 'draft_scenes',
                 category: CostCategory::Text,
-                quantity: (float) count($scenes),
-                unit: CostUnit::OutputTokens,
-                usdCost: 0.0,
+                quantity: 0.0,
+                unit: CostUnit::TotalTokens,
                 detail: ['act' => $act->sequence, 'scenes' => count($scenes)],
             ),
         );

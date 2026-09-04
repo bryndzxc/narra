@@ -26,6 +26,14 @@ use Illuminate\Support\Facades\Cache;
  * that refuses because of a worker that no longer exists is a preflight that
  * gets disabled within a week.
  *
+ * **And refreshed from inside long jobs, which `Looping` cannot do.** `Looping`
+ * does not fire while a job runs and `JobProcessing` fires once, before it. A
+ * job longer than the TTL therefore used to age its own worker out: a 40-minute
+ * mux, or 270 image calls at ~53 seconds each, left the panel reporting ABSENT
+ * while the worker was doing precisely what it was started for. `RenderJob::
+ * heartbeat()` calls `touchAnnounced()`, so the row's staleness clock and this
+ * one are ticked by the same beat rather than by two timers that could drift.
+ *
  * One cache key per queue holding a map of pid => entry, rather than a key per
  * worker. The Cache facade cannot enumerate keys on the Redis store without
  * reaching past it into a raw connection, and a preflight that only works on one
@@ -126,6 +134,60 @@ final class WorkerRegistry
             self::live($queue),
             fn (array $entry): bool => $entry['digest'] !== $want,
         ));
+    }
+
+    /**
+     * Re-announce this process on every queue it has already announced on.
+     *
+     * ---------------------------------------------------------------------
+     * THE GAP THIS CLOSES, WHICH THIS CLASS CLAIMED TO HAVE CLOSED ALREADY
+     * ---------------------------------------------------------------------
+     *
+     * The docblock above used to say `JobProcessing` refreshed the entry "too,
+     * because a worker inside a long job is not looping and must not be
+     * mistaken for a dead one". `JobProcessing` fires ONCE, before the job
+     * runs. `Looping` does not fire at all while a job is in progress. So the
+     * entry expired 300 seconds into any job longer than five minutes, and the
+     * panel reported a worker as ABSENT while it was in the middle of doing
+     * exactly what it was started to do.
+     *
+     * That is not a corner case on this pipeline. The mux re-encodes a
+     * 40-minute video in one job; the assets queue runs 270 image calls at
+     * about 53 seconds each. The panel an operator reads before authorising a
+     * spend said nothing was listening while everything was fine — a
+     * documented guard that did not do what it said, which this codebase
+     * treats as worse than a missing one because it is read as covered.
+     *
+     * **Safe in the direction that matters.** A dead process cannot call this,
+     * so it cannot manufacture a false PRESENT — it can only stop a live worker
+     * being reported as gone. The fingerprint is re-read rather than cached
+     * because `RunFingerprint::shared()` seals its code marker at boot and
+     * reads config that a worker never reloads: inside a worker it is still the
+     * answer to "what did this process boot with".
+     *
+     * Called from `RenderJob::heartbeat()`, which the long jobs already tick
+     * for the row's own staleness clock. One heartbeat, both readings — the
+     * alternative was a second timer that could drift from the first.
+     */
+    public static function touchAnnounced(): void
+    {
+        if (self::$announcedOn === []) {
+            // Not a queue worker. A console command running the same Action is
+            // not something a dispatcher should see on a queue.
+            return;
+        }
+
+        /*
+         * One call, not one per queue.
+         *
+         * `$lastWrite` is a single static shared by every queue, so looping
+         * `heartbeat()` here would write the first queue, set the throttle, and
+         * silently skip the rest for the next fifteen seconds — refreshing one
+         * of a worker's queues and letting the others age out. Handing the
+         * whole list to one call puts them all inside the same throttle check,
+         * which is the case `split()` already exists for.
+         */
+        self::heartbeat(implode(',', self::$announcedOn), RunFingerprint::shared());
     }
 
     /**

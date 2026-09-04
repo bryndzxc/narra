@@ -117,12 +117,12 @@
          *
          * These are the console's shipped values, carried over unchanged.
          */
-        --d-bg: #0e0f13;
-        --d-bg-2: #131620;
-        --d-panel: #171a22;
-        --d-panel-2: #1f2330;
-        --d-line: #282d3a;
-        --d-line-2: #363c4d;
+        --d-bg: #161826;
+        --d-bg-2: #12141f;
+        --d-panel: #1c1e2b;
+        --d-panel-2: #232532;
+        --d-line: rgba(233, 233, 237, .11);
+        --d-line-2: rgba(233, 233, 237, .055);
 
         /*
          * Three tiers, not two. `--text` for what is being read, `--muted` for
@@ -131,8 +131,8 @@
          * pick a value that suited neither.
          */
         --d-text: #e5e8f0;
-        --d-muted: #a2aaba;
-        --d-meta: #7c8598;
+        --d-muted: #a2a6b8;
+        --d-meta: #878ca0;
 
         --d-ok: #4cc264;
         --d-run: #6cb0ff;
@@ -146,7 +146,7 @@
            second rule. */
         --d-ok-ink: #4cc264;
         --d-run-ink: #6cb0ff;
-        --d-fail-ink: #ff6b60;
+        --d-fail-ink: #ff8079;
         --d-warn-ink: #e0a33a;
         --d-money-ink: #f0c258;
 
@@ -201,6 +201,33 @@
         --d-warnfill-bg: color-mix(in srgb, var(--d-warn) 11%, var(--d-panel));
         --d-gate-current-bg: color-mix(in srgb, var(--d-money) 10%, var(--d-panel));
 
+
+        /* ── Nocturne's additions ────────────────────────────────────────
+         *
+         * `--accent` is navigation and links: the thing you PRESS, as opposed
+         * to the status ramps above, which are the thing you are TOLD. Keeping
+         * those two jobs on separate hues is most of why the console can be
+         * calm and still shout — before this, a link, an in-progress badge and
+         * a running progress bar were all the same blue.
+         *
+         * The alarm band is its own set rather than a tint of `--fail`. It is
+         * the one surface in the console that is a saturated FLOOD rather than
+         * a wash, so it needs a ground dark enough to carry white text and an
+         * ink that is not the same red as the text inside a `.alert.err`.
+         */
+        --d-accent: #9184d9;
+        --d-accent-ink: #9184d9;
+        --d-alarm-from: #8e1a16;
+        --d-alarm-to: #4a0d0b;
+        --d-alarm-edge: #ff6b60;
+        --d-alarm-ink: #ffe6e4;
+        --d-alarm-warn-from: #7a5410;
+        --d-alarm-warn-to: #3f2b07;
+        --d-alarm-warn-edge: #e0a33a;
+        --d-alarm-warn-ink: #ffeed2;
+        /* The inset chip a pasteable command sits in, on the band. */
+        --d-well: rgba(0, 0, 0, .34);
+        --d-well-ink: rgba(255, 255, 255, .2);
         --d-lift: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px -6px rgba(0, 0, 0, .5);
         --d-lift-lg: 0 2px 4px rgba(0, 0, 0, .4), 0 12px 32px -12px rgba(0, 0, 0, .65);
         --d-inset: inset 0 1px 2px rgba(0, 0, 0, .25);
@@ -217,12 +244,12 @@
          * lighter. A border at 55% opacity has to survive on white, and a
          * pastel edge on a pale tint is how a warning becomes decoration.
          */
-        --l-bg: #f6f7f9;
-        --l-bg-2: #eef0f4;
+        --l-bg: #eceef4;
+        --l-bg-2: #e4e7ef;
         --l-panel: #ffffff;
         --l-panel-2: #f2f4f7;
-        --l-line: #e2e5eb;
-        --l-line-2: #ccd2dc;
+        --l-line: rgba(21, 24, 31, .13);
+        --l-line-2: rgba(21, 24, 31, .065);
 
         --l-text: #11141a;
         --l-muted: #4d5563;
@@ -293,6 +320,23 @@
         --l-warnfill-bg: color-mix(in srgb, var(--l-warn) 11%, var(--l-panel));
         --l-gate-current-bg: color-mix(in srgb, var(--l-money) 10%, var(--l-panel));
 
+
+        /* The accent darkens for a light ground; the alarm does not lighten.
+           A red band with white text is the same object in both themes — it is
+           the loudest thing the console can draw and it does not get a pastel
+           variant. */
+        --l-accent: #5d5294;
+        --l-accent-ink: #4a417a;
+        --l-alarm-from: #c8261d;
+        --l-alarm-to: #8f120c;
+        --l-alarm-edge: #ff8b84;
+        --l-alarm-ink: #fff1f0;
+        --l-alarm-warn-from: #8a5d02;
+        --l-alarm-warn-to: #5c3d01;
+        --l-alarm-warn-edge: #edaa2b;
+        --l-alarm-warn-ink: #fff6e6;
+        --l-well: rgba(0, 0, 0, .22);
+        --l-well-ink: rgba(255, 255, 255, .26);
         --l-lift: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 14px -6px rgba(16, 24, 40, .14);
         --l-lift-lg: 0 2px 4px rgba(16, 24, 40, .07), 0 12px 32px -12px rgba(16, 24, 40, .22);
         --l-inset: inset 0 1px 2px rgba(16, 24, 40, .05);
@@ -344,6 +388,18 @@
         --money-panel-to: var(--l-money-panel-to);
         --warnfill-bg: var(--l-warnfill-bg);
         --gate-current-bg: var(--l-gate-current-bg);
+        --accent: var(--l-accent);
+        --accent-ink: var(--l-accent-ink);
+        --alarm-from: var(--l-alarm-from);
+        --alarm-to: var(--l-alarm-to);
+        --alarm-edge: var(--l-alarm-edge);
+        --alarm-ink: var(--l-alarm-ink);
+        --alarm-warn-from: var(--l-alarm-warn-from);
+        --alarm-warn-to: var(--l-alarm-warn-to);
+        --alarm-warn-edge: var(--l-alarm-warn-edge);
+        --alarm-warn-ink: var(--l-alarm-warn-ink);
+        --well: var(--l-well);
+        --well-ink: var(--l-well-ink);
         --lift: var(--l-lift);
         --lift-lg: var(--l-lift-lg);
         --inset: var(--l-inset);
@@ -384,7 +440,7 @@
            Was a bare `top: 48px` in the `th` rule with a comment saying it
            had to agree with the header — now it is the same value in both
            places because it is the same token. */
-        --chrome-h: 52px;
+        --chrome-h: 48px;
     }
 
     /*
@@ -442,6 +498,18 @@
             --money-panel-to: var(--d-money-panel-to);
             --warnfill-bg: var(--d-warnfill-bg);
             --gate-current-bg: var(--d-gate-current-bg);
+            --accent: var(--d-accent);
+            --accent-ink: var(--d-accent-ink);
+            --alarm-from: var(--d-alarm-from);
+            --alarm-to: var(--d-alarm-to);
+            --alarm-edge: var(--d-alarm-edge);
+            --alarm-ink: var(--d-alarm-ink);
+            --alarm-warn-from: var(--d-alarm-warn-from);
+            --alarm-warn-to: var(--d-alarm-warn-to);
+            --alarm-warn-edge: var(--d-alarm-warn-edge);
+            --alarm-warn-ink: var(--d-alarm-warn-ink);
+            --well: var(--d-well);
+            --well-ink: var(--d-well-ink);
             --lift: var(--d-lift);
             --lift-lg: var(--d-lift-lg);
             --inset: var(--d-inset);
@@ -496,6 +564,18 @@
         --money-panel-to: var(--d-money-panel-to);
         --warnfill-bg: var(--d-warnfill-bg);
         --gate-current-bg: var(--d-gate-current-bg);
+        --accent: var(--d-accent);
+        --accent-ink: var(--d-accent-ink);
+        --alarm-from: var(--d-alarm-from);
+        --alarm-to: var(--d-alarm-to);
+        --alarm-edge: var(--d-alarm-edge);
+        --alarm-ink: var(--d-alarm-ink);
+        --alarm-warn-from: var(--d-alarm-warn-from);
+        --alarm-warn-to: var(--d-alarm-warn-to);
+        --alarm-warn-edge: var(--d-alarm-warn-edge);
+        --alarm-warn-ink: var(--d-alarm-warn-ink);
+        --well: var(--d-well);
+        --well-ink: var(--d-well-ink);
         --lift: var(--d-lift);
         --lift-lg: var(--d-lift-lg);
         --inset: var(--d-inset);
@@ -505,7 +585,7 @@
 
     * { box-sizing: border-box; }
 
-    ::selection { background: color-mix(in srgb, var(--run) 35%, transparent); }
+    ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
     body {
         margin: 0;
@@ -520,12 +600,15 @@
         text-rendering: optimizeLegibility;
     }
 
-    a { color: var(--run-ink); text-decoration: none; }
+    /* Links take the accent, not the status blue. The thing you PRESS and the
+       thing you are TOLD now have different hues — before this a link, an
+       in-progress badge and a running progress bar were all the same colour. */
+    a { color: var(--accent-ink); text-decoration: none; }
     a:hover { text-decoration: underline; text-underline-offset: 2px; }
 
     /* Keyboard use is real in a form this dense, and the old file had no ring. */
     :focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--run) 70%, transparent);
+        outline: 2px solid var(--accent);
         outline-offset: 2px;
         border-radius: 3px;
     }
@@ -546,28 +629,30 @@
     .shell { display: flex; align-items: stretch; min-height: 100vh; }
 
     .side {
-        width: 216px;
+        width: 196px;
         flex: none;
         position: sticky;
         top: 0;
         height: 100vh;
         display: flex;
         flex-direction: column;
-        gap: var(--s-7);
-        padding: var(--s-8) var(--s-5) var(--s-5);
+        gap: var(--s-6);
+        padding: var(--s-6) var(--s-5) var(--s-5);
         border-right: 1px solid var(--line);
         background: var(--bg-2);
     }
 
+    /* The wordmark is the one place the accent appears at rest, which is what
+       makes the accent read as "this app" rather than as a status colour. */
     .side .brand {
-        font-weight: 700;
-        letter-spacing: .16em;
+        font-weight: 600;
+        letter-spacing: .22em;
         font-size: 13px;
-        color: var(--text);
-        padding: 0 var(--s-3);
+        color: var(--accent);
+        padding: var(--s-2) var(--s-4) var(--s-8);
     }
 
-    .side .brand:hover { text-decoration: none; color: var(--text); }
+    .side .brand:hover { text-decoration: none; color: var(--accent); }
 
     .side nav { display: flex; flex-direction: column; gap: 2px; }
 
@@ -578,14 +663,13 @@
         color: var(--muted);
         font-size: 13.5px;
         font-weight: 500;
-        padding: var(--s-2) var(--s-3);
-        border-radius: var(--radius-sm);
-        border-left: 2px solid transparent;
+        padding: var(--s-3) var(--s-4);
+        border-radius: 6px;
     }
 
     .side nav a:hover {
         color: var(--text);
-        background: color-mix(in srgb, var(--text) 5%, transparent);
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
         text-decoration: none;
     }
 
@@ -593,16 +677,50 @@
        the fill alone is a few percent of luminance and disappears entirely on
        a bright screen in a lit room. */
     .side nav a.on {
-        color: var(--text);
-        font-weight: 620;
-        background: color-mix(in srgb, var(--money) 12%, transparent);
-        border-left-color: var(--money);
+        color: var(--accent-ink);
+        font-weight: 600;
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
     }
 
     .side nav .ico { width: 15px; text-align: center; opacity: .75; font-size: 12px; }
 
-    .sidefoot { margin-top: auto; display: flex; flex-direction: column; gap: var(--s-4); }
-    .sidefoot p { color: var(--meta); margin: 0; max-width: none; line-height: 1.5; }
+    /*
+     * The count on a nav item. Two of them exist and they are not decoration:
+     * "how many gates are waiting" and "how much work is queued" are the two
+     * questions this console is opened to answer, and carrying them in the rail
+     * means the answer is on screen from every page rather than only from the
+     * dashboard.
+     *
+     * `.count.loud` is the stranded/failed case and is the one that gets a
+     * filled red pill — a number that means "the pipeline has stopped" must not
+     * look like a number that means "four things to read".
+     */
+    .side nav .count {
+        margin-left: auto;
+        flex: none;
+        padding: 1px 7px;
+        border-radius: 9px;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.6;
+        background: color-mix(in srgb, var(--money) 20%, transparent);
+        color: var(--money-ink);
+    }
+
+    .side nav .count.loud { background: var(--fail); color: #fff; }
+
+    .sidefoot { margin-top: auto; display: flex; flex-direction: column; gap: var(--s-5); padding-top: var(--s-8); }
+
+    .sidefoot p {
+        color: var(--meta);
+        margin: 0;
+        max-width: none;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.55;
+    }
 
     .themetoggle {
         display: flex;
@@ -617,8 +735,9 @@
 
     header.top {
         border-bottom: 1px solid var(--line);
-        padding: 0 var(--s-11);
+        padding: 0 var(--s-8);
         height: var(--chrome-h);
+        background: var(--bg-2);
         display: flex;
         align-items: center;
         gap: var(--s-9);
@@ -632,11 +751,26 @@
     }
 
     header.top .where {
-        font-size: 13px;
-        font-weight: 620;
-        letter-spacing: -.005em;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: -.012em;
         color: var(--text);
     }
+
+    /*
+     * The standing figures, in the chrome rather than in a panel: what the
+     * console is holding right now, and what it has cost this month. Both are
+     * true on every page, so both belong to the frame rather than to one of
+     * them.
+     */
+    header.top .stat {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 12px;
+        color: var(--meta);
+    }
+
+    header.top .stat.spend { color: var(--money-ink); }
+    header.top .stat.spend .when { color: var(--meta); }
 
     header.top .sub { color: var(--meta); font-size: 12.5px; }
     header.top .right { margin-left: auto; }
@@ -655,15 +789,17 @@
      * caps are per-block and already existed, which is what makes removing the
      * page-level one safe: prose does not get wider, only tables do.
      */
-    main { padding: var(--s-10) var(--s-11); width: 100%; flex: 1; min-width: 0; }
+    main { padding: var(--s-6) var(--s-8); width: 100%; flex: 1; min-width: 0; }
 
     footer {
         color: var(--meta);
         font-size: 12.5px;
-        padding: var(--s-11) var(--s-11) var(--s-12);
-        text-align: center;
-        border-top: 1px solid var(--line);
-        margin-top: var(--s-12);
+        padding: var(--s-5) var(--s-8) var(--s-7);
+        text-align: left;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        border-top: 1px solid var(--line-2);
+        margin-top: var(--s-9);
     }
 
     /*
@@ -764,6 +900,26 @@
         padding-left: 21px;
     }
 
+    /*
+     * The same surface on a card. Written as its own rule rather than as
+     * `.panel.money, .card.money` because the two carry their edge differently
+     * — a panel has padding to inset for the accent bar and a card does not,
+     * its rows go to the edge.
+     *
+     * Caught by `tools/class-audit.php` as COMBO on the first run of this
+     * design: the markup said `class="card money"` and every `.money` rule in
+     * the file needed a co-class it did not have. The money screen would have
+     * rendered as an ordinary card, which is `.panel.money`'s original defect
+     * arriving by a new route.
+     */
+    .card.money {
+        background: linear-gradient(var(--money-panel-from), var(--money-panel-to));
+        box-shadow:
+            var(--lift-lg),
+            0 0 0 1px color-mix(in srgb, var(--money) 45%, transparent),
+            inset 3px 0 0 var(--money);
+    }
+
     .panel.muted { opacity: .82; box-shadow: none; }
 
     /*
@@ -862,7 +1018,7 @@
      *
      * (Both written `@@class` above: this is a blade file, and blade compiles
      *  its directives inside a `<style>` block exactly as it would anywhere
-     *  else. An unescaped `@class` in a CSS comment is a directive — it took
+     *  else. An unescaped `@@class` in a CSS comment is a directive — it took
      *  every page in the console down with `Undefined constant "OK"`.)
      *
      * Neither has ever rendered anything. The panel's explicit alerts still
@@ -1002,6 +1158,23 @@
         border-color: color-mix(in srgb, var(--ok) 45%, transparent);
         background: var(--alert-ok-bg);
         box-shadow: var(--lift), inset 4px 0 0 var(--ok);
+        padding-left: 21px;
+    }
+
+    /*
+     * A plain advisory: no severity, because nothing is wrong.
+     *
+     * Used by the fixture notice, which is the one panel in the console that
+     * exists to STOP somebody acting rather than to prompt them. It gets the
+     * alert's shape — the measure cap, the shadow, the accent edge — in the
+     * neutral colour, so it reads as "read this" without borrowing the
+     * vocabulary of a warning. Bare `.alert` had no accent edge at all before
+     * this and rendered a plain box.
+     */
+    .alert:not(.ok):not(.warn):not(.err):not(.fail):not(.money) {
+        border-color: var(--line-2);
+        background: var(--panel-2);
+        box-shadow: var(--lift), inset 4px 0 0 var(--meta);
         padding-left: 21px;
     }
 
@@ -1313,7 +1486,7 @@
         font-variant-numeric: tabular-nums;
     }
 
-    .panel.money .figure { color: var(--money-ink); }
+    .money .figure { color: var(--money-ink); }
 
     /* A story waiting at a gate: what it is, why, and the one way in. */
     .needs {
@@ -1332,6 +1505,457 @@
        `main > h2:first-child` already says this; the dashboard's headings sit
        inside a livewire root, so they need to be able to say it themselves. */
     h2.flush-top { margin-top: 0; padding-top: 0; border-top: none; }
+
+    /* -- The alarm band ----------------------------------------------------
+     *
+     * The loudest thing this console can draw, and the only surface in it that
+     * is a saturated FLOOD rather than a wash on a panel.
+     *
+     * It replaces three stacked alert boxes on the dashboard. That is a gain in
+     * prominence and not a reduction, which is worth being precise about
+     * because this file's one rule forbids the reverse:
+     *
+     *   - the three boxes lived INSIDE `main`, inset by its padding, competing
+     *     with the panels beside them for the same width and the same tint
+     *     vocabulary. The band is full-bleed and sits directly under the
+     *     chrome, so it is the first thing on the page and touches both edges;
+     *   - the boxes were a 13% wash of `--fail` on the panel colour — about
+     *     1.2x from an ordinary panel. The band is a saturated red ground with
+     *     near-white text, which is an order of magnitude further away;
+     *   - the shared 60 words of explanation appeared once per queue. Here they
+     *     appear once, and the per-queue facts sit beside them in columns.
+     *
+     * Nothing is dropped: every queue is still named, every pending count is
+     * still printed, every command is still pasteable, and the health table
+     * comes with it.
+     *
+     * `.band.warn` is the ABSENT case. Absent is a warning rather than an
+     * alarm — the job queues and waits, nothing is lost, nothing happens — so
+     * it keeps the band's placement and prominence and drops to amber. The two
+     * are never merged: stranded means the pipeline has stopped now, absent
+     * means nobody is listening to an empty queue, and they want different
+     * reactions.
+     */
+    .band {
+        background: linear-gradient(100deg, var(--alarm-from) 0%, var(--alarm-to) 78%);
+        color: var(--alarm-ink);
+        border-bottom: 1px solid var(--alarm-edge);
+    }
+
+    .band.warn {
+        background: linear-gradient(100deg, var(--alarm-warn-from) 0%, var(--alarm-warn-to) 78%);
+        color: var(--alarm-warn-ink);
+        border-bottom-color: var(--alarm-warn-edge);
+    }
+
+    .band .inner {
+        display: grid;
+        /* Two columns, not three. The middle one held a full repeat of the
+           message per queue; collapsing that away is what took this band from
+           ~200px to a few lines. */
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+        gap: var(--s-10);
+        padding: var(--s-6) var(--s-8) var(--s-7);
+        align-items: start;
+    }
+
+    .band h2 {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -.015em;
+        color: inherit;
+        margin: 0 0 var(--s-2);
+        padding: 0;
+        border: none;
+        display: flex;
+        align-items: center;
+        gap: var(--s-4);
+    }
+
+    .band h3 { font-size: 15px; font-weight: 600; margin: 0 0 var(--s-2); color: inherit; }
+    .band p { margin: 0; font-size: 13px; opacity: .93; max-width: 62ch; }
+    .band .small { font-size: 11.5px; opacity: .82; }
+    .band a { color: inherit; text-decoration: underline; }
+
+    /* The pasteable fix, in a well so it reads as a thing to copy rather than
+       as more prose. */
+    .band .cmd {
+        display: block;
+        margin-top: var(--s-3);
+        padding: 7px 10px;
+        border-radius: 6px;
+        background: var(--well);
+        box-shadow: inset 0 0 0 1px var(--well-ink);
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.3;
+        color: #fff;
+        overflow-x: auto;
+    }
+
+    /* The health table, on the band's own ground rather than a panel's. */
+    .band table { background: none; font-size: 12.5px; }
+    .band th { color: inherit; opacity: .7; position: static; background: none; }
+    .band th, .band td { border-color: var(--well-ink); }
+    .band td { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+    .band tbody tr:hover td { background: rgba(255, 255, 255, .05); }
+
+    .band .state {
+        display: inline-block;
+        padding: 1px 7px;
+        border-radius: 4px;
+        background: var(--well);
+        box-shadow: inset 0 0 0 1px var(--well-ink);
+        font-family: inherit;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    /*
+     * Full-bleed out of `main`'s padding, so the band touches both edges of the
+     * content column the way it does in the design.
+     *
+     * The alternative — putting the band in the layout, between the header and
+     * `main` — would have put it outside the livewire root, which means it
+     * would not appear until the next full page load. An alarm that waits for a
+     * navigation to show up is not an alarm, so it lives inside the polling
+     * component and reaches the edges this way instead.
+     */
+    .bleed {
+        margin: calc(var(--s-6) * -1) calc(var(--s-8) * -1) var(--s-6);
+    }
+
+    /* -- Cards -------------------------------------------------------------
+     *
+     * The dashboard's surface. A `.panel` is a box with padding; a `.card` is a
+     * box with a titled head and full-bleed rows under it, which is what a
+     * summary column actually needs.
+     */
+    .card {
+        background: var(--panel);
+        border-radius: 9px;
+        box-shadow: var(--lift), 0 0 0 1px var(--line-2);
+        min-width: 0;
+    }
+
+    .card > .head {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        padding: var(--s-4) var(--s-5);
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+    }
+
+    .card > .head h2 {
+        margin: 0;
+        padding: 0;
+        border: none;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    .card > .head .note {
+        margin-left: auto;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--meta);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .card .row-item {
+        padding: var(--s-5);
+        border-bottom: 1px solid var(--line-2);
+    }
+
+    .card .row-item:last-child { border-bottom: none; }
+
+    /* The row a decision is standing on. Gold edge and gold wash, the same
+       vocabulary `.panel.money` uses, because it is the same meaning. */
+    .card .row-item.money {
+        border-left: 3px solid var(--money);
+        background: var(--gate-current-bg);
+    }
+
+    .card .row-item.bad {
+        border-left: 4px solid var(--fail);
+        background: var(--alert-err-bg);
+    }
+
+    .card table { font-size: 12.5px; }
+    .card > table th { position: static; }
+
+    /* -- Dashboard grid ---------------------------------------------------- */
+
+    /* -- The dashboard grid, which is two layouts ---------------------------
+     *
+     * BUSY is the one this page was designed for: three columns, the decisions
+     * on the left, whatever is moving in the wide middle, money on the right.
+     *
+     * QUIET is what is true most of the time, and it is not the busy layout
+     * with empty boxes in it. Empty containers held at busy size do not read as
+     * calm, they read as scattered — and worse, they compete for attention with
+     * the one section that can be acted on. So the columns collapse: the
+     * actionable section takes the room the other two were using, and what is
+     * genuinely not happening shrinks to a line.
+     *
+     * Placement is explicit rather than left to auto-flow, because the column
+     * count changes between the two and auto-placement would wrap the money
+     * rail underneath the decisions instead of beside them.
+     */
+    .dash {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.42fr) minmax(0, .66fr);
+        gap: var(--s-5);
+        align-items: start;
+    }
+
+    .dash > .needs-col { grid-column: 1; grid-row: 1; min-width: 0; }
+    .dash > .flow { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-5); }
+    .dash > .rail { grid-column: 3; grid-row: 1; }
+
+    .rail { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+
+    /*
+     * THE TEMPLATE FOLLOWS THE COLUMNS THAT ARE ACTUALLY THERE.
+     *
+     * `.dash` is a fixed three-track template with conditionally-populated
+     * children, which is the shape this console has now had to fix on the
+     * dashboard, on Gate 1, on Gate 2 and on Gate 4. It never produced a void
+     * here — measured, not assumed — but only because every column happened to
+     * carry an unconditional wrapper. That is an accident, and one conditional
+     * around one card would end it.
+     *
+     * The columns are `x-gate-group`s now, so a column with nothing in it
+     * renders no element. Placement stays explicit — auto-flow would wrap the
+     * money rail underneath the decisions instead of beside them — so the
+     * template is restated for the case where the middle column is gone,
+     * matching `.dash.quiet`, which is the same two-column arrangement arrived
+     * at from the other direction.
+     */
+    .dash:not(:has(> .flow)) { grid-template-columns: minmax(0, 2.5fr) minmax(0, 1fr); }
+    .dash:not(:has(> .flow)) > .rail { grid-column: 2; grid-row: 1; }
+
+    /*
+     * Nothing running, nothing broken. Two columns: the decisions get most of
+     * the width and all of the first screenful, the money rail keeps its place
+     * on the right because it is always relevant, and the strip describing what
+     * is NOT happening goes underneath where it costs one line.
+     */
+    .dash.quiet { grid-template-columns: minmax(0, 2.5fr) minmax(0, 1fr); }
+    .dash.quiet > .needs-col { grid-column: 1; grid-row: 1; }
+    .dash.quiet > .rail { grid-column: 2; grid-row: 1 / span 2; }
+    .dash.quiet > .flow { grid-column: 1; grid-row: 2; }
+
+    /*
+     * The one line that replaces two cards.
+     *
+     * Deliberately not a `.card`: a card is a container with a heading, and a
+     * heading over nothing is the thing being fixed. This is a rule with a
+     * sentence on it.
+     */
+    .strip {
+        display: flex;
+        align-items: center;
+        gap: var(--s-4);
+        flex-wrap: wrap;
+        padding: var(--s-4) var(--s-5);
+        border-radius: 9px;
+        border: 1px dashed var(--line);
+        color: var(--meta);
+        font-size: 12.5px;
+    }
+
+    .strip .badge { flex: none; }
+    .strip > details.why { margin-top: 0; margin-left: auto; }
+    .strip > details.why[open] { margin-left: 0; width: 100%; }
+
+    @media (max-width: 1500px) {
+        .dash,
+        .dash.quiet { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        .dash > .needs-col, .dash.quiet > .needs-col { grid-column: 1; grid-row: 1; }
+        .dash > .flow, .dash.quiet > .flow { grid-column: 2; grid-row: 1; }
+        .dash > .rail, .dash.quiet > .rail {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        /* Quiet at this width: the strip is a line, so it can sit under the
+           decisions rather than beside them. */
+        .dash.quiet > .flow { grid-column: 1 / -1; grid-row: 2; }
+        .dash.quiet > .rail { grid-row: 3; }
+    }
+
+    @media (max-width: 1000px) {
+        .dash,
+        .dash.quiet { grid-template-columns: minmax(0, 1fr); }
+        .dash > .needs-col, .dash > .flow, .dash > .rail,
+        .dash.quiet > .needs-col, .dash.quiet > .flow, .dash.quiet > .rail {
+            grid-column: 1;
+            grid-row: auto;
+        }
+        .band .inner { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
+    }
+
+    /*
+     * The spend control. Amber, with what it commits inside the label — the
+     * figure is part of the decision, not a footnote beside it.
+     *
+     * It NAVIGATES. It does not dispatch, and it must not: approving a gate is
+     * an editorial judgement made in front of the thing being judged, and
+     * spending is a second, separate press on that same page. A dashboard that
+     * could commit money from a summary row would be the generate-and-upload
+     * button assembled out of smaller parts.
+     */
+    .spend {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1px;
+        padding: 9px 15px;
+        border-radius: 8px;
+        border: 0;
+        background: linear-gradient(180deg, var(--money), color-mix(in srgb, var(--money) 82%, #000));
+        color: var(--gate-ink);
+        cursor: pointer;
+        box-shadow: var(--lift);
+        text-align: center;
+    }
+
+    .spend:hover { filter: brightness(1.07); text-decoration: none; color: var(--gate-ink); }
+    .spend .what { font-size: 13.5px; font-weight: 700; line-height: 1.2; }
+    .spend .howmuch { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.2; opacity: .78; }
+
+    /* The stage bars on an in-flight story. */
+    .stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2) var(--s-9); }
+    .stages .stage { display: grid; grid-template-columns: 104px 1fr 84px; align-items: center; gap: var(--s-4); }
+    .stages .stage .nm { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stages .stage .n { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: var(--meta); text-align: right; }
+
+    @media (max-width: 1500px) {
+        .stages { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    /* The scene grid, sized to fill whatever column it lands in. */
+    .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(13px, 1fr)); gap: 3px; }
+    .cells .cell { width: auto; height: 13px; }
+
+    /* A title inside a card row: the story, at reading size. */
+    .title {
+        display: block;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: -.012em;
+        color: var(--text);
+    }
+
+    .title:hover { color: var(--accent-ink); }
+
+    /* The uppercase micro-heading used inside a card row, where a `.head` would
+       be too much furniture. Same treatment as `label`, without the form
+       semantics. */
+    .label-inline {
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    /* Content beside a control that must not shrink. */
+    .split { display: flex; gap: var(--s-6); align-items: center; flex-wrap: nowrap; }
+    .minw { min-width: 0; }
+    .row.tight { gap: var(--s-3); }
+    .row.wide-gap { gap: var(--s-7); }
+    .scrollx { overflow-x: auto; max-width: 100%; }
+    .band .warnicon { flex: none; }
+    .bar .moneyfill { background: var(--money); }
+
+    /*
+     * The sentence under the scene grid. Amber-inked when the claim is
+     * abandoned, because that is the case where the grid is reporting work in
+     * progress that stopped hours ago — a cell that says "running" with nothing
+     * running is the false-success pattern drawn as a square.
+     */
+    .claimnote { color: var(--meta); }
+    .claimnote.abandoned { color: var(--fail-ink); font-weight: 550; }
+
+    .figure.sm { font-size: 19px; margin-top: var(--s-2); }
+
+    /*
+     * The collapsed reasoning on a calm provider card.
+     *
+     * Native `<details>`, so it costs no script and works when nothing else on
+     * the page does — the same reason this stylesheet is inlined. Deliberately
+     * quiet: it is an explanation of a state that is fine, and the cards that
+     * are NOT fine print the same text in the open instead.
+     */
+    details.why { margin-top: var(--s-2); }
+
+    details.why > summary {
+        cursor: pointer;
+        list-style: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--meta);
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        font-weight: 650;
+    }
+
+    details.why > summary::-webkit-details-marker { display: none; }
+    details.why > summary::after { content: '›'; transition: transform .12s ease; font-size: 13px; }
+    details.why[open] > summary::after { transform: rotate(90deg); }
+    details.why > summary:hover { color: var(--accent-ink); }
+
+    /* The rail's cards are narrow; a number should never be pushed off by a
+       badge beside it. */
+    .card .row-item .badge { flex: none; }
+
+    /* The band's message column, which is the wide one. */
+    .band .msg { min-width: 0; }
+
+    /*
+     * WHEN a reading was taken.
+     *
+     * Quiet while it is current and LOUD once it is not, because those are two
+     * different facts: a fresh reading needs no comment, and a reading taken
+     * before the workers were restarted is a panel reporting a machine that no
+     * longer exists. The renders pages stop refreshing themselves whenever
+     * nothing is running — which is exactly when workers get restarted — so
+     * this is not a rare corner.
+     */
+    .reading {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--meta);
+    }
+
+    .reading.stale {
+        color: var(--warn-ink);
+        font-weight: 650;
+        padding: var(--s-2) var(--s-4);
+        border-radius: var(--radius-sm);
+        background: var(--warnfill-bg);
+        box-shadow: inset 3px 0 0 var(--warn);
+        display: inline-block;
+    }
+
+    .figures { display: grid; grid-template-columns: 78px 1fr 64px; align-items: center; gap: var(--s-3); padding: 3px 0; }
+    .figures .nm { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: var(--muted); }
+    .figures .amt { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; color: var(--muted); text-align: right; }
 
     /* -- Gate stepper ------------------------------------------------------ */
 
@@ -1476,6 +2100,704 @@
     }
 
     .scene .actions { display: flex; flex-direction: column; gap: 5px; flex: none; }
+
+    /* -- Gate 2 ------------------------------------------------------------
+     *
+     * The densest screen in the console, and the only one where money is
+     * authorised under a list the operator scrolls. Everything here exists to
+     * keep the three decisions — what is wrong, who has a face, what it costs —
+     * above the 168 rows rather than buried under them.
+     */
+
+    /*
+     * The decisions, side by side.
+     *
+     * Stacked, they pushed the spend panel below the fold on any story with
+     * more than a couple of advisories, so the screen that authorises spending
+     * opened on a column of amber. Collapses to one column early: three
+     * columns of prose at 1100px is worse than a stack.
+     *
+     * THE ROW COUNTS ITS CHILDREN, NOT ITS DESIGN.
+     *
+     * `repeat(3, ...)` is a track count written from the busy case, and Gate 1
+     * proved what that costs: three advisory groups, two of them with findings,
+     * and the third still cut a 1fr track — so the row opened on an empty column
+     * that shoved the two real ones right. Nothing failed, nothing was missing,
+     * and the page was ragged.
+     *
+     * Implicit tracks instead: one column per child that actually renders, each
+     * an equal fraction, so the row FILLS whatever width it is given whether it
+     * holds two groups or four. `x-gate-group` is the other half — a group
+     * with nothing in it renders no child, so it gets no track. Weighted tracks
+     * are separately wrong here and were tried: they left the panels at their
+     * own widths with voids between them at 1750px.
+     */
+    .gatecols {
+        display: grid;
+        /* money, cast, advisories — in that order, which is document order
+           too. See the blade: the decisions must lead on a narrow screen, not
+           only in the grid. */
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        margin-bottom: 16px;
+    }
+
+    @media (max-width: 1180px) { .gatecols { grid-auto-flow: row; grid-auto-columns: auto; } }
+
+    /* The grid supplies the gap; the children stop supplying their own. */
+    .gatecols > * { margin-bottom: 0; }
+
+    /*
+     * The advisory cluster.
+     *
+     * A HEADER over the existing alerts, and deliberately not a panel that
+     * swallows them. The mock drew one amber-edged box with plain rows inside,
+     * which would take the accent edge, the tint and the shadow off every
+     * individual warning — quieting fourteen advisories in order to tidy them.
+     * The rule for this stylesheet is that the fix for a column of identical
+     * amber boxes is to close the gaps, never to quieten any of them, so each
+     * one keeps its `.alert.warn` treatment and only gains a heading saying how
+     * many there are.
+     */
+    .advisories > .head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 9px;
+    }
+
+    .advisories > .head h2 {
+        margin: 0;
+        font-size: 10.5px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--warn-ink);
+    }
+
+    /*
+     * Beside the heading, NOT pushed to the far edge.
+     *
+     * `margin-left: auto` put it at the right-hand end of a column whose
+     * container paints nothing, so the number floated in the gap between two
+     * panels and read as belonging to neither. A count is part of the label it
+     * counts.
+     */
+    .advisories > .head .count {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: var(--radius-sm);
+        color: var(--warn-ink);
+        background: color-mix(in srgb, var(--warn) 14%, var(--panel-2));
+        border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+    }
+
+    /* Inside a column the measure cap is the column, not 96ch. */
+    .gatecols .alert { max-width: none; }
+
+    /*
+     * FILL THE WIDTH — a modifier on the alert, never a rule scoped to a parent.
+     *
+     * `.alert` caps its measure at 96ch, deliberately: a four-line refusal
+     * running the full width gets skimmed. The only thing lifting that cap was
+     * `.gatecols .alert`, scoped to the decision row — which the quiet layout
+     * DELETES. So on a story past Gate 2 the locked banner, the failure alert
+     * and every advisory silently snapped back to 96ch and rendered at about a
+     * third of a 1770px viewport, while the strip and the scene table beside
+     * them, which carry no cap, stayed full width. Nothing failed; the page just
+     * went ragged.
+     *
+     * The lesson is the rule's shape rather than its value: a rule that
+     * neutralises a global cap must not be scoped to a container the layout is
+     * allowed to remove. This one lives on the element that needs it, so it
+     * survives any arrangement.
+     *
+     * Used where the content is STRUCTURED rather than prose — the failure
+     * alert carries a table with a long error column, the locked banner is a
+     * two-column grid — so the measure argument does not apply to it.
+     */
+    .alert.wide { max-width: none; }
+
+    /*
+     * `wide` is about the SURFACE, not the line.
+     *
+     * Lifting the cap made the locked banner one sentence of plain prose
+     * running the full 1770px, which is the exact thing the 96ch cap exists to
+     * prevent — a four-line refusal at full width gets skimmed, and skimmed is
+     * indistinguishable from unread. The banner was widened because it holds a
+     * two-column grid, not because its prose wanted the room.
+     *
+     * So the prose inside a wide alert carries its own measure. The table in
+     * the failure alert and the rates grid in the banner are deliberately NOT
+     * capped: they are structured content, where the width is the point.
+     */
+    .alert.wide > .small { max-width: 84ch; }
+    .lockedgate > div:first-child { max-width: 84ch; }
+
+    /*
+     * `.measure` IS THE CAP, so it lives on the element that asks for it.
+     *
+     * It was `.alert.wide > .measure` — a direct child of a wide alert — and
+     * Gate 3 wrote it on prose inside a `.panel`, and on a `.grow` one level
+     * down inside a wide alert. Three of the four usages matched nothing:
+     * class-audit answered CONTEXT, which is its BENIGN verdict, and CONTEXT is
+     * benign only while the ancestor is really there.
+     *
+     * Exactly `.warnfill` again — a class the markup asks for, the stylesheet
+     * does not answer, and nothing goes red — and exactly the lesson `.alert.wide`
+     * was extracted for: a rule that neutralises or imposes a global cap must not
+     * be scoped to a container the layout is allowed to change.
+     */
+    .measure { max-width: 84ch; }
+
+    /*
+     * The advisory list, using the width without lengthening the line.
+     *
+     * Seventeen advisories stacked in one 96ch column is a thin ribbon down the
+     * left of a wide screen; seventeen at full width is seventeen 180-character
+     * lines, which is what the cap exists to prevent. Columns give both: the
+     * block fills the width, and each advisory keeps a readable measure.
+     *
+     * Each one still carries its own accent edge, tint and shadow. The rule
+     * about a run of amber boxes is that the gaps close, never that any of them
+     * gets quieter — and side by side they cluster the same way.
+     */
+    .advisories.wide {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+        gap: 0 12px;
+        align-items: start;
+    }
+
+    .advisories.wide > .head { grid-column: 1 / -1; }
+    .advisories.wide > .alert { max-width: none; margin-top: 0; }
+
+    /*
+     * The locked banner, two-up.
+     *
+     * The mock painted this in the alarm gradient. It is not an alarm: Gate 2
+     * approved is a story going correctly, and spending the console's one
+     * saturated flood on it would leave a stopped pipeline with nothing louder
+     * to say. So it keeps `.alert.warn` — already louder than the panel beside
+     * it, and measured as such by theme-audit — and takes only the mock's
+     * layout: what this is, next to what editing it would cost.
+     */
+    .lockedgate { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 0; }
+
+    .lockedgate > .cost {
+        padding-left: 17px;
+        margin-left: 17px;
+        border-left: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+    }
+
+    @media (max-width: 900px) {
+        .lockedgate { grid-template-columns: 1fr; }
+
+        .lockedgate > .cost {
+            padding: 12px 0 0;
+            margin: 12px 0 0;
+            border-left: none;
+            border-top: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+        }
+    }
+
+    .lockedgate .rates { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 11px; }
+    .lockedgate .rates .amt { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+
+    /*
+     * Gate 1: the pair the operator writes together.
+     *
+     * Premise and cast age are one decision taken twice — what the story is,
+     * and who is in it — and the design has them side by side. Stacked in one
+     * panel they were two short textareas with a column of whitespace beside
+     * them on any real screen.
+     */
+    .twoup {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 22px;
+        align-items: start;
+    }
+
+    @media (max-width: 1080px) { .twoup { grid-template-columns: 1fr; gap: 0; } }
+
+
+    /* -- Gate 3: the preview ----------------------------------------------
+     *
+     * The player and the numbers on the left, the chapters and the decision on
+     * the right. Two columns rather than the gate row's implicit tracks,
+     * because these two are not peers: the left column is what you look at for
+     * ten minutes and the right is what you do afterwards.
+     */
+    .previewcols {
+        display: grid;
+        grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+    }
+
+    @media (max-width: 1180px) { .previewcols { grid-template-columns: 1fr; } }
+
+    .previewcols > .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+    /* The grid supplies the gap; the panels stop supplying their own. */
+    .previewcols > .col > .panel,
+    .previewcols > .col > .alert { margin-bottom: 0; }
+
+    /*
+     * The act boundaries, as their own rail under the player.
+     *
+     * The mock draws these ON the video scrubber. Nothing can: a native
+     * `<video controls>` scrubber is the browser's, and swapping in a custom
+     * player to gain seven tick marks would put this gate's one job — watching
+     * the file — behind a pile of JavaScript that can fail. Same information,
+     * same source, directly under the thing it describes.
+     */
+    .actsrail {
+        position: relative;
+        height: 13px;
+        margin: 0 2px;
+        border-radius: 0 0 var(--radius) var(--radius);
+        background: linear-gradient(var(--panel-2), transparent);
+    }
+
+    .actsrail .tick {
+        position: absolute;
+        top: 0;
+        width: 2px;
+        height: 9px;
+        background: var(--money);
+        border-radius: 1px;
+    }
+
+    /*
+     * The render's numbers.
+     *
+     * `.big` is a readout, not a heading: the operator is checking a handful of
+     * figures against what they expected to sit through, and a 21px monospace
+     * number is read in one glance where a table row is not.
+     */
+    .facts {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 14px;
+        align-items: start;
+    }
+
+    .facts .span2 { grid-column: span 2; }
+
+    @media (max-width: 1080px) {
+        .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .facts .span2 { grid-column: span 2; }
+    }
+
+    .big { font-size: 21px; line-height: 1; letter-spacing: -.02em; font-weight: 500; }
+
+    /*
+     * The target window, on an axis derived from the story's own window.
+     *
+     * THE MOCK HARDCODES THE SCALE — 30 min at 20% and 40 min at 67%, which is
+     * about 25.7 to 47 minutes. That is fine for the story it was drawn against
+     * and puts `sample-story` at 2:42 somewhere near MINUS 108%, off the
+     * element entirely, on the one story that is parked at `rendered`
+     * permanently. So the axis comes from the story and the mark is clamped in
+     * PHP; this only paints it.
+     *
+     * A clamped mark cannot say how far outside it is, which is why the
+     * distance is printed beside it: 22 seconds under and 27 minutes under are
+     * the same picture and very different facts.
+     */
+    .windowbar { position: relative; height: 20px; margin: 2px 0 6px; }
+
+    .windowbar .axis {
+        position: absolute;
+        left: 0; right: 0; top: 7px;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--idle);
+        box-shadow: var(--inset-bar);
+    }
+
+    .windowbar .zone {
+        position: absolute;
+        top: 7px;
+        height: 6px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--ok) 40%, transparent);
+    }
+
+    .windowbar .at {
+        position: absolute;
+        top: 1px;
+        width: 2px;
+        height: 18px;
+        border-radius: 1px;
+        background: var(--meta);
+    }
+
+    .windowbar .at.ok { background: var(--ok); }
+    .windowbar .at.warn { background: var(--warn); }
+
+    /*
+     * A panel's own header row: a label, a note, and a badge pushed right.
+     *
+     * Gate 3 has four of these and they were four hand-written `.row`s with
+     * their own margins. One rule, so a fifth cannot be a fifth arrangement.
+     */
+    .panelhead {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 11px;
+    }
+
+    .panelhead h2 {
+        margin: 0;
+        font-size: 10.5px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    .panelhead .right { margin-left: auto; }
+
+    /* A flush panel's own prose needs the padding the panel gave up. */
+    .panel.flush .panelhead { padding: 12px 15px 0; margin-bottom: 9px; }
+    .pad { padding: 11px 15px; margin: 0; }
+
+    /*
+     * The gate call itself.
+     *
+     * The one panel on this page that is a decision rather than a reading, and
+     * it is marked as one: the accent edge is what you PRESS, which is the same
+     * split the rest of the console keeps. It is not an alarm and does not take
+     * a status colour — approving a render is a story going correctly.
+     */
+    .gatecall {
+        border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+        border-top: 3px solid var(--accent);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel));
+        box-shadow: var(--lift-lg);
+    }
+
+    .gatecall > strong { display: block; font-size: 15.5px; font-weight: 660; margin-bottom: 6px; }
+
+
+    /* -- Gate 4: the publish sheet ----------------------------------------- */
+
+    /*
+     * The title against its target and its hard limit.
+     *
+     * Same shape as Gate 3's window bar and the same reason: the mock draws it
+     * for a title inside both marks, and a title over 100 characters is the
+     * case the hard limit exists FOR. The fill is clamped in PHP; this paints
+     * it, and the overage is stated in words beside it because a clamped bar
+     * reports 101 characters and 200 characters identically.
+     */
+    .meter { position: relative; height: 8px; margin: 9px 0 6px; }
+
+    .meter .track {
+        position: absolute;
+        left: 0; right: 0; top: 1px;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--idle);
+        box-shadow: var(--inset-bar);
+    }
+
+    .meter .used {
+        position: absolute;
+        left: 0; top: 1px;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--ok);
+    }
+
+    .meter .used.warn { background: var(--warn); }
+    .meter .used.fail { background: var(--fail); }
+
+    /* The target, which is a preference — the hard limit is the rail's end. */
+    .meter .cap {
+        position: absolute;
+        top: -2px;
+        width: 2px;
+        height: 12px;
+        border-radius: 1px;
+        background: var(--meta);
+    }
+
+    /*
+     * The tags, each one told whether it is inside the budget.
+     *
+     * A total that is over, with no indication of WHICH entries are past the
+     * line, is a number nobody can act on. "Enforce it, do not silently
+     * truncate" is the spec's own wording, and the point of enforcing it here
+     * is that dropping a tag becomes a decision instead of an accident at
+     * upload.
+     */
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .tagrow {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 7px;
+        padding: 3px 9px;
+        border-radius: var(--radius-sm);
+        background: var(--panel-2);
+        border: 1px solid var(--line-2);
+        font-size: 12.5px;
+    }
+
+    .tagrow .mono { color: var(--meta); font-size: 10.5px; }
+
+    /*
+     * A tag past the budget. Loud, and deliberately not a dimming: this is the
+     * one on the page that will be LOST, and a quieter treatment for the thing
+     * being dropped is the direction this stylesheet never allows.
+     */
+    .tagrow:has(.over) {
+        border-color: color-mix(in srgb, var(--fail) 55%, transparent);
+        background: var(--alert-err-bg);
+    }
+
+    .tagrow .over {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--fail-ink);
+    }
+
+    /* -- The scene table --------------------------------------------------- */
+
+    /*
+     * A grid, and deliberately NOT a horizontal scroll region.
+     *
+     * It was one — `min-width: 1120px` inside `overflow-x: auto` — and two
+     * things were wrong with that, both invisible at the mock's width.
+     *
+     * The narration and the frame are the pair the operator compares, and a
+     * scrollable row puts them at opposite ends of it: you read the narration,
+     * scroll right, and the sentence you were comparing against has gone. They
+     * are adjacent columns here and both are always on screen.
+     *
+     * And a loud marker must never be scrollable out of view. `read-only` sat
+     * in the LAST column, so the one fact saying this row cannot be edited was
+     * the first thing to disappear. Rather than pinning columns, the scroll
+     * region is gone: every marker lives in `.meta`, and below 1080px the row
+     * stacks. The bad outcome is unreachable rather than checked for.
+     */
+    .scenetable .thead,
+    .scenetable .scenerow {
+        display: grid;
+        grid-template-columns: 34px 92px 132px minmax(0, 1fr) minmax(0, 1.05fr) auto;
+        gap: 0;
+    }
+
+    .scenetable .thead {
+        padding: 7px 13px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line);
+    }
+
+    .scenetable .thead span {
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: .11em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    .scenetable .thead .acts { text-align: right; display: block; }
+
+    .scenetable .scenerow {
+        padding: 9px 13px;
+        border-bottom: 1px solid var(--line-2);
+        align-items: start;
+    }
+
+    .scenetable .scenerow:last-child { border-bottom: none; }
+    .scenetable .scenerow:hover { background: var(--panel-2); }
+
+    .scenetable .scenerow > .seq {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        color: var(--meta);
+        font-size: 12.5px;
+        padding-right: 8px;
+    }
+
+    /*
+     * Denser than the Gate 4 chooser, where the still is judged as a picture.
+     * Here it identifies a row, so it is sized to the row.
+     *
+     * A MODIFIER, not a rule scoped to `.scenetable`, and the grid is why. The
+     * second track is 92px wide; `.still`'s own default is 136px. Scoped to the
+     * wrapper, renaming or removing `.scenetable` would leave every still 44px
+     * wider than the column holding it — the same shape as the measure cap that
+     * reverted when `.gatecols` went away, except this one overflows the
+     * layout rather than narrowing it. Found by tools/scoped-override-audit.php
+     * sweeping for exactly this after the first instance.
+     */
+    .still.dense { width: 92px; height: 52px; margin-right: 12px; }
+
+    .scenetable .meta { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; padding-right: 12px; }
+
+    .scenetable .meta .dur {
+        width: 100%;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--meta);
+    }
+
+    .scenetable .narration { margin: 0; padding-right: 14px; font-size: 13px; line-height: 1.5; }
+
+    .scenetable .prompt {
+        margin: 0;
+        padding-right: 12px;
+        min-width: 0;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.55;
+        color: var(--muted);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .scenetable .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 5px; }
+    .scenetable .acts { display: flex; justify-content: flex-end; align-items: flex-start; gap: 4px; }
+
+    .scenetable .readonly {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--meta);
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        white-space: nowrap;
+    }
+
+    /* The row's own edit form spans the whole grid rather than fighting it. */
+    .scenetable .editing { grid-column: 1 / -1; }
+
+    /*
+     * Below this the six columns stop being readable, so the row STACKS rather
+     * than scrolling. This is what replaces the horizontal scroll: nothing is
+     * ever off to the right, so no marker can be scrolled away from.
+     */
+    @media (max-width: 1080px) {
+        .scenetable .thead { display: none; }
+
+        .scenetable .scenerow {
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 4px 0;
+        }
+
+        .scenetable .scenerow > .still,
+        .scenetable .scenerow > div,
+        .scenetable .scenerow > p { grid-column: 2; padding-right: 0; }
+
+        .scenetable .scenerow > .seq { grid-column: 1; grid-row: 1; }
+        .scenetable .acts { justify-content: flex-start; }
+    }
+
+    /* -- The style block --------------------------------------------------- */
+
+    /*
+     * Said once, because it is written once.
+     *
+     * `scenes.image_prompt` stores the ASSEMBLED prompt — the frame, then the
+     * verbatim cast block, then the art style and the constraints. Printing all
+     * of it per row repeated four hundred identical words 168 times and buried
+     * the one section that differs between scenes. Accent rather than a status
+     * colour: nothing is wrong here, it is a fact about how a prompt is built.
+     */
+    .styleblock {
+        display: flex;
+        align-items: flex-start;
+        gap: 11px;
+        padding: 10px 13px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+    }
+
+    .styleblock > .grow { flex: 1; min-width: 0; }
+
+    .styleblock .full {
+        margin: 8px 0 0;
+        padding: 9px 11px;
+        border-radius: var(--radius-sm);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        line-height: 1.6;
+        color: var(--muted);
+        white-space: pre-wrap;
+        max-height: 260px;
+        overflow: auto;
+    }
+
+    /* -- The scene-table toolbar ------------------------------------------- */
+
+    .scenehead {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 10px 13px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .scenehead h2 {
+        margin: 0;
+        font-size: 10.5px;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    /* A segmented control, built on buttons because it drives a Livewire
+       property rather than a link. */
+    .seg {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 2px;
+        border-radius: var(--radius);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+    }
+
+    .seg .lbl {
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+        color: var(--meta);
+    }
+
+    .seg button {
+        padding: 4px 10px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        box-shadow: none;
+    }
+
+    .seg button:hover { color: var(--text); background: var(--panel); }
+
+    .seg button.on {
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+        color: var(--accent);
+    }
 
     /* -- Batch heat map ---------------------------------------------------- */
 

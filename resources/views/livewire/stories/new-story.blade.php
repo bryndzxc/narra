@@ -122,6 +122,56 @@
                     coherent narrative.
                 </td>
             </tr>
+            {{-- RUNTIME, ON THE SCREEN WHERE THE ACT COUNT IS CHOSEN.
+
+                 This panel quoted calls and dollars and no runtime at all, which
+                 was survivable while the word target was believed to govern
+                 length. It does not — the fitted response across five measured
+                 stories is +0.30 — so the act count above is the lever, and
+                 moving it from 6 to 8 moved the video by nine minutes with
+                 nothing on screen saying so.
+
+                 Two numbers, the same as Gate 1: the design point, and what the
+                 writer actually returns. The projection carries its provenance
+                 in its own cell because one measured act is a projection and
+                 not a forecast. --}}
+            <tr>
+                <td>Runtime if written to target</td>
+                <td class="mono">{{ number_format($this->estimate()['target_minutes'], 1) }} min</td>
+                <td class="muted small">
+                    <span class="badge {{ $this->estimate()['target_in_window'] ? 'ok' : 'warn' }}">
+                        {{ $this->estimate()['target_in_window'] ? 'in window' : 'outside the window' }}
+                    </span>
+                    {{ number_format($this->estimate()['target_words']) }} words at
+                    <span class="mono">{{ $this->estimate()['wpm'] }}</span> wpm, against a
+                    {{ $this->estimate()['window']['min'] }}&ndash;{{ $this->estimate()['window']['max'] }} min window.
+                </td>
+            </tr>
+            <tr>
+                <td>Projected runtime</td>
+                <td class="mono">{{ number_format($this->estimate()['projected_minutes'], 1) }} min</td>
+                <td class="muted small">
+                    <span class="badge {{ $this->estimate()['projected_in_window'] ? 'ok' : 'warn' }}">
+                        {{ $this->estimate()['projected_in_window'] ? 'in window' : 'outside the window' }}
+                    </span>
+                    {{ number_format($this->estimate()['projected_words']) }} words at the
+                    <span class="mono">{{ number_format($this->estimate()['projected_per_act']) }}</span>
+                    words an act the writer actually returns.
+                    <strong>A projection from one measured act</strong>@if ($this->estimate()['projected_measured_on'])
+                    &mdash; {{ $this->estimate()['projected_measured_on'] }}@endif.
+                </td>
+            </tr>
+            <tr>
+                <td>Word target</td>
+                <td class="mono">advisory</td>
+                <td class="muted small">
+                    The prompt states a per-act target and the writer largely ignores it: the fitted
+                    response is <span class="mono">+{{ number_format($this->estimate()['slope'], 2) }}</span>,
+                    so a hundred more words asked buys about thirty.
+                    <strong>The act count above is the lever</strong> &mdash; it multiplies a length the
+                    prompt cannot argue with.
+                </td>
+            </tr>
             <tr>
                 <td>Provider</td>
                 <td class="mono">{{ $this->estimate()['provider'] }}</td>

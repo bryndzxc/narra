@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
+use App\Support\WorkerRegistry;
 use Database\Factories\RenderJobFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -250,9 +251,32 @@ class RenderJob extends Model
      * The heartbeat. A long-running job calls this periodically; the operator
      * page reads the resulting updated_at to tell working from hung.
      */
+    /**
+     * One beat, two clocks.
+     *
+     * `touch()` is the row's own staleness clock — the thing that tells a hung
+     * FFmpeg from a slow one, and the only thing that can, because
+     * `queue:work --timeout` is enforced with a pcntl alarm and pcntl does not
+     * exist in Windows PHP.
+     *
+     * The registry needs the same beat for a different reason. It is refreshed
+     * on `Looping`, which does not fire while a job is running, and on
+     * `JobProcessing`, which fires once before it — so a job longer than the
+     * registry's 300-second TTL used to age its own worker out. A 40-minute mux
+     * and a 270-scene asset run both clear that easily, and the result was the
+     * worker-health panel reporting ABSENT for a worker that was mid-encode:
+     * the reading an operator takes before authorising a spend, saying nothing
+     * was listening while everything was fine.
+     *
+     * Ticking both from here rather than adding a second timer is deliberate.
+     * Two clocks for one fact is two things to keep in step, and this codebase's
+     * bugs are mostly two copies of something that stopped agreeing.
+     */
     public function heartbeat(): void
     {
         $this->touch();
+
+        WorkerRegistry::touchAnnounced();
     }
 
     public function isStale(): bool

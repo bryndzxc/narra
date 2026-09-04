@@ -77,13 +77,33 @@ correct word target costs nothing; re-narrating to correct a wrong one costs a
 month of credits.
 
 **What it costs**
-- Roughly 5,900–6,400 words of narration.
+- Roughly 5,900–7,900 words of narration — 30–40 minutes at the **measured 197
+  wpm**, not the 160 that was assumed for a phase. The band moved because the
+  rate it is derived from was corrected, which is this section's own rule
+  working: runtime is the product, the word band follows it, and if they ever
+  diverge the band is what moves.
 
-**Runtime is the product; the word band is derived from it.** Narration over stills
-reads at ~150–160 wpm, not the ~185 wpm that a 30–40 min / 5,500–8,000 word pairing
-implies — those two targets contradict each other. Keep **one** config constant
-(160 wpm) shared by the word target, the runtime estimate, and the TTS fake, so they
-cannot drift. If they ever must diverge, move the word band, not the runtime.
+**Runtime is the product; the word band is derived from it.** That principle
+stands. The NUMBER it was applied with did not: 160 wpm was chosen to reconcile
+two targets in this spec that contradicted each other, and it was never compared
+against a vendor — it could not be, because the only synthesizer that existed was
+a fake that derives its duration from the same constant, so the two agreed by
+construction and the agreement proved nothing.
+
+The measured figure is **197 wpm** (en-US, 186 real scenes) and **199** (en-CN,
+270 scenes). Sizing at 160 asks for 5,600 words, which that narrator reads in
+**28.4 minutes** — under the floor before a word is written. Every script this
+pipeline produced was short by construction, and story 9 cleared it by 21 seconds
+only on a 3% generation overshoot.
+
+Keep **one** answer to "how many words", and it is `App\Support\ScriptSizing`.
+Four places used to derive something from the raw constant — the word target, the
+dispatch estimate, two prompt figures, and `story:write`'s reported runtime — and
+a constant corrected in one of four places is the shape that gave one narration
+three different prices. The constant survives as the FALLBACK only, read by
+`NarrationPace`, the TTS fake (which has no real voice to be measured) and
+`RunFingerprint` (which records it as provenance). A test names those three and
+fails on a fourth.
 - Roughly 150–250 stills. This is the dominant line item — assume image generation
   is ~70% of per-video cost.
 - Render time of tens of minutes. Plan for it; do not treat a render as a request.
@@ -142,12 +162,40 @@ cannot drift. If they ever must diverge, move the word band, not the runtime.
      Gate 1 reports WHICH moment it matched, because "it answers something" is
      worth less than "it answers act 3".
 
-   **The act count moved from six to seven for this**, and the acts are laid out
-   across the phases by `ActPhase::planFor()`: escalation 1–4, departure 5, search
-   6, refusal 7. Taking the room out of the escalation instead would have traded
-   one missing phase for another. The departure is clamped to leave at least two
-   acts behind it — a search with nowhere to run and a refusal in the same act as
-   the leaving is the compressed ending the whole structure exists to replace.
+   **The act count moved from six to seven for this, and has since moved back
+   to six — for a reason that has nothing to do with the phases, and both facts
+   belong on the record.**
+
+   Six -> seven was made HERE, for the reversal: the arc had been escalation ->
+   exposure -> end, and the departure, the search and the refusal needed
+   somewhere to go. That reasoning is untouched and is why the phases exist at
+   all. What it could not know is how long an act actually comes back, because
+   nobody had measured it: the writer produces **~1,100 words almost regardless
+   of what the prompt asks for**. Story 21 was asked for 800 and wrote 1,152; a
+   probe on current code was asked for 985 and wrote 1,123; the fitted slope
+   across five observations is **+0.30**, so a hundred words more asked buys
+   about thirty. **The word target is advisory. The act count is not** — it
+   multiplies a length the prompt cannot argue with. Seven acts of natural
+   length is ~7,900 words and 39.9 minutes against a 30-40 window; six is 6,738
+   and 34.2.
+
+   **Six costs one escalation act and no phase.** `ActPhase::planFor()` gives
+   escalation 1-3, departure 4, search 5, refusal 6 — the reversal still
+   occupies three acts of six. The departure is held to at most `count - 2` so
+   the search and the refusal always have an act each; a search with nowhere to
+   run and a refusal in the same act as the leaving is the compressed ending
+   this whole structure exists to replace. (That clamp is the GUARANTEE rather
+   than the binding term at every count: at six and seven the two-thirds point
+   already lands correctly, and the clamp is what actually bites at four and
+   five acts.) What gives ground is the escalation, four beats down to three —
+   25% of it, not a missing phase.
+
+   **Both counts put three of five measured stories in window; they fail on
+   opposite sides.** Six lands two under the floor, seven lands two over the
+   ceiling. This section's own rule decides it: the floor is a preference and
+   the 8-minute mid-roll threshold is the only law, and the reference channels
+   run 44 and 54 minutes. Over the ceiling costs nothing measurable; under the
+   floor costs ad density.
 
    **Story 9 and story 21 are not regenerated.** Their outlines predate the phase
    and Gate 1 says exactly that, once, as a warning naming what is missing —
@@ -1003,7 +1051,8 @@ GenerateMetadata                     [needs act timestamps from the render;
   a measuring stick that moves measures nothing. Point `style:preview` at both
   when changing the look — the pair is what separates "the style changed" from
   "the descriptions changed", which is a distinction two previews in a row
-  could not make.
+  could not make. Both carry `is_fixture`, so the console stops counting them as
+  work that has stalled — see the flag's own entry under Conventions.
 - **Character descriptions are written as silhouette, not texture.** In an anime
   style at mid-shot and wide-shot distance, "faint smile lines at the corners of
   her eyes" renders as nothing — so a cast built out of surface detail is
@@ -1045,6 +1094,190 @@ GenerateMetadata                     [needs act timestamps from the render;
   operator authorises spending, which is `.panel.money`'s original defect
   reintroduced by a theme.
 
+- **The console's ground is Nocturne's blue-grey, and that reverses a
+  documented decision — read this before judging a still.** The palette was
+  moved to `#161826` / `#1c1e2b` when the design direction was settled. The
+  previous ground was a NEUTRAL charcoal `#0e0f13`, chosen deliberately because
+  the blue-black before it "was saturated enough to tint every still on the
+  Gate 2 page, which matters here more than it would elsewhere: the operator is
+  judging artwork against it for an hour at a time."
+
+  That risk is real and is not resolved — it is accepted, with the fix pre-named
+  so nobody has to rediscover it. `#161826` is about three times further from
+  neutral than `#0e0f13` on the blue axis. If stills start reading cool on Gate
+  2 or on the faces contact sheet, the revert is two lines: `--d-bg` and
+  `--d-panel` back to `#0e0f13` / `#171a22`. Everything else in the palette —
+  the status ramps, the inks, the alarm band — is independent of it.
+
+  **The inks were re-measured against the new ground rather than carried over,
+  and three of them had stopped clearing 4.5:1**: `--d-meta` (labels and every
+  `th`) at 4.27, `--d-fail-ink` on a badge at 4.44, and the light absent-band
+  text at 3.51. None of those would have failed a test or looked wrong in a
+  screenshot. Adopting a palette without re-running the contrast pass is how a
+  warning goes quiet while looking deliberate.
+
+- **A stale worker restarts itself, and the guard that refuses it is untouched.**
+  `AssertWorkersCurrent` still refuses a spend into stale workers, in the
+  dispatching process, as loudly as before. What changed is that the machine no
+  longer *sits* in the refused state: a worker whose sealed code marker no
+  longer matches the disk exits between jobs, and NSSM's `AppExit Default
+  Restart` brings it back current.
+
+  The reason this was worth building is not convenience. The panel that went red
+  is the one read before authorising a spend, and a red meaning "somebody saved
+  a file" is indistinguishable from a red meaning "your pipeline has stopped".
+  **An alarm that fires for something the reader cannot act on is the cheapest
+  way to teach them to ignore it** — the same argument as a section that always
+  contains something it should not.
+
+  **Why recomputing the marker is safe here when `RunFingerprint` says at length
+  that it is not.** That warning is about SELF-CERTIFICATION: a stale worker
+  reading the new files and announcing itself current would defeat the guard
+  entirely, and the incident behind the design cost 117 scenes at the wrong
+  speed. `codeOnDiskNow()` has the opposite polarity — it is used only to decide
+  to DIE. A wrong "I am current" costs a batch; a wrong "I am stale" costs a
+  restart. What a worker ANNOUNCES is still the sealed marker, and
+  `StaleWorkerRestartTest` asserts exactly that; if that test goes red the
+  fingerprint guard is over.
+
+  Three bounds, all in `StaleWorkerRestart`: it never fires while ANY queue on
+  the machine holds work, so a batch in flight is never interrupted and cannot
+  be split across two code versions; the exit goes through the cache flag
+  `queue:restart` sets, which is the only graceful stop available without
+  `pcntl`; and it cannot loop, because after a restart the sealed marker IS the
+  disk marker. Off in production, where the deploy restarts workers.
+
+  **The first bound said "the queue" and meant the worker's own, and that was
+  false.** The bound was evaluated per worker; the stop is `queue:restart`,
+  which is a machine-wide broadcast. So an idle worker on an empty queue stood
+  down correctly by its own lights and took every busy worker with it. On a real
+  run that is the render worker idling while a 270-scene assets batch is in
+  flight, somebody saves a file, and the batch silently changes code version
+  half way through — the exact split the bound exists to prevent, produced by
+  the bound's own mechanism.
+
+  **Rehearse it; do not believe it.** `php artisan workers:drill idle` and
+  `workers:drill busy` are the deliberate triggers, and `busy` found the defect
+  above on its first run. The unit tests could not: `queueDepthIs()` answers one
+  depth for every queue, so every test written with it describes a machine that
+  is uniformly busy or uniformly idle, and the failure lives in between — mine
+  empty, my neighbour's full. **It was not untested, it was inexpressible**,
+  which is a sharper version of "a check that cannot fire is indistinguishable
+  from a check that passed": a fixture that cannot describe the failing state
+  makes the whole suite blind to it however many tests are added.
+
+  **And the mechanism cannot bootstrap itself.** A worker that booted before
+  `StaleWorkerRestart` existed has no listener, so it cannot notice anything and
+  will sit stale forever — which is how it was found: all three workers were
+  stale for half an hour with the feature merged and doing nothing. The first
+  restart after adding or moving the listener is always manual. Same rule as the
+  incident this whole area exists for: a guard that is not in a worker's loaded
+  code cannot fire, and that applies to the guard that restarts stale workers.
+
+- **Never write `@php` or `@endphp` inside a blade comment, and never put the
+  inline parenthesised form above a block.** Blade's raw-php-block pass runs
+  BEFORE directives compile and pairs the first opener with the next closer over
+  the RAW file. It does not know the inline form exists, and it does not know a
+  comment is a comment.
+
+  Both mistakes were made within ten minutes of each other and both took every
+  gate page in the console down. Neither announced itself: the symptom was
+  `Undefined variable $grouped` a hundred lines below the damage, on every page
+  that rendered the component, because the block that defined it had never
+  compiled. A parse error would have been kinder — this reads as an application
+  bug, and the test suite reports it as fifty unrelated view failures.
+
+  `tools/blade-php-scan.php` refuses both shapes. It was verified by
+  reintroducing the defect and watching it fire, which is the standing rule for
+  a new guard here: name the failure mode and confirm it catches a real instance.
+
+- **`stories.is_fixture` — a story kept to be measured against, not published.**
+  Three of them exist and every operator surface was counting them as
+  outstanding work: `sample-story` is parked at `rendered`, which made it a
+  PERMANENT resident of "Waiting on you" — the one section of the dashboard
+  that is supposed to be the only actionable thing on it — while
+  `style-preview-fixture` and `style-preview-fixture-2` sat forever in "Not
+  moving", a section whose entire meaning is "this should be moving and is not".
+
+  **A section that always contains something it should not teaches you to skim
+  it, and you skim it right past the day something real lands there.** Same
+  failure as an alarm that is always on: not a wrong number, a true one that has
+  stopped being read.
+
+  It is a column rather than a slug prefix or a title match, because those are
+  guesses about intent that a rename breaks silently. `fixture_note` is a second
+  column because the reason genuinely differs — one is a render-pipeline
+  fixture, two are cast measuring sticks — and the story's own page should say
+  WHICH without the reader going to look it up.
+
+  **Hidden from the queue of things to do, never from the app.** A flag that
+  made a story vanish would trade one silent wrongness for another: someone
+  looking for the fixture would find nothing and have no way to learn why. It
+  keeps its page, its costs and its row on the index, it is badged there, and
+  its own page states plainly that it is a fixture and why it never advances —
+  so the absence from every count is explained where somebody would go looking.
+
+- **The dashboard's layout is a function of its state, not a constant.** It was
+  drawn for the busy case — three columns, an alarm band, a scene grid, wide
+  panels — and most of the time none of that is true. The busy layout with
+  nothing in it is not a calm page: it is the same containers at the same size
+  holding gaps, and empty ones compete for attention with the one section that
+  can be acted on. "In flight: idle" took a full column to say nothing while
+  seven abandoned drafts outweighed the three gates that were the only
+  actionable thing on the screen.
+
+  So when nothing is running, nothing is broken and no queue depth is
+  unreadable, `.dash.quiet` gives the decisions the width the other two columns
+  were using and collapses what is NOT happening into one line with a
+  disclosure. Nothing is dropped: anything that has actually failed is an alert
+  at the top of the page, because a failure is not a quiet state — which is
+  also why an unreadable depth counts against quiet even though no queue is
+  troubled.
+
+  The test is "with nothing running, the page answers *what should I do next*
+  in the first screenful". A test suite cannot measure a screenful, so
+  `DashboardTest` asserts the structural properties that produce one — quiet
+  mode set, decisions first in the document, the idle sections a strip rather
+  than cards — and says that is what it is doing.
+
+- **The same rule at two smaller sizes: a ROW lays out against the groups that
+  have content, and a SENTENCE names an action only if the action is
+  available.** Both are `.dash.quiet` below page resolution, and both were
+  shipped on Gate 1 after being fixed on the dashboard and on Gate 2 — see the
+  entry in "Where bugs actually live" for why the tests written first could not
+  see either.
+
+  Mechanically: a decision or advisory row is `x-gate-row` holding
+  `x-gate-group`s, never a hand-written `.gatecols` with hand-written wrappers.
+  A group with an empty slot renders no element and the grid cuts no track for
+  it. And any clause naming an action comes from `App\Support\GateVoice`, which
+  holds both phrasings and picks from the gate and the status —
+  never from a string written at a call site, because a fix at a call site
+  cannot reach the sentence in the next alert down. Both are asserted over
+  every gate page at every status in `GateLayoutContractTest`.
+
+- **The alarm band is the one saturated flood in the console.** Everything else
+  that means something is a wash on a panel — 1.1x to 1.3x from the panel
+  beside it, which is enough when it is a box among boxes. A stopped pipeline is
+  not a box among boxes: the band is full-bleed under the chrome, a saturated
+  red ground with near-white text, and it measures 7.2x from the panel in light.
+  In dark the luminance figure understates it, because the separation there is
+  chromatic — a saturated red against a desaturated blue-grey.
+
+  It replaced three stacked per-queue alert boxes and every fact survived the
+  consolidation: each queue named, each pending count printed, each command
+  pasteable, the health table carried along. Only the ~60 words of shared
+  explanation stopped repeating. `.band.warn` is the ABSENT case in amber,
+  never merged with the alarm — stranded means the pipeline has stopped now,
+  absent means nobody is listening to an empty queue, and they want different
+  reactions.
+
+- **The accent is what you PRESS; the status ramps are what you are TOLD.**
+  Before this, a link, an in-progress badge and a running progress bar were all
+  the same blue. `--accent` now carries navigation, links and the focus ring;
+  `--ok/run/fail/warn/money` carry state and nothing else. It is the reason the
+  console can be calm and still shout.
+
 - **Two themes, one set of names, and the raw values live exactly once.** Light
   and dark are a remapping (`--panel: var(--d-panel)`), not a second
   stylesheet. CSS cannot express one dark block answering both
@@ -1064,6 +1297,49 @@ GenerateMetadata                     [needs act timestamps from the render;
   palette into two is exactly the kind of change that gets waved through for
   looking obviously safe, and one mistyped hex in two hundred token lines
   shifts a surface by an amount no reviewer catches and no test fails on.
+- **THE APP HAS NO PUBLICATION EVENT, BECAUSE IT NEVER UPLOADS. Nothing may
+  report one, and nothing downstream should go looking for one.** The pipeline
+  ends at a file and a metadata sheet; the human uploads, sets the synthetic
+  content disclosure and schedules. That decision is non-negotiable #2, and this
+  is its consequence in the schema: the only publication event happens in a
+  browser this app never sees, so there is no column that holds it and no column
+  that could.
+
+  It was worth writing down because a page had already invented one. Gate 4's
+  banner read "Published on \<date\>" from `stories.updated_at` — **two defects
+  in one sentence, and only the first was position.** The condition was wrong,
+  which the position axis caught. The figure was wrong in EVERY state, which no
+  capability can express: `updated_at` moves on any write, and
+  `CostEntry::created` increments `stories.total_cost_usd`, which is a write. On
+  story 9 it resolved to `2026-09-02 02:16:15` — to the second, the moment a
+  `fal` **style preview** was billed, a day after the sheet was approved. That
+  is `CostCategory::Evaluation` spend, the one category deliberately kept OUT of
+  a video's cost, dating that video's publication. And it was not settled: the
+  next preview run against story 9 would have moved it again.
+
+  What the banner says now is what the app actually did — it crossed its own
+  gate — through the same `GateVoice` clause Gate 1's locked banner uses, so it
+  is a checked position claim rather than a hand-written one. **No column was
+  substituted, and that is the point rather than a shortcut.** The three honest
+  options were: record the gate crossing in a real column, say nothing about a
+  date, or let the operator type the real one. The second was taken because it
+  costs nothing and claims nothing; `stories.gate_approved_at` is a reasonable
+  thing to want later and is not a prerequisite for anything.
+
+  **The general form: when a figure cannot be stood behind, remove the figure —
+  never find a nearby column that is the right TYPE.** `updated_at` is a
+  timestamp and a publication date is a timestamp, which is exactly why this
+  read as reasonable for a phase. It is the checklist rule with the arrow
+  pointing outward: an item about something that cannot exist is the same defect
+  as a form with no producer, so make the thing exist or stop asking.
+
+  A registered claim fragment is NOT protection here, and the one that existed
+  was removed with the sentence. `publishedOn` could only ever answer "may this
+  STATE say this"; it had no opinion about whether the date was a date. Keeping
+  it for a sentence no page emits would also have been the dead-mechanism seam.
+  This paragraph is what replaces it — see the axis question, where a claim
+  about a FIGURE is the third axis nothing currently checks.
+
 - Money is `decimal(10,4)`, never float.
 - Durations in the DB are integer milliseconds. Convert at the edges only.
 - Migrations are never edited after being run. New change, new migration.
@@ -1349,6 +1625,784 @@ Still open, none blocking, all findable here rather than one gate at a time:
   first. It waits for a real failure to design against, which is the same reason
   every guard in this file names the instance it was written for.
 
+- **Gate 2 shipped with `.dash.quiet`'s defect, and 681 green tests, a clean
+  theme-audit and a brand-new ordering assertion all held while it did.** This
+  is the most useful entry in this section, because nothing was broken — every
+  instrument was working and every one of them was answering a question that was
+  not the one being asked.
+
+  The page was drawn for the busy case: three decision panels over a scene list.
+  A story past Gate 2 has none of those decisions, so story 21 rendered three
+  near-empty panels as three islands with voids between them, while the one
+  actionable thing on the page — scene 141 failing asset generation — sat in a
+  narrow box two rows below. The layout was a constant where it should have been
+  a function of state. **The same defect, in the same words, as the dashboard's,
+  fixed one session earlier, by the same author, with the reasoning written down
+  in this file.**
+
+  Why each instrument passed, one at a time, because the pattern is the point:
+
+  - **681 tests.** Not one of them renders a page and looks at it. They assert
+    that values are right and that markup is present, and every value WAS right
+    and every element WAS present. A void between two panels is not a missing
+    element.
+  - **theme-audit.** It measures how far a loud surface separates from the panel
+    beside it. Every figure was byte-identical to the baseline — correctly,
+    because the tokens never changed. It has no opinion about a panel being
+    nearly empty, or about three of them in a row.
+  - **class-audit.** Every class resolved. It reads the stylesheet and the
+    markup separately, so it also could not see that removing a wrapper orphans
+    fifteen descendants — proved by renaming `.scenetable`, after which it
+    reported exactly ONE new finding and went on calling the other fifteen
+    CONTEXT.
+  - **The new ordering assertion**, written the same session to prove decisions
+    come before advisories. It built a story at `scenes_drafted` — where all
+    three panels have content — and passed. **It tested the state the layout was
+    designed for and was silent about the state the page spends most of its life
+    in.** A test written from the same assumption as the layout inherits its
+    blind spot, and passing then reads as coverage.
+
+  The general rule, which is not new here but had to be learned again on a
+  different surface: **a check written alongside a design tests the case the
+  designer had in mind.** The dashboard's own lesson was recorded as being about
+  the dashboard. It was about layouts. When a layout is drawn for a busy case,
+  the test to write first is the empty one.
+
+  Four assertions now cover it — `ScenesGateLayoutTest` — and each was confirmed
+  to fire by reintroducing the defect it names: quiet-state ordering, loud
+  markers out of any scroll region, no horizontal scroll region at all, and
+  every scoped class reaching its rule in the rendered page.
+
+  Two smaller things the same blindness hid, both real: the decision row used
+  weighted `fr` tracks that left the panels at their own widths at 1750px, and
+  the advisory count badge sat at the far edge of a container that paints
+  nothing, so it read as belonging to neither panel. Neither is visible at the
+  mock's width, which is the width everything had been checked at.
+
+- **Gate 1 shipped BOTH of Gate 2's defects, one session later, past contract
+  tests written before the page existed.** The tests were written first
+  precisely so a check would not inherit the layout's assumptions, and they
+  still did — so this entry is about why writing the test first was not enough,
+  which is a stronger claim than the Gate 2 entry above it and supersedes the
+  comfortable reading of it.
+
+  The two defects, both live on `/stories/rent-will-split-model-rhln/outline`:
+
+  1. The advisory row has three groups — spine problems, locale terms,
+     structural warnings. That story has findings in two. The third still
+     rendered a `<div>`, `.gatecols` still cut it a `1fr` track, and the row
+     opened on an empty column that pushed the two real groups right.
+  2. On the same screen the strip said reopening is not available, while the
+     structural warnings said *none of these block approval* and *all of them
+     are cheaper to fix here than at Gate 3*, and the locale panel said
+     *judging these is yours*. Three sentences offering decisions that do not
+     exist at `scenes_drafted`.
+
+  Both had been fixed once already, at Gate 2, in the session before this page
+  was built. Neither fix travelled.
+
+  **Why each instrument passed.** This is the part worth keeping.
+
+  - `test_gate_one_collapses_when_there_is_no_outline_decision` asks whether the
+    page renders a strip. It does. **The three contract cases — EMPTY, WIDE,
+    ABSENT — are all whole-page questions**, and defect 1 lives one level below
+    them: a page that is correctly, entirely in its quiet state, holding a row
+    that is not. The dashboard's lesson was written down as being about
+    layouts; it was recorded at page resolution and the defect recurred at
+    group resolution.
+  - `test_gate_one_leads_with_the_advisories_not_the_premise` asserts
+    `class="gatecols"` is PRESENT and that the problems come before the
+    premise. Both true. **Asserting that a container exists says nothing about
+    what is inside it**, and its fixture has a finding in the first group, so
+    the two-of-three shape never occurred in any test.
+  - The heading fix at Gate 2 was real and is still green. It was applied **at
+    the include site** — `'heading' => 'Flagged on these scenes'` — so it could
+    only ever cover the one string that passes through that include. Gate 1's
+    three sentences are prose inside three different alerts. A fix at a call
+    site cannot reach a sentence that does not go through that call site, and
+    `ScenesGateLayoutTest` is a Gate 2 file, so nothing was even looking.
+
+  **The general rule: writing the test before the build protects you from the
+  BUILD's assumptions, not from the TEST's.** The three cases were written from
+  the same busy-versus-empty dichotomy the layouts were, one level up. A
+  specification inherits the resolution of whoever wrote it, and a defect below
+  that resolution is invisible to a test written first exactly as it is to one
+  written after.
+
+  **What was built instead of two more fixes.**
+
+  - `x-gate-row` and `x-gate-group` (`App\Support\SlotContent`). A group with an
+    empty slot renders no element; `.gatecols` is `grid-auto-flow: column` and
+    cuts one track per element it actually has. An empty track stops being
+    something an author has to remember not to leave. The row's own `@if` is
+    gone with it — it was a hand-written restatement of the four conditions
+    inside it.
+  - `App\Support\GateVoice`. Every clause that names an action has two
+    phrasings and one capability choosing between them, and the claiming half
+    is built from a fragment in `CLAIMS` so the fragment is in the emitted
+    sentence by construction. `advisoryHeading`, `blocksApproval`,
+    `countBlocking`, `fixHere`, `judgement`. `APPROVE` is uniform across all
+    four gates (parked at `waitsAt()`); `EDIT` is the status that PRODUCES the
+    gate's material plus the status the gate waits at, which is what three gate
+    bodies had each written out by hand.
+  - The assertions travel. `GateLayoutContractTest` runs both over **every gate
+    page × every status**, from one table Gates 3 and 4 are already in. The
+    claim check greps the rendered page for GateVoice's own fragments, so a
+    reworded clause moves the check with it, and a claim written by hand
+    WITHOUT the mechanism is caught too — which is how Gate 4's *"N thing(s)
+    block approval"* was found rendering on a story at `draft`.
+
+  **The first version of the row assertion passed when it was drilled**, and
+  that is the same defect one level up again: its fixture gave every act a null
+  `escalation_beat`, so the spine check reported a PROBLEM, so all three groups
+  had content and there was no void to find. A fixture that cannot express the
+  failing state makes the assertion vacuous however carefully it is written —
+  the `queueDepthIs()` lesson, in a layout test. Both guards were then drilled
+  against real instances and both fired.
+
+
+
+- **Gate 4's mock draws ONE state, and the two it leaves out are the two this
+  page has already been broken in.** Gate 2's mock declares three states, Gate
+  3's declares two, Gate 4's declares no state enum at all — its only prop is
+  the theme. What it draws is a sheet that is fully written and BLOCKED.
+
+  - **NO SHEET.** The original Gate 4 defect was a form with no producer — the
+    sixth instance in the audit. The producer exists now, and the page still
+    could not tell "generated" from "never generated", because `mount()` calls
+    `firstOrCreate()`: **opening this page manufactures the row it would have to
+    test for.** Two live stories carry a `youtube_metadata` row for no other
+    reason. So the row is not the discriminator and cannot be — the CONTENT is,
+    and `sheetGenerated()` asks it. Below that gate the whole sheet, the
+    advisory row and the copy-paste block are all withheld: "no title selected"
+    and "description is empty" are findings about the absence of a thing the
+    line above them already says is absent, and an empty copy-paste block beside
+    a Save button is the form-with-nothing-behind-it defect verbatim.
+  - **APPROVED.** `published` is terminal and is where both finished stories
+    are. The sheet is a record there, not a form, so the decision collapses to a
+    strip and the sheet stays readable in full.
+
+  Two smaller ones, both the same shape as Gate 3's window bar:
+
+  - **The title meter is clamped and names its overage.** The mock draws a
+    target-70 / hard-100 meter for a title inside both; a title over 100 is the
+    case the hard limit exists FOR, and `length / 100` walks off the element at
+    101. The limit is untouched — the validator still refuses — this is only the
+    picture staying honest.
+  - **The tag budget names the tags it would drop.** "Enforce it, do not
+    silently truncate" is this file's own wording, and a TOTAL cannot be acted
+    on: the running count is per tag, from the same arithmetic
+    `YoutubeMetadata::charCountFor()` uses, so the ones past the line are marked
+    individually. Dropping a tag here is a decision; dropping it at upload is an
+    accident.
+
+- **`.dash` was the last copy of the fixed-track defect, and it had never
+  actually fired.** Measured across every dashboard shape before touching it:
+  all three columns always had content, because each happens to carry an
+  unconditional wrapper. That is an accident rather than a guarantee — one
+  conditional around one card would end it — and it is the page whose quiet
+  state started this whole line of work.
+
+  The columns are `x-gate-group`s now, so a column with nothing in it renders no
+  element, and the template restates itself for two when the middle column is
+  gone. Placement stays explicit: auto-flow would wrap the money rail underneath
+  the decisions instead of beside them, which is the reason the original comment
+  gives and it is still true.
+
+  **The travelling half is the point.** `DashboardTest` runs the same
+  empty-track assertion the three gate pages carry, pointed at `.dash`, over
+  every shape the layout has — and it was drilled by emptying `.flow` and
+  watching it go red. `PageProbe::emptyRowGroups()` takes the container name for
+  exactly this: one detector, four surfaces, rather than a fourth hand-written
+  instance of a check that has now been got wrong three times.
+
+- **Gate 3's MOCK had the defect this time, not the page — and the state it
+  omits is the one every story in the database is in.** Worth recording because
+  the previous three entries are all about a check inheriting the layout's
+  assumptions; this is the layout inheriting the DESIGN's, one step further
+  upstream, and the fix was the same: build the missing state first.
+
+  The Gate 3 mock declares two states, `ready` and `running`. Gate 2's declares
+  three and the third is `locked`. So Gate 3 was drawn with no settled state at
+  all, and `metadata_ready`/`published` is where two of the three rendered
+  stories sit.
+
+  **The target-window bar is the sharpest instance.** The mock hardcodes the
+  axis — 30 min at 20%, 40 min at 67%, so about 25.7 to 47 minutes — and draws
+  exactly one verdict, `IN WINDOW`. Measured against the database:
+
+  | story | status | runtime | verdict | on the mock's axis |
+  |---|---|---|---|---|
+  | sample-story | rendered | 2:42 | 27 min 18 s under | about **−108%** |
+  | story 9 | published | 29:38 | 21 s under | 23% |
+  | story 21 | published | 40:36 | 36 s over | 78% |
+
+  **Not one story is in window**, so the only verdict the mock specifies is the
+  only one that never occurs — and the story that would fall clean off the
+  element is `sample-story`, which is parked at `rendered` permanently and is
+  therefore the one most often on screen. The axis is derived from the story's
+  own window now, the mark is clamped in PHP, and the distance is printed beside
+  it: a clamped mark on its own reports 21 seconds and 27 minutes as the same
+  picture. The VERDICT is unchanged — `in_target_window` still decides and Gate
+  3 still reports rather than refuses, because the floor is a preference.
+
+  Four more the mock does not distinguish, each already a named defect here:
+
+  - **`rendered` with no file is not "still encoding".** The mux row says the
+    stage finished and the artifact is absent — the false-success table exactly
+    — and folding it into the running state sends the operator to a progress
+    page that will agree with it. It leads the page as a failure now.
+  - **`EXIT 0` is drawn as a constant.** The badge comes from
+    `render_jobs.status`, and a failed mux gets its error above the fold.
+  - **"112/270 clips" cannot come from `render_jobs`.** `RenderJob::open()` runs
+    INSIDE the job, so a queued scene has no row — row 7 of the false-success
+    table, where story 21 read "118 done, nothing failed" with 152 scenes in
+    Redis and nothing listening. The denominator is the scene count, the way
+    `RenderProgress::stages()` already decided it, and scenes with no row at all
+    are named as unseen rather than folded into either side.
+  - **Act boundaries cannot go on the scrubber.** A native `<video controls>`
+    scrubber belongs to the browser, and swapping in a custom player to gain
+    seven tick marks would put this gate's one job behind JavaScript that can
+    fail. They are their own rail under the player: same source, same
+    information, nothing to go wrong.
+
+  **And class-audit caught a live defect in the first build of this page, which
+  is the argument for running it during the work rather than after.**
+  `.measure` was `.alert.wide > .measure` — a DIRECT child of a wide alert — and
+  Gate 3 wrote it on prose inside a `.panel` and on a `.grow` one level down
+  inside an alert. Three of four usages matched nothing. The audit answered
+  CONTEXT for all of them, which is its benign verdict, and CONTEXT is benign
+  only while the ancestor is really there. `.warnfill` again, and the same
+  lesson `.alert.wide` was extracted for: **a rule that imposes or lifts a
+  global cap belongs on the element, never under a container.** `.measure` is
+  unscoped now, and `PreviewGateLayoutTest::test_every_scoped_class_reaches_its_rule`
+  is the Gate 2 guard copied onto this page — drilled by renaming `.actsrail`
+  and watching `.tick` go unreachable.
+
+- **A component tag inside a CSS comment is compiled. Inside a BLADE comment it
+  is not — and this entry said the opposite for a day.** Worth keeping in that
+  order, because the wrong version was written confidently, from the pass order
+  as remembered rather than as measured, immediately after a real outage.
+
+  What happened: `<x-gate-group>` written to NAME the component in prose, inside
+  a `/* */` comment in `base-css.blade.php`. Every page in the console died on
+  `syntax error, unexpected end of file, expecting "elseif"`, a thousand lines
+  from the text that caused it, reading as an application bug. **Blade has no
+  concept of a CSS comment**, so the tag was never in a comment at all as far as
+  the compiler was concerned — it was ordinary template text inside `<style>`,
+  where a compiled component render is a syntax error.
+
+  The rule written for it looked for component tags inside BLADE comments. That
+  is the safe case, so the rule flagged what cannot break and missed what did.
+  Measured order, from `BladeCompiler::compileString()`:
+
+  | # | pass | rewrites | before comments? | covered |
+  |---|---|---|---|---|
+  | 1 | `prepareStringsForCompilationUsing` | Livewire inline islands, `@island…@endisland` | **yes** | now, `PRE-COMMENT-TOKEN` |
+  | 2 | `storeUncompiledBlocks` | `@verbatim…@endverbatim`, `@php…@endphp` | **yes** | `@php` by `SWALLOWED`/`UNPAIRED`; `@verbatim` now by `PRE-COMMENT-TOKEN` |
+  | 3 | `compileComments` | `{{-- --}}` stripped here | — | — |
+  | 4 | `compileComponentTags` | `<x-…>`, `<x-slot>` | no | `COMPILED-IN-COMMENT`, for foreign comments |
+  | 5 | `precompilers` | morph-aware `@if`, `<livewire:…>`, ExtendBlade | no | as above |
+  | 6 | `token_get_all` | `@directives`, `{{ echoes }}` | no | — |
+
+  **Only passes 1 and 2 run before comments are stripped.** So the rule is not
+  "comments are compiled": it is **a comment Blade does not know is a comment is
+  not a comment**. Blade knows `{{-- --}}` and nothing else — not `/* */`, not
+  `//`, not `<!-- -->`.
+
+  `tools/blade-php-scan.php` refuses four shapes now, and the fixture carries the
+  NEGATIVE case beside the positive one — the same component named in a blade
+  comment two lines below the CSS one — so a rule written backwards again fails
+  in `ToolsAnswerKnownCasesTest` rather than in an outage. Verified by drilling:
+  adding blade comments back to the foreign-comment list turns that test red.
+
+  Two before-comment tokens had never been covered and are now: `@verbatim`, and
+  `@island`, which belongs to a pass EARLIER than the php blocks. No view here
+  uses islands and that pass short-circuits without `@endisland` in the file —
+  but "no view uses it yet" is why a hazard goes unnoticed, not evidence that it
+  is absent.
+
+  A second, quieter instance of the same "the tool cannot see it" family came
+  out of the same change: `x-gate-row` first wrote its class as
+  `$attributes->class(['gatecols'])`, and `class-audit` immediately listed
+  `.gatecols` under NO LITERAL ASKS FOR THESE — its dead-rule list — about the
+  rule the row depends on. **A component that hides its classes behind the
+  attribute bag makes every class it carries unauditable.** Both components
+  write literal classes and take no attribute bag.
+
+- **A CLAUSE THAT CLAIMS A POSITION WALKED PAST A CONTRACT WRITTEN FOR CLAUSES
+  THAT OFFER AN ACTION. Three defects across two gates, on eleven of the
+  forty-four gate pages, and nothing that runs could have found any of them.**
+  This is `GateVoice`'s own lesson turned on `GateVoice`, and it outranks the
+  four-gate entries above it for the same reason those outrank the pages they
+  are about.
+
+  `GateVoice` was built because a sentence NAMING AN ACTION must be a function
+  of whether the action exists. `claimsNotEntitledTo` greps a rendered page for
+  the claiming fragments, `GateLayoutContractTest` runs it over four gates at
+  eleven statuses each, and `GuardsGoRedTest` drills it. All of that worked.
+
+  What shipped anyway:
+
+  | gate | said | at | condition behind it |
+  |---|---|---|---|
+  | 4 | "Gate 4 is behind this story", and `draft` "is terminal: the file is on YouTube" | 8 statuses | `! editable()` |
+  | 4 | a GREEN "Published on \<date\>. This sheet is now read-only", with `updated_at` as the date | 8 statuses | the `@else` of `editable()` |
+  | 2 | "Gate 2 is behind this story" | 3 statuses | `! canApprove() && ! canGenerateAssets()` |
+
+  **None of those names an action.** They make a claim about WHERE THE STORY IS,
+  so every fragment the check knew about missed every one of them, and a
+  contract running the whole grid was green about it for a phase. It was found
+  by hand, during a hunt for an unrelated predicate, on a page that had just
+  been rebuilt and reviewed against real data.
+
+  **The common cause is one substitution, made three times: a CAPABILITY read as
+  a POSITION.** `! editable()` is false on BOTH sides of a gate — this is the
+  same thing `MetadataGate::pastThisGate()` was written for one item earlier,
+  and the strip is where the substitution was doing the most damage. A
+  capability answers "is there a decision here", which is the layout question
+  and was correct; it cannot answer "which side of this gate is this story on".
+
+  **Gate 3 was the only one of the four that was right, and it was right by
+  hand.** Its `phase()` is rank-based, so both of its sentences were true
+  wherever they rendered. That is the "one instance fixed by hand is not a
+  mechanism" shape exactly — the same shape as Gate 2's advisory heading, which
+  is what produced `GateVoice` in the first place. The wording the shared clause
+  is written from is Gate 3's, verbatim.
+
+  **What changed, and what did NOT.**
+
+  - Position is three states, not two. `PASSED`, `AHEAD` and — the one a boolean
+    cannot hold — parked AT the gate, which is entitled to neither claim.
+    `PASSED` and `AHEAD` are deliberately not complements, and a test asserts no
+    clause is ever entitled to two of its own phrasings at once.
+  - **A position clause has a fragment per PHRASING, where an action clause has
+    one.** An action clause claims in one state and asserts nothing in the
+    other, so a careful settled sentence makes it safe. Every wording of "is
+    behind this story" / "has not been reached" is a claim, so nothing but the
+    capability can. `CLAUSES` is now one map, clause to capability to fragment,
+    and `CLAIMS` is gone — they were two lists keyed the same way, which is a
+    fifth clause added to one and not the other.
+  - `claimsNotEntitledTo`'s LOOP did not change. The capabilities are data, so a
+    new KIND of claim arrives the way a reworded one does; that is what the
+    shared list was for.
+  - **But it normalises whitespace first, and without that the whole extension
+    would have been decorative.** Gate 4's blade wrapped its disclosure between
+    "which is" and "terminal", so `str_contains` on the raw HTML could not see
+    the fragment at all — measured, not assumed. **A detector a line break
+    defeats is indistinguishable from a detector that passed**, and the one
+    fragment it most needed to find was the one it structurally could not. Only
+    runs of whitespace collapse; a fragment split across an ELEMENT still does
+    not match, and there is a green case asserting that.
+  - Gate 1's two sentences were already right, and both go through the voice
+    anyway. Gate 1 is the one gate that CANNOT carry this defect — nothing
+    precedes `draft`, so "not editable" and "past this gate" are the same set
+    there. That is a property of the lifecycle, not of the template, and a
+    sentence true for a reason outside itself is one condition change from being
+    Gate 4's. Drilled: widen the condition, and the hand-written version is
+    reported while the voice's version corrects itself.
+
+  **Five defect shapes, each drilled red with a green counterpart** — and two of
+  the five drills PASSED on the first attempt because the drill was wrong, not
+  the guard. Reverting only the branch that renders when the claim is true, and
+  reverting a condition while leaving the voice in place, both reproduce
+  something that is not the defect. **A drill that passes is a claim about the
+  drill until it is shown to reproduce the shipped shape**, which is the same
+  rule as a fixture whose answer must be established independently of the thing
+  it checks.
+
+  The general finding, which is the part to keep: **a contract inherits the axis
+  of whoever specified it.** This one was specified as "no page names an action
+  it does not have" and was flawless on that axis while three sentences were
+  wrong about something one word away from it. Every earlier entry here is about
+  a check written from the same assumption as the thing it checks; this is about
+  a check written from the same VOCABULARY. When adding a clause to a shared
+  voice, the question is not only "is this sentence true here" but "what KIND of
+  thing is it asserting, and is that kind on the list".
+
+  ---------------------------------------------------------------------------
+  THE AXIS QUESTION, WHICH IS NOW A STANDING ONE
+  ---------------------------------------------------------------------------
+
+  **Two axes have been named here, and neither was named on purpose.** Both
+  arrived the same way: a defect shipped, somebody looked at the sentence, and
+  the KIND of assertion it was making turned out not to be on any list.
+
+  | axis | the clause asserts | named when | found by |
+  |---|---|---|---|
+  | ACTION | that something can be done from this page | Gate 1's advisories offered three decisions that did not exist | reading the published story's page |
+  | POSITION | where the story stands relative to this gate, and whether its status is the end | Gate 4 called `draft` terminal and put Gate 4 behind a story that had not been outlined | a hunt for an unrelated predicate |
+
+  **A third is likely, and nothing currently looks for one.** That is the honest
+  state: `GateVoice` holds exactly the two axes that have already gone wrong, and
+  the mechanism has no opinion about a kind of claim nobody has been bitten by
+  yet. Every guard in this file names the instance it was written for, so this is
+  consistent — but consistency is not coverage, and the pattern so far is that
+  the axis is invisible until a page is wrong on it.
+
+  **The one candidate already in evidence** — recorded because it turned up in
+  the same sentence as the position defect, not because it was hunted for — is a
+  claim about a FIGURE: that a number or a date on the page is a measurement of
+  the thing it is labelled as. "Published on \<date\>" was two defects, and only
+  the first was position. The second was that `updated_at` was never a
+  publication date — on story 9 it resolved to the second at which a STYLE
+  PREVIEW was billed, a day after the sheet was approved. No capability makes
+  that sentence true or false, so no capability could fix it: the sentence lost
+  its figure instead. See "THE APP HAS NO PUBLICATION EVENT" under Conventions.
+
+  **What NOT to do about this.** Not a speculative third capability — a guard
+  written before its instance is the documented-guard shape, and this file's
+  standing rule is that a check must be confirmed to fire against a real
+  failure. What is worth doing is asking the question when a clause is added or
+  a page is reviewed: **what kind of assertion is this, and does anything check
+  that kind?** A sentence whose kind has no answer is not necessarily wrong. It
+  is unchecked, and unchecked has read as covered twice now.
+
+  ---------------------------------------------------------------------------
+  THE SAME QUESTION ONE LAYER DOWN: **A SHARED FIXTURE HAS AN AXIS TOO, AND
+  NOTHING WATCHES IT**
+  ---------------------------------------------------------------------------
+
+  `GateLayoutContractTest::pageFixtureFor()` has now silently voided a contract
+  **twice, for the same reason**, and neither was found on purpose:
+
+  | when | the field | what went unchecked |
+  |---|---|---|
+  | the empty-track pass | `escalation_beat` was null on every act, so the spine check reported a PROBLEM, so all three advisory groups had content | the empty-track assertion had no void to find and passed its own drill |
+  | the sizing pass | `sized_against_wpm` was never set, so every non-writable status rendered Gate 1's UNKNOWN branch | the claim check could not see the sizing clause at all, on four gates × eleven statuses |
+
+  Both fields were added to the fixture only after the assertion built on them
+  had already been shown to be vacuous. **The fixture is a shared input with a
+  dimension per story field, and every assertion that reads a page inherits
+  whichever dimensions that fixture happens to exercise.** That is the ACTION /
+  POSITION finding one layer down: there the mechanism covered the kinds of
+  claim somebody had thought of, here the fixture covers the states somebody
+  has thought of, and in both cases what is not on the list is not wrong — it
+  is unwatched, and unwatched reads as covered.
+
+  It is a worse position than the axis question in one respect. A clause at
+  least announces itself: it is a sentence somebody wrote, on a page somebody
+  can read. A fixture's unexercised dimension announces nothing at all — the
+  contract runs, prints 44 green states, and the state it never built is not in
+  the output to be missing from.
+
+  **Not a tool, and deliberately not.** "Assert the fixture varies every column"
+  is unbounded and mostly meaningless — `premise` and `title` have no bearing on
+  any layout. What can be said precisely, and is worth saying when a surface is
+  added: **name the story field the new surface branches on, and check whether
+  `pageFixtureFor()` produces both sides of that branch.** Two entries in this
+  table would have been caught by asking exactly that, in the change that
+  introduced them, in about a minute.
+
+  The one mechanical thing that already exists is worth keeping in view:
+  `GuardsGoRedTest` asserts a PROPERTY of the fixture — that it leaves the
+  spine-problems group empty while the other two have findings — so that a
+  factory default cannot quietly make the row contract vacuous again. That is
+  the pattern to repeat per branch, not a sweep over every column.
+
+- **NO TOOL HERE HAD EVER BEEN RUN AGAINST A KNOWN ANSWER, and that is the
+  pattern behind three defects in three turns.** This entry outranks the three
+  it generalises.
+
+  | found | defect | found how |
+  |---|---|---|
+  | turn 1 | `strpos` returns false, false coerces to 0, so every ordering assertion passed for a DELETED element | drilling a different assertion |
+  | turn 2 | the only rule lifting a global measure cap was scoped to a container the new layout removes | looking at a screenshot |
+  | turn 3 | `theme-audit --against` resolved the baseline in LIGHT and the sheet in DARK: 159 of 343 rules MOVED comparing a file to ITSELF | establishing a baseline for something else |
+
+  None was found on purpose. The common factor is not carelessness: every one of
+  these tools was only ever pointed at the LIVE TREE, where any output looks
+  plausible, and **a tool that is confidently wrong is indistinguishable from a
+  tool that is right.** The audits were trusted because they produced tidy
+  output, which is the same reasoning this file rejects everywhere else.
+
+  So each tool now has a case whose correct output is known in advance, and
+  `tests/Feature/ToolsAnswerKnownCasesTest.php` runs them in the suite rather
+  than leaving them to memory:
+
+  | tool | known-answer case |
+  |---|---|
+  | `class-audit` | a fixture with one class no rule names (UNDEFINED 1), one reachable only under an ancestor (CONTEXT 1), and one unscoped rule that must NOT be called scoped |
+  | `blade-php-scan` | a literal `@endphp` in a comment (UNPAIRED) and an inline `@php(...)` that swallows to a later closer (SWALLOWED); a clean file beside them reports nothing |
+  | `scoped-override-audit` | a sheet with one conditional override and one scoped rule repeating the same value, which is not one |
+  | `theme-audit --against` | a sheet against a COPY OF ITSELF must report every rule identical — and one mistyped token must still be reported, or the fix is a differ that reports nothing ever |
+
+  Writing the fixtures found two more defects the same hour. `class-audit` and
+  `scoped-override-audit` both read the stylesheet whole, so the first rule
+  after the `<style>` tag parsed as `<style> .thing` — ancestor-scoped — and was
+  answered CONTEXT, the BENIGN verdict, for a rule that is not scoped at all.
+  Latent on the live sheet only because its first rule is `:root`, which carries
+  no class. Both read the `<style>` body now.
+
+  **The general rule: a tool that cannot be pointed at a known input cannot be
+  tested.** All four take a path argument for that reason. And for any differ
+  specifically, the first test to write is the identity case — compare the input
+  against itself and require zero.
+
+- **AND NO ASSERTION HAD EITHER. Same rule, and it had cost more.** The entry
+  above generalises three defects in the tools; this is the same generalisation
+  one level up, and it should be read as part of it rather than as a separate
+  lesson. **Eight self-defeating checks so far, and not one was found on
+  purpose. Three of the eight were found only because something ADJACENT was
+  being changed** — which is the part that should be uncomfortable, because
+  there is no reason to think the adjacent change was the last one.
+
+  | # | the check | why it was green about nothing |
+  |---|---|---|
+  | 1 | every ordering assertion in `ScenesGateLayoutTest` | `strpos` returns false, false coerces to 0, so it passed for an element DELETED from the page |
+  | 2 | the decisions-precede-advisories ordering test | built its story at `scenes_drafted`, the one state where all three panels have content |
+  | 3 | `theme-audit --against` | resolved the baseline in light and the sheet in dark: 159 of 343 rules "MOVED" against itself |
+  | 4 | the empty-track assertion | its own fixture gave every act a null `escalation_beat`, so the spine check reported a PROBLEM, so all three groups had content and there was no void to find |
+  | 5 | `blade-php-scan`'s component-tag rule | rule AND fixture written from one wrong belief about the pass order, so they agreed with each other and both missed the CSS comment that took the console down |
+  | 6 | `claimsNotEntitledTo` | grepped raw HTML, so a fragment the template wrapped across a line — "which is / terminal" — was invisible to it |
+  | 7 | the raw-constant anti-drift grep | required a SINGLE QUOTE, so reintroducing the defect as `config("render…")` walked straight past a guard written to catch exactly it |
+  | 8 | `GateLayoutContractTest`'s claim check, on Gate 1's sizing clause | its fixture never set `sized_against_wpm`, so every non-writable status rendered the panel's UNKNOWN branch, and the clause could only appear in a state the fixture never produced |
+
+  Numbers 4 and 7 are the sharpest, and they are the same story twice: both were
+  written to catch a defect that was live at the time, both were drilled
+  deliberately, and **both passed the drill**. In 4 the fixture removed the
+  condition the detector measures; in 7 the drill reintroduced the defect in a
+  spelling the detector's regex did not cover. The detector was right in both
+  cases. What it was handed could not contain the failure.
+
+  So the detectors are pure functions in `Tests\Support\PageProbe` — not private
+  methods on the test that uses them, for two reasons. Two of them had been
+  copied verbatim into two files, which is the two-copies shape this file has
+  paid for three times. And **a detector living inside its own test cannot be
+  pointed at a known-bad input**, which is exactly what made all four of the
+  above possible.
+
+  `tests/Feature/GuardsGoRedTest.php` is `ToolsAnswerKnownCasesTest` for
+  assertions. Every case is a PAIR:
+
+  - **RED** — a known-bad input the guard must report.
+  - **GREEN** — a known-good input, as close to the bad one as possible, that it
+    must not.
+
+  The pairing is not ceremony. A rule that reports everything satisfies RED, and
+  blade-php-scan's first component-tag rule satisfied RED against the wrong
+  comment entirely. The nastiest GREEN case here is that the SETTLED phrasing of
+  every `GateVoice` clause must not trip the claim check — "None of these blocked
+  approval." is one character from containing "block approval", and a guard that
+  fires on its own fix can only be made green by weakening it.
+
+  And the fixture gets its own cases: `pageFixtureFor()` is asserted, at every
+  status, to leave the spine-problems group EMPTY while the other two have
+  findings. That is defect 4 made checkable — change a factory default and it
+  goes red beside an explanation, rather than quietly making the contract
+  vacuous.
+
+  **The standing rule, for both files: a guard that cannot be shown to go red is
+  indistinguishable from a guard that passed.** Adding a guard means adding its
+  red/green pair in the same change, not remembering to drill it by hand.
+
+  **A FIFTH, and it is the worst of them: the fixture PASSED and proved the
+  wrong question.** The four above are checks that failed to fire. This one
+  fired, went green, and was wrong anyway.
+
+  `blade-php-scan`'s `COMPILED-IN-COMMENT` rule was written the same hour a
+  component tag in a comment took the console down. It looked for component tags
+  inside BLADE comments. It shipped **with a known-answer fixture, and the
+  fixture passed** — because the fixture was written from the same wrong belief
+  as the rule: both assumed the component-tag compiler runs before comments are
+  stripped. It does not. `compileComments` runs one step BEFORE
+  `compileComponentTags`, so a tag in a blade comment is inert, and what
+  actually broke the console was a CSS comment — which Blade cannot see at all.
+
+  So the rule flagged what cannot break and missed what did, and the fixture
+  agreed with it at every step. **A known answer is only known if the answer was
+  established independently of the thing it is checking.** Mine was not: I wrote
+  the rule and the fixture from one belief and never compiled a case to see.
+
+  It surfaced only because the pass order was asked for as a table, which forced
+  compiling both cases and looking. Nothing in the suite could have found it —
+  every test was green, on both sides.
+
+  Two things follow.
+
+  1. **For any rule about a compiler, the fixture is not the evidence — the
+     compiler is.** `BladeCompiler::compileString()` was run over both comment
+     shapes and the output inspected; only then was the rule rewritten. The
+     fixture now carries the NEGATIVE case beside the positive one, so a rule
+     written backwards again fails rather than agreeing with itself.
+  2. **The fixture then immediately earned its place.** Widening the rule to
+     blade DIRECTIVES in foreign comments — after an `@if` written in prose,
+     inside the CSS comment explaining the first incident, took the console down
+     a second time — went in with a literal backspace byte (0x08) where `\b` was
+     intended. The regex was valid, the tool ran clean, and it silently matched
+     nothing. The known-answer count went from 2 to 1 and named it in one run.
+     A live tree would have looked exactly the same.
+
+  And the stylesheet had been carrying an unescaped `@class` in a CSS comment —
+  inside the paragraph that documents this very hazard. The lesson was written
+  down and had no tool behind it; now it has one.
+
+  **SIX, SEVEN AND EIGHT ARE ONE SHAPE AT THREE SIZES: THE DETECTOR WAS RIGHT
+  AND THE INPUT IT WAS GIVEN COULD NOT CONTAIN THE DEFECT.** Worth grouping,
+  because it is the same sentence as number 4 and as `queueDepthIs()`, and it
+  has now cost three separate guards.
+
+  | # | what the detector could not see | how much of the defect it hid |
+  |---|---|---|
+  | 6 | a line break inside the fragment | the ONE fragment it most needed to find: "which is terminal", split by the template across two lines |
+  | 7 | a double quote instead of a single one | any reintroduction written the other way, which is half of them |
+  | 8 | a state the fixture never built | Gate 1's whole sizing panel, on four gates × eleven statuses |
+
+  **Number 7 is the one to remember, because the drill was run and it PASSED.**
+  The rule here is that a new guard is confirmed against a real instance of the
+  failure — that was done, the defect was reintroduced, and the guard stayed
+  green, because the reintroduction used `config("render…")` and the regex
+  demanded `config('render…')`. **A drill is a claim about the drill until it
+  reproduces the shipped shape**, and a drill written by the same hand as the
+  guard inherits the guard's assumptions exactly as a test written by the
+  designer inherits the layout's.
+
+  It was found by running the drill twice with different quote characters, and
+  only because the sizing work happened to touch both. Number 8 came out of the
+  same session by the same accident: drilling a DIFFERENT test — Gate 1's own
+  sizing pair — showed the travelling contract staying green about a clause it
+  was supposed to cover.
+
+  So the practice, which is cheap and has now paid three times:
+
+  1. **Drill a text-matching guard with the input written the OTHER way.**
+     Other quote style, wrapped across a line, different whitespace. If the
+     guard is meant to catch a class of thing, the drill has to sample the
+     class rather than the one member the author had in mind.
+  2. **When a drill passes, suspect the drill first.** Two of this session's
+     five drills passed on the first attempt and both times the drill was wrong
+     — reverting only the branch that renders when the claim is true, and
+     reverting a condition while leaving the voice that guards it in place.
+  3. **Ask what states the shared fixture can express**, and add the one the new
+     surface needs, in the same change. `pageFixtureFor()` now carries a
+     `sized_against_wpm`, beside its `escalation_beat` — which is there for
+     exactly the same reason, from exactly the same failure, two passes earlier.
+
+
+- **`theme-audit --against` was comparing the baseline in LIGHT against the
+  current sheet in DARK, and had been since it was written.** It read the
+  baseline's tokens from `:root` — which is the light palette — and resolved the
+  live sheet with `$dark`. Every rule mentioning a themed token therefore
+  differed by construction.
+
+  Found by the only check that can find it: diffing the stylesheet against a
+  copy of ITSELF, which reported **159 of 343 rules as MOVED**. A comparison
+  tool that finds 159 differences between a file and itself is not merely
+  broken — this file leans on it to catch "one mistyped hex in two hundred token
+  lines" during the palette split, and a real mistyped hex would have been one
+  line among a hundred and fifty-nine false ones. Indistinguishable from not
+  being reported.
+
+  Fixed by resolving the baseline with the baseline's own dark tokens. The
+  identity case is now 343/343 identical, and a deliberately mistyped
+  `--d-panel` names exactly the eighteen rules that use it.
+
+  **The palette-split period is covered retroactively, and it was clean.** The
+  pre-split stylesheet survives in git at `a3d64c7` — one palette, `--bg:
+  #0e0f13` — and the post-split one at `ffb0f36`. Run with the fix, the split
+  itself reports **5 MOVED, 120 identical, 10 GONE, 75 NEW**, and every one of
+  the five is a LAYOUT change: `header.top` padding, `main` width, `footer`
+  padding, a `th` sticky offset, an added `box-shadow: none`. Every hex in them
+  is unchanged — `#282d3a`, `#0e0f13`, `#7c8598`, `#171a22`, `#e0a33a`. Not one
+  colour drifted.
+
+  So the claim this file made about the split turns out to be TRUE. It was just
+  never evidence: the check that was cited for it could not have shown it either
+  way. A correct conclusion reached from an instrument that does not work is
+  still a guess, and it is worth separating the two — the split was fine, and
+  nobody knew that until now.
+
+  **The general test for any differ: compare the input against itself and
+  require zero.** It costs one command and it is the only assertion that cannot
+  be satisfied by a tool that is confidently wrong.
+
+- **Container-scoped rules, swept rather than fixed one at a time.**
+  `tools/scoped-override-audit.php` asks the question class-audit cannot: not
+  "can this rule reach this element" but **"does the element still get this
+  declaration when the container is gone"**. It reports CONDITIONAL OVERRIDES —
+  a property an element sets for itself AND is given a different value for
+  inside some ancestor, so that deleting the ancestor silently reverts it.
+
+  The sweep found 14. Thirteen are benign: the element cannot outlive its
+  container (`.rail` inside `.dash`, `.small` inside `.band`), or both values
+  are deliberate and the difference is cosmetic (`.actions` gap, `.why`
+  margin). One was live and load-bearing — `.still` is 136x76 by default and
+  92x52 only inside `.scenetable`, while the grid track holding it is 92px, so
+  renaming that wrapper would have left every still overflowing its own column.
+  It is `.still.dense` now, a modifier the element carries.
+
+  **Worth teaching the tool rather than leaving as a documented sweep**, and it
+  is: the question is mechanical, the answer is a short reviewable list, and it
+  found a second live instance on its first run. Two precision passes were
+  needed before it was trustworthy — a base rule only speaks for a scoped rule
+  when its subject compound is a SUBSET (`.panel.money` says nothing about
+  `.card .row-item.money`) and when the tags agree (`tr.warnfill` says nothing
+  about a `div`). Both were producing findings between elements that can never
+  be the same node, and a tool that cries wolf is one nobody runs.
+
+  Its output is a JUDGEMENT list, not a defect list. Read it; do not count it.
+
+- **A rule that lifts a global cap must live on the element, never under a
+  container the layout may remove.** `.alert` caps its measure at 96ch on
+  purpose. The only thing lifting it was `.gatecols .alert` — scoped to the
+  decision row, which the quiet layout deletes. So on a story past Gate 2 the
+  locked banner, the failure alert and every advisory silently snapped back to
+  96ch and rendered at about a third of a 1770px viewport, beside a strip and a
+  scene table that carry no cap and stayed full width.
+
+  Nothing failed. The override did exactly what it said; it simply had no
+  subject any more. `.alert.wide` is the same declaration written as an element
+  modifier, so it survives any arrangement, and the advisory list fills the
+  width as a grid rather than as one long ribbon — which keeps the reading
+  measure the cap existed to protect in the first place.
+
+  **The general form: when a layout can delete a container, every rule scoped to
+  that container is conditional on it.** Worth grepping for the next time a
+  wrapper becomes optional.
+
+- **An ordering assertion passes when the earlier element is MISSING, and
+  `assertLessThan` will not tell you.** `strpos` returns `false` for an absent
+  needle, PHP coerces `false` to `0` in a numeric comparison, and
+  `assertLessThan($later, $earlier)` is therefore vacuously true for an element
+  that has been deleted from the page.
+
+  Every ordering assertion in `ScenesGateLayoutTest` was written that way, and
+  the drill is what found it: deleting the failure alert from the quiet layout
+  left `test_the_failure_outranks_the_locked_banner` GREEN. Absence read as
+  agreement, inside the test written to prevent it — which is why the standing
+  rule is to confirm a new guard fires against a real instance rather than to
+  confirm it passes.
+
+  `positionOf()` asserts the string is present and then returns its offset, so
+  the vacuous case cannot be written. Prefer it to `strpos` in any assertion
+  about document order.
+
+- **A story's stored PROMPTS can carry a superseded art style, and nothing
+  refuses it.** Gate 2 now reports this — `ScenesGate::styleBlock()` reads the
+  block that is byte-identical across every prompt in the story and compares it
+  against config — but a report is all it is. There is no guard.
+
+  **It is NOT the reference-sheet staleness item, which is closed.**
+  `Character::referenceStyleState()` asks whether a character's reference SHEET
+  was drawn in the current style; this asks whether the scene PROMPTS carry it.
+  The remedies are disjoint — regenerating a sheet does nothing to the stored
+  prompts, and re-drafting the scenes does not touch the sheets — so neither
+  check can cover the other, and a green sheet check says nothing at all about
+  the prompts.
+
+  Measured on live data: rent-will 0 of 168 prompts carry the configured style,
+  my-younger-brother 0 of 186, my-wife 270 of 270. `GenerateSceneImage` sends
+  `image_prompt` verbatim and nothing re-applies the style at dispatch, so a
+  story drafted before a retune buys stills in the old look for ever.
+
+  The asymmetry is the part to fix or to accept deliberately: a stale SHEET is
+  a refusal at asset dispatch, and a stale PROMPT is a sentence on a page that
+  an operator can scroll past on the way to the approve button. Left as a report
+  because the remedy is free — re-drafting the scenes costs text calls, not
+  assets — and because refusing here would block two shipped stories from ever
+  regenerating a failed still. But it is the documented-guard shape pointing the
+  other way, and it should not be read as covered by the sheet check.
+
 - **The prompt bans build; nothing enforces it.** Found auditing the rejection
   block against the prompt's ban list. Every other rule in that list has a
   `CharacterTextGuard` category behind it, so a violation is refused and
@@ -1368,17 +2422,213 @@ Still open, none blocking, all findable here rather than one gate at a time:
   there cancels an in-flight batch. Prefer generating the hint from config over
   retyping it a third time.
 
-- **A story does not record the wpm its script was sized against.** Found
-  immediately after locale-keying the pace profile. `expectedWpm()` is read live
-  from config when the guard runs, so it answers "what do we believe now", while
-  the guard needs "what was this script written to". The fix is a
-  `stories.sized_against_wpm` column written at outline time and frozen, like
-  `locale_profile` and for the same reason.
-  Less urgent than it looked, now that en-CN is measured: the two locales are
-  1.26% apart, so the gap between "what we believe now" and "what this script
-  was sized to" is currently smaller than the pace tolerance by an order of
-  magnitude. It becomes real the first time a profile moves by more than a few
-  percent, and it should be built before that rather than after.
+- **The word target now comes from the measured rate. It was 18% short on every
+  script this pipeline had ever written, and correcting it took three passes in
+  a fixed order because only the last one is irreversible.**
+
+  `targetWordsPerAct()` read `render.narration.words_per_minute` — the FALLBACK
+  constant, 160, the one whose own docblock says it is "no longer the answer".
+  A 35-minute midpoint asked 5,600 words; that narrator reads 197 wpm, so the
+  script ran 28.4 minutes before a word of it existed.
+
+  | | target | per act | implied runtime |
+  |---|---|---|---|
+  | before, en-US single | 5,600 | 800 × 7 | **28.4 min — under the floor** |
+  | after, en-US single | 6,895 | 985 × 7 | 35.0 min |
+  | after, en-CN single | 6,965 | 995 × 7 | 35.0 min |
+
+  **The order was the whole design.** Column, backfill, then target: steps one
+  and two are recoverable and step three is not. Moving the target first would
+  have left every earlier story judged against a rate it was never written to,
+  with nothing in the record able to say so.
+
+  Four things it deliberately did NOT do, three of them scoped in advance and
+  one found by a test:
+
+  1. **`NarrationPace` is not pointed at `sized_against_wpm`.** Its question is
+     whether narration reads at the rate we believe; story 9 was sized at 160
+     and its narrator reads 197, so a guard comparing audio against the frozen
+     figure would find +23% on a 12% tolerance and cancel every batch on a
+     healthy story. The column is provenance for judging a SCRIPT, never a
+     target for judging AUDIO.
+  2. **Nothing re-sizes or regenerates an existing story.** `wpmFor()` reads the
+     frozen figure first, so story 9 keeps its 5,600-word budget for ever.
+  3. **The other three readers moved with it**, into `ScriptSizing` or
+     `NarrationPace::bestKnownWpm()`. A test names the three files still allowed
+     to read the raw constant and fails on a fourth — and it had to be drilled
+     twice, because the first version required a single quote and a
+     `config("render…")` reintroduction walked straight past it. Same shape as
+     the line break that hid a claim fragment from `claimsNotEntitledTo`.
+  4. **THE PER-VOICE FIGURE ALONE WOULD NOT HAVE FIXED ANYTHING.**
+     `providers.default_voice_id` is deliberately null until a channel's
+     narrator is locked, so a story created through the console has no
+     `voice_id` at act-script time, and `expectedWpm(null, 'en-US')` returns the
+     fallback 160. Pointing the target at the per-voice figure would have left
+     every new story sized exactly as short as before while the code read as
+     corrected — absence reading as agreement, inside the change written to end
+     it. `NarrationPace::bestKnownWpm()` asks the locale when it cannot ask the
+     voice, and uses only real measurements to answer.
+
+  **And the first version reintroduced the drift it was removing, in the same
+  change.** Sizing asked `bestKnownWpm` while the runtime estimate still asked
+  `expectedWpm`, so a story carrying an unmeasured voice id was sized at 197 and
+  estimated at 160 — two beliefs about one narration. `narrator-us-01` is not
+  hypothetical: it is the id the fake invented, and every story from 3 to 12
+  carries it. **The grep guard was green throughout** — every caller really had
+  stopped reading the constant — because "one reader of the constant" is a
+  necessary condition and not a sufficient one. What caught it was an assertion
+  that a script written to its own budget lands inside its own window, which is
+  the sufficient version and is now a test of its own.
+
+  **The band moved; the target did not move to match a result.** Both are edits
+  to a number after a disagreement, and this file's rule separates them: never
+  move a target to match a RESULT, always follow a corrected INPUT. 160 was
+  never measured against anything; 197 is 186 real scenes. The word band in the
+  format section follows the rate, which is what that section says to do.
+
+  ---------------------------------------------------------------------------
+  **CORRECTION, MEASURED AFTERWARDS: THIS DID NOT FIX THE RUNTIME PROBLEM. IT
+  MOVED IT FROM THE FLOOR TO THE CEILING.**
+  ---------------------------------------------------------------------------
+
+  The entry above is right about the input and wrong about the outcome, and the
+  wrongness is the familiar shape: the arithmetic was checked and the thing the
+  arithmetic is a proxy FOR was not. 6,895 words at 197 wpm is 35.0 minutes —
+  true, and it assumes the writer produces 6,895 words. It does not.
+
+  Measured on one act, en-US, current code, at the corrected 985-word target:
+  **1,123 words. +14.0%.** Extrapolated across seven acts that is 7,861 words
+  and **39.9 minutes against a 30-40 window** — inside it by six seconds of
+  arithmetic, at the ceiling rather than at the midpoint the target was designed
+  for. One act overshooting in a real story puts it over.
+
+  | | words | runtime |
+  |---|---|---|
+  | before (c), asked 5,600 | ~5,780 written | 29.4 min — **under the floor** |
+  | after (c), asked 6,895 | ~7,861 written | 39.9 min — **at the ceiling** |
+  | what (c) was designed to produce | 6,895 | 35.0 min |
+
+  **Why the correction was still right.** The old target was wrong about the
+  narrator's reading rate; that was a defect in an input and correcting it was
+  not optional. What the correction assumed, silently, is that **the word target
+  steers the writer** — and it barely does. Across five story-level
+  observations spanning targets 800 to 1,120, the fitted slope is **+0.30**:
+  asking for a hundred more words gets about thirty. Story 21 was asked for 800
+  and wrote 1,152; the probe was asked for 985 and wrote 1,123. **The target is
+  advisory.**
+
+  So (c) closed a real defect and left the runtime problem in place, one side
+  over. That is worth writing down rather than letting the entry above stand as
+  a fix: **an input corrected on evidence is not the same thing as an outcome
+  corrected**, and this file has now made that mistake in the direction where it
+  is hardest to see — everything downstream of the change is more correct than
+  it was, and the number the operator actually cares about is still outside its
+  band.
+
+  The one thing the correction should NOT prompt is moving the target again to
+  compensate. Solving `written = f(target)` for the target somebody wants is
+  calibration against a five-point fit with one unconfounded observation in it,
+  and it would put a number in the prompt that the operator knows is false. Left
+  open deliberately; see the generation-variance item.
+
+- **Generation variance is a separate defect and correcting the constant did
+  not touch it. Still open.** Story 21 overshot its word target by 44% — 8,065 words asked
+  as 5,600 — and that is the only reason a story sized 18% short shipped 36
+  seconds OVER the ceiling. Two errors in opposite directions, neither of them
+  measured, landing inside the window by cancellation.
+
+  Worth stating plainly because the temptation once the constant is fixed is to
+  read story 21 as evidence the pipeline aims high. It does not: nothing bounds
+  what the act writer returns against what it was asked for. A 44% overshoot on
+  a corrected target would be ~50 minutes, and a 44% undershoot on the current
+  one would be 16. The two items are independent — fix the target so the aim is
+  right, then bound the spread so the shot lands near it — and fixing only the
+  first would move a systematic error into a random one without narrowing it.
+  **Nothing here is a case for adjusting the target to match what the writer
+  actually produced**, which is the false-success pattern this file names in its
+  own words at story 9: never move a target to match a result.
+
+- **`stories.sized_against_wpm` EXISTS, IS BACKFILLED, AND THE TARGET HAS SINCE
+  MOVED — in that order, which was the whole design.** Steps one and two are
+  recoverable and step three is not, so the column and the backfill went in on
+  their own, changing nothing about what any story was sized against, and the
+  target moved only once every existing script had its own rate on the record.
+
+  The old entry filed this as low urgency on the argument that en-US and en-CN
+  are 1.26% apart, so "what we believe now" and "what this script was sized to"
+  could not differ by more than the pace tolerance. **That argument measured the
+  wrong pair.** It compared two MEASURED profiles against each other; the gap
+  that matters is between the measured figure and the FALLBACK the word target
+  is actually written against, which is 160 against 197 — **18.8%**, on both
+  shipped stories, right now.
+
+  What is in place:
+
+  - The column is nullable and **NULL means unknown, never 160**. A default
+    would make "nobody recorded this" and "this was sized at 160" the same
+    value, which is absence reading as agreement — row 3 of this file's own
+    false-success table. It is also the CORRECT answer for `sample-story`,
+    whose acts were imported from a Phase 0 fixture and were sized against
+    nothing at all.
+  - `GenerateActScripts::sizedAgainstWpm()` freezes it on first use and never
+    re-reads config afterwards, for the reason `locale_profile` is frozen. The
+    freeze earns its place on a PARTIAL re-run: `--only=4` re-enters
+    `writeActs()` on a story whose other acts were written before some config
+    edit, and re-reading there would size act 4 to a different budget from acts
+    1-3 and leave no trace of it. Drilled by moving the constant between two
+    runs and asserting the story does not follow.
+  - **The backfill is five stories, not the two that were noticed.** Stories 8,
+    12 and 20 carry generated act scripts as well as 9 and 21, and a story left
+    null when the target moves is precisely the unreconstructable case the
+    column exists to prevent — so writing the backfill as a pair of ids would
+    have fixed the two somebody looked at and left three behind the same defect.
+    The predicate is the fact instead: a story has a generated script, therefore
+    it was sized at 160.
+  - **160 is checked, not remembered.** `env('NARRATION_WPM', 160)` reads 160 in
+    every commit that has ever touched `config/render.php`, there is no override
+    in `.env` or `.env.example`, and it resolves to 160 today. So every
+    generated script in this database was written to a 5,600-word budget by
+    construction.
+
+  **The three traps that were named before the target moved, and how each
+  turned out.** They are kept because two of them were real and one was not the
+  whole story — which is worth as much as the fixes.
+
+  1. **"Do not point `NarrationPace` at the new column."** Correct, and honoured.
+     Story 9 was sized at 160 and its narrator reads 197, so a guard comparing
+     audio against the frozen figure would find +23% on a 12% tolerance and
+     cancel every batch on a healthy story. `expectedWpm()` is untouched.
+  2. **"The other three readers must move with it."** Correct, and they did —
+     into `ScriptSizing` or `NarrationPace::bestKnownWpm()`. A test names the
+     three files still allowed to read the raw constant and fails on a fourth.
+     It caught nothing at first because it required a single quote; a
+     `config("render…")` reintroduction walked past it until the drill was run
+     with both quote characters.
+  3. **"The act count follows the word budget."** True, and it needed no change:
+     `DEFAULT_ACTS_SINGLE` is already 7 for the reversal phase, so the corrected
+     budget and the five-movement arc wanted the same shape.
+
+  **A fourth was not on the list and was the one that mattered.** Pointing the
+  target at the per-voice measured figure would have fixed nothing:
+  `providers.default_voice_id` is deliberately null, so a story created through
+  the console has no voice at act-script time and `expectedWpm(null, 'en-US')`
+  answers the fallback 160. The change would have read as applied and left every
+  new story exactly as short. `bestKnownWpm()` asks the locale when it cannot ask
+  the voice.
+
+  **And a fifth was introduced by the fix and caught by a test.** Sizing asked
+  `bestKnownWpm` while the runtime estimate still asked `expectedWpm`, so a story
+  carrying an unmeasured voice id — `narrator-us-01`, which every story from 3 to
+  12 carries — was sized at 197 and estimated at 160. The grep guard stayed green
+  the whole time, correctly: one reader of the constant is a NECESSARY condition
+  and not a sufficient one. What found it was asserting that a script written to
+  its own budget lands inside its own window.
+
+  Nothing is surfaced on any page. That was deliberate while every story read
+  160 and is now a real gap: story 9 is frozen at 160, a story written today
+  gets 197, and an operator comparing two word targets has nothing on screen
+  that explains the difference. Worth showing at Gate 1, beside the outline the
+  budget produced.
 
 - **The dispatch preflight's notes do not reach the surface built for deciding
   to spend.** `assets:generate --estimate` prints the itemised bill and exits
@@ -1493,7 +2743,7 @@ supposed to distrust* — and the answer is not implied by the check being right
 
 ### False success is a defect class, not a run of bad luck
 
-Eight times now the app has reported success while something was silently wrong.
+Eleven times now the app has reported success while something was silently wrong.
 Note where the fifth and seventh live: not in the pipeline, but on the PAGE the
 operator watches instead of the pipeline.
 
@@ -1507,6 +2757,9 @@ operator watches instead of the pipeline.
 | 6 | Story 21's render page: outline ✓, act scripts ✓, nothing after | Three terminal cast-extraction failures and $0.35 of billed calls, recorded nowhere — the stage had no `render_jobs` row to fail |
 | 7 | Story 21's asset run in flight: 118 stills done, nothing failed, no stale heartbeat | The `assets` worker had exited at `--max-time` an hour earlier. 152 scenes sat in Redis with nothing listening, and the page had stopped refreshing itself |
 | 8 | Story 21's ledger: narration $2.12, reconciling to the vendor's own counter | The credits reconciled; the DOLLARS were half. One multiplier applied twice, in a column nothing external could check |
+| 9 | `/renders`: three workers up, none stale, footer saying "nothing running — this page is not refreshing itself" | The panel was frozen at whenever the page loaded. Two of the pids no longer existed; the page stops refreshing exactly when workers get restarted |
+| 10 | Worker health: `assets` ABSENT, nothing listening | The worker was mid-job. `Looping` is silent during a job and `JobProcessing` fires once before it, so any job longer than the 300s TTL aged its own worker out — a 40-minute mux, or 270 image calls at ~53s each |
+| 11 | The self-restart's stated bound: "never fires while the queue holds work, so a batch cannot be split across two code versions" | The bound was evaluated per worker; the stop is a machine-wide broadcast. An idle worker on an empty queue stood a busy one down and split a 10-job batch across two code markers. The busy worker's own guard was correct and never fired — a sibling's did |
 
 The individual bugs are all different and every fix for them was correct. The
 constant is the reporting, and it has one mechanism behind it:
@@ -1582,6 +2835,35 @@ measured p99s in `docs/queue-workers.md` rather than rounded, and it is
 re-derivable when the scene count changes. But sizing only buys margin — the
 worker still exits eventually, and the actual fix is that something restarts it.
 See the NSSM note below.
+
+**A ninth, and it is the first one found in a REASSURANCE rather than in a
+number.** `/renders` drops its meta refresh whenever nothing is running, and
+its footer says so: *"Nothing running — this page is not refreshing itself."*
+Every word is true. It reads as the all-clear and it is a warning — that
+everything above it, including the worker-health panel, is frozen at whenever
+the page last loaded.
+
+The two halves compound. The page stops refreshing precisely when the queues
+are idle, which is precisely when workers get restarted; so the state most
+likely to go stale is the one the page is guaranteed not to notice. An
+operator comparing that panel against `Get-CimInstance` finds pids that no
+longer exist and concludes the registry is holding dead entries. It is not —
+entries expire on `seen_at` correctly, and there is a test that fabricates a
+4h33m-old entry and asserts the panel reads `absent`. The registry was right;
+the PAGE was old, and nothing on it said so.
+
+Same shape as an unreadable quota reading as fine: the absence of a fresh
+reading presented as a fresh reading. The fix is the same too — say what you
+do not know. Every reading now carries `read_at`, the browser ages it, and past
+60 seconds the stamp goes amber and says the page has stopped refreshing.
+Only the clock in the browser can answer this: a rendered page cannot know how
+long it has been open, so the server must hand over the timestamp rather than a
+verdict.
+
+**And the panel now prints the PIDs.** Every other number on it comes from our
+own bookkeeping; a pid is the one fact an operator can put beside the operating
+system and see agree or disagree. Rule 3 — keep one number that we did not
+compute — applied to a health panel rather than to a ledger.
 
 Three rules follow, and they are worth more than any individual guard:
 

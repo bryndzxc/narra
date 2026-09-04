@@ -93,6 +93,21 @@ class Index extends Component
      */
     private function needsAttention(NextAction $next): bool
     {
+        /*
+         * A fixture is never asking for anything.
+         *
+         * The index KEEPS them — this is the list of what exists, and hiding a
+         * story from the place you go to find stories would be a worse trade
+         * than any noise it causes. But the "N on this page need you" count and
+         * the row marking are the same question the dashboard asks, and a count
+         * that can never reach zero is a count nobody reads.
+         *
+         * Its row still says what it is: see the `fixture` badge in the blade.
+         */
+        if ($next->story->isFixture()) {
+            return false;
+        }
+
         if ($next->waitingOn === NextAction::OPERATOR) {
             return true;
         }

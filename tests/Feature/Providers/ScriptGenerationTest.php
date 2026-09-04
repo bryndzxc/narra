@@ -23,6 +23,7 @@ use App\Services\Fake\FakeScriptWriter;
 use App\Services\Fake\FakeSpeechSynthesizer;
 use App\Services\Fake\FakeTranscriber;
 use App\Support\LocaleGuard;
+use App\Support\ScriptSizing;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -140,22 +141,52 @@ class ScriptGenerationTest extends TestCase
 
     public function test_the_word_target_comes_from_the_story_own_runtime_window(): void
     {
-        // 35 minutes at the configured 160 wpm is 5,600 words; across 5 acts
-        // that is 1,120 each. A hardcoded target here would give a 20-minute
-        // story and a 40-minute story the same length, and runtime is the
-        // product in this format.
+        // THIS TEST FIRED, AND ITS OWN MESSAGE IS WHAT IT SAID TO DO. It read
+        // "The narration rate moved; the word band and runtime window both
+        // follow it", asserting 160 wpm and 1,120 words an act. The rate did
+        // move — deliberately, from the fallback 160 to the measured 197 — and
+        // the band follows it, which is this file's own rule: runtime is the
+        // product and the word band is derived from it.
+        //
+        // That distinction matters here more than anywhere. Updating a number
+        // because the result came out differently is the false-success pattern;
+        // updating it because the INPUT was corrected for a stated reason is
+        // the derivation working. 160 was never measured against a vendor, 197
+        // is 186 real scenes, and the assertion below is the one that could not
+        // have passed before: a script written exactly to its budget lands
+        // inside the window it was sized for.
         $story = $this->outlinedStory(5);
 
         app(GenerateActScripts::class)->handle($story);
 
         $target = collect($this->writer->calls)->firstWhere('method', 'actScript')['target_words'];
-        $wpm = (int) config('render.narration.words_per_minute');
 
-        $this->assertSame(160, $wpm, 'The narration rate moved; the word band and runtime window both follow it.');
-        $this->assertSame(1120, $target);
+        $this->assertSame(
+            197,
+            ScriptSizing::wpmFor($story->refresh()),
+            'The narration rate moved again; the word band and runtime window both follow it.',
+        );
+        $this->assertSame(1379, $target);
 
-        // And the total lands inside BOTH targets in the spec, which is the
-        // reason the rate is 160 rather than 150 or 185.
+        // The property, not the number: a hardcoded target would give a
+        // 20-minute story and a 40-minute story the same length.
+        $this->assertSame(
+            ScriptSizing::targetWordsPerAct($story, 5),
+            $target,
+            'The per-act target must be the story\'s own budget divided by its acts.',
+        );
+
+        // The whole script lands inside the runtime window it was sized for.
+        // This is the assertion the 160-wpm target could not pass: it produced
+        // 5,600 words, which run 28.4 minutes against a 30-40 window.
+        $minutes = ScriptSizing::minutesFor($story, $target * 5);
+
+        $this->assertTrue(
+            ScriptSizing::withinWindow($story, $minutes),
+            sprintf('A script written to its own budget runs %.1f minutes.', $minutes),
+        );
+
+        // And inside the spec's word band, which is derived from the same rate.
         $this->assertGreaterThanOrEqual(5500, $target * 5);
         $this->assertLessThanOrEqual(8000, $target * 5);
     }

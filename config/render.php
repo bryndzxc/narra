@@ -291,6 +291,46 @@ return [
         'pace_min_words' => (int) env('NARRATION_PACE_MIN_WORDS', 1000),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | What the act writer actually produces, as opposed to what it is asked for
+    |--------------------------------------------------------------------------
+    |
+    | THE TARGET IS ADVISORY. `ScriptSizing` computes a word target from the
+    | runtime window and the narrator's measured rate, the prompt states it
+    | plainly — "Target 985 words" — and the writer largely ignores it. Five
+    | observations, targets from 800 to 1,120:
+    |
+    |   story  8   asked 1,120   wrote 1,195/act    +6.7%
+    |   story  9   asked   933   wrote   964/act    +3.3%
+    |   story 12   asked   933   wrote   893/act    -4.3%
+    |   probe      asked   985   wrote 1,123/act   +14.0%
+    |   story 21   asked   800   wrote 1,152/act   +44.0%
+    |
+    | Least squares gives a slope of +0.30: a hundred more words asked buys
+    | about thirty. An act comes back at roughly this length whatever the prompt
+    | says, which is why the ACT COUNT is the lever that moves runtime and the
+    | word target is not.
+    |
+    | 1,123 IS ONE ACT. It is the only unconfounded observation in the set —
+    | en-US, current code, current target — and every other story differs from
+    | it on the code version, the locale or both. So this is a projection, not a
+    | prediction, and every surface that shows it says so beside the number. It
+    | is here rather than as a constant in ScriptSizing for the reason the
+    | per-voice wpm figures are here: a measurement belongs where the next
+    | measurement will be written, next to the run that produced it.
+    |
+    | Re-measure it when the act prompt, the model or the effort setting change.
+    | Do NOT tune it to make a runtime estimate come out nicer — that is the
+    | false-success pattern this file names at story 9, and the figure would
+    | stop being a measurement the moment it happened.
+    */
+    'script' => [
+        'measured_act_words' => (int) env('SCRIPT_MEASURED_ACT_WORDS', 1123),
+        'measured_act_words_on' => 'one act, en-US, 6-act plan, asked 985 (2026-09-05)',
+        'target_response_slope' => 0.30,
+    ],
+
     'audio' => [
         'sample_rate' => 44100,
         'channels' => 1,
@@ -428,6 +468,51 @@ return [
         'render' => env('RENDER_QUEUE', 'render'),
         'assets' => env('ASSETS_QUEUE', 'assets'),
         'text' => env('TEXT_QUEUE', 'text'),
+    ],
+
+    'workers' => [
+
+        /*
+        |----------------------------------------------------------------------
+        | Self-restart when the code moves under a worker
+        |----------------------------------------------------------------------
+        |
+        | A worker that finds itself running superseded code exits between jobs,
+        | and NSSM's `AppExit Default Restart` brings it back on current code.
+        |
+        | This does not weaken the dispatch-time refusal. `AssertWorkersCurrent`
+        | still refuses a spend into stale workers, in the dispatching process,
+        | as loudly as before. What it removes is the manual chore: every code
+        | edit used to turn the worker panel red until somebody restarted three
+        | services by hand, and a red that means "somebody saved a file" is
+        | indistinguishable from a red that means "your pipeline has stopped".
+        | An alarm that fires for something the reader cannot act on is the
+        | cheapest way to teach them to ignore it.
+        |
+        | It is bounded three ways, and `StaleWorkerRestart` explains each: the
+        | check is skipped whenever ANY queue on the machine holds work, so a
+        | batch in flight is never interrupted and cannot be split across two
+        | code versions; the exit goes through the same cache flag
+        | `queue:restart` sets, so no job is ever killed; and the recomputed
+        | marker is used ONLY to decide to die, never to announce freshness.
+        |
+        | That first bound used to read "whenever the queue holds work", meaning
+        | the worker's own — and it was false. The stop is a machine-wide
+        | broadcast, so an idle worker on an empty queue stood a busy sibling
+        | down and split its batch across two code versions. `workers:drill busy`
+        | found it on the first run. The bound is now as wide as the action.
+        |
+        | Rehearse it rather than believing it:
+        |
+        |     php artisan workers:drill idle
+        |     php artisan workers:drill busy
+        |
+        | Turn it OFF in production. There, a deploy restarts the workers as
+        | part of shipping, and a worker that restarts itself part way through a
+        | file copy is booting on a half-deployed tree - it would correct itself
+        | on the next pass, but there is no reason to invite it.
+        */
+        'restart_when_stale' => (bool) env('WORKER_RESTART_WHEN_STALE', true),
     ],
 
     /*

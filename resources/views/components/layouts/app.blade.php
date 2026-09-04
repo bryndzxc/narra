@@ -33,11 +33,36 @@
      * the two old layouts had, and they had already drifted: `render`'s copy
      * had no "new" link and no active state on `stories`.
      */
+    /*
+     * The two standing counts. One sweep, memoised for the request, shared by
+     * the rail and by the dashboard below it — a badge that disagreed with the
+     * page it links to would be a parallel computation of a figure that already
+     * exists, which is a defect this project has paid for twice.
+     */
+    $counts = \App\Support\ConsoleCounts::all();
+
     $nav = [
         ['route' => 'dashboard', 'label' => 'Dashboard', 'match' => 'dashboard', 'icon' => '◈'],
-        ['route' => 'stories.index', 'label' => 'Stories', 'match' => 'stories.*', 'icon' => '▤'],
+        [
+            'route' => 'stories.index',
+            'label' => 'Stories',
+            'match' => 'stories.*',
+            'icon' => '▤',
+            // Gates standing open. Gold, because it is a decision waiting.
+            'count' => $counts['waiting'] ?: null,
+        ],
         ['route' => 'stories.create', 'label' => 'New story', 'match' => 'stories.create', 'icon' => '＋'],
-        ['route' => 'renders.index', 'label' => 'Renders', 'match' => 'renders.*', 'icon' => '◐'],
+        [
+            'route' => 'renders.index',
+            'label' => 'Renders',
+            'match' => 'renders.*',
+            'icon' => '◐',
+            // Jobs waiting on a queue. Red only when nothing is listening to
+            // them: depth alone is a worker working, depth with nobody on it is
+            // the pipeline stopped.
+            'count' => $counts['queued'] ?: null,
+            'loud' => $counts['stranded'],
+        ],
     ];
 
     $current = $section ?? null;
@@ -114,6 +139,12 @@
                 <a href="{{ route($item['route']) }}" @class(['on' => $on])>
                     <span class="ico" aria-hidden="true">{{ $item['icon'] }}</span>
                     {{ $item['label'] }}
+                    @if (($item['count'] ?? null) !== null)
+                        <span @class(['count', 'loud' => $item['loud'] ?? false])
+                              title="{{ $item['loud'] ?? false
+                                  ? 'Jobs are waiting on a queue with nothing listening.'
+                                  : 'Waiting on you.' }}">{{ $item['count'] }}</span>
+                    @endif
                 </a>
             @endforeach
         </nav>
@@ -134,7 +165,25 @@
     <div class="content">
         <header class="top">
             <span class="where">{{ $title }}</span>
+
+            {{-- What the console is holding, in the frame rather than in a
+                 panel, because it is true on every page. Both figures come
+                 from the same sweep the rail's badges read. --}}
+            <span class="stat">
+                {{ $counts['waiting'] }} {{ \Illuminate\Support\Str::plural('gate', $counts['waiting']) }} waiting
+                @if ($counts['queued'] > 0)
+                    &middot; {{ number_format($counts['queued']) }} queued{{ $counts['stranded'] ? ', stranded' : '' }}
+                @endif
+            </span>
+
             <span class="right sub">{{ $subtitle ?? 'four gates, and nothing publishes itself' }}</span>
+
+            {{-- Month-to-date, from SpendSummary — the same predicate the
+                 ledger maintains the per-story totals with. --}}
+            <span class="stat spend" title="Video spend this month. Evaluation spend is real and is kept out of it; the dashboard prints it separately.">
+                ${{ number_format(\App\Support\SpendSummary::forCurrentMonth()->monthVideoSpend, 2) }}
+                <span class="when">{{ now()->format('M') }}</span>
+            </span>
         </header>
 
         <main>
@@ -190,6 +239,65 @@
         });
 
         paint();
+    })();
+
+    /*
+     * Age every reading stamp on the page, once a second.
+     *
+     * A rendered page cannot know how long it has been sitting there, and this
+     * console has pages that deliberately stop refreshing: the renders views
+     * drop their meta refresh whenever nothing is running, which is precisely
+     * when queue workers get restarted. The result is a worker-health panel
+     * reporting processes that no longer exist — every number on it true as of
+     * a moment that has passed, which is the same defect as a render page
+     * showing a previous run's stages as current.
+     *
+     * The server cannot fix that; only the clock in the browser can. So the
+     * panel carries the epoch second it was read at and this ages it.
+     *
+     * Rescanned every tick rather than bound once, because livewire replaces
+     * the DOM on every poll and a listener attached to the old nodes would
+     * quietly stop updating — a staleness indicator that itself goes stale
+     * being the one outcome worth designing against.
+     */
+    (function () {
+        var STALE_AFTER = 60; // 4x the 15s poll: comfortably not a slow request.
+
+        var tick = function () {
+            var now = Date.now() / 1000;
+
+            document.querySelectorAll('[data-read-at]').forEach(function (el) {
+                var age = Math.max(0, Math.round(now - parseInt(el.dataset.readAt, 10)));
+                var label = el.querySelector('[data-reading-age]');
+                var warn = el.querySelector('[data-reading-warn]');
+                var text;
+
+                if (age < 10) {
+                    text = 'read just now';
+                } else if (age < 90) {
+                    text = 'read ' + age + 's ago';
+                } else if (age < 5400) {
+                    text = 'read ' + Math.round(age / 60) + 'm ago';
+                } else {
+                    text = 'read ' + (Math.round(age / 360) / 10) + 'h ago';
+                }
+
+                if (label) {
+                    label.textContent = text;
+                }
+
+                var stale = age >= STALE_AFTER;
+
+                el.classList.toggle('stale', stale);
+
+                if (warn) {
+                    warn.hidden = ! stale;
+                }
+            });
+        };
+
+        tick();
+        setInterval(tick, 1000);
     })();
 </script>
 </body>

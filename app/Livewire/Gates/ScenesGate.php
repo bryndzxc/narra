@@ -10,6 +10,7 @@ use App\Actions\PreflightAssetDispatch;
 use App\Actions\ReorderScenes;
 use App\Actions\ValidateCharacterSheets;
 use App\Actions\ValidateSceneDrafts;
+use App\Enums\Gate;
 use App\Enums\MotionPreset;
 use App\Enums\OperatorAction;
 use App\Enums\RenderJobStatus;
@@ -25,6 +26,8 @@ use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Support\CharacterTextGuard;
+use App\Support\GateVoice;
+use App\Support\ImagePromptBuilder;
 use App\Support\SceneAssetEstimate;
 use App\Support\SceneChangeSet;
 use App\Support\WorkerHealth;
@@ -60,6 +63,14 @@ class ScenesGate extends Component
 
     /** Scene currently open for editing, by id. */
     public ?int $editing = null;
+
+    /**
+     * Show each row's frame, or the whole stored prompt. 'frame' | 'full'.
+     *
+     * View state only. It changes what is on the screen and nothing about what
+     * the app does — no dispatch, no gate and no estimate reads it.
+     */
+    public string $promptMode = 'frame';
 
     public string $narration = '';
 
@@ -104,6 +115,21 @@ class ScenesGate extends Component
     public function mount(Story $story): void
     {
         $this->story = $story;
+    }
+
+    /**
+     * How this page is allowed to talk about its own decisions.
+     *
+     * The advisory heading was the first sentence here to be made a function of
+     * state, and it was made one by hand — passed in at two include sites. Gate
+     * 1 then shipped two more instances of the same defect in prose no include
+     * site could see. GateVoice is that fix generalised: one mechanism, asked by
+     * every gate, checked across every gate in GateLayoutContractTest.
+     */
+    #[Computed]
+    public function voice(): GateVoice
+    {
+        return GateVoice::for(Gate::Scenes, $this->story->status);
     }
 
     #[Computed]
@@ -804,6 +830,7 @@ class ScenesGate extends Component
             $this->canReopen,
             $this->editable,
             $this->canApprove,
+            $this->voice,
             $this->castState,
             $this->castReady,
             $this->castMissing,
@@ -840,10 +867,181 @@ class ScenesGate extends Component
         );
     }
 
+    /**
+     * The part of an image prompt that is identical on every scene.
+     *
+     * `scenes.image_prompt` stores the ASSEMBLED prompt — the frame, then the
+     * verbatim cast block, then the art style and the constraints — because
+     * that is what `ImagePromptBuilder::build()` returns and what DraftScenes
+     * saves. Printing all of it once per row means the page repeats the same
+     * four hundred words 168 times and buries the one section that differs.
+     *
+     * So it is stated once, here, and the rows carry the frame. Nothing is
+     * hidden: the full stored text is one toggle away and the edit form has
+     * always shown it whole.
+     *
+     * ---------------------------------------------------------------------
+     * READ FROM THE PROMPTS, NEVER FROM CONFIG
+     * ---------------------------------------------------------------------
+     *
+     * The obvious implementation reads `scenes.art_style` and reports that.
+     * It would be wrong on two of this app's three scripted stories, and
+     * wrong in the worst direction — asserting on the money screen that all
+     * 168 prompts carry the configured style when not one of them does.
+     *
+     * `GenerateSceneImage` sends `image_prompt` verbatim; nothing re-appends
+     * the style at dispatch. So a story drafted before the look was retuned
+     * carries the OLD style in all of its stored prompts for ever, and config
+     * describes what the next story would get rather than what this one has.
+     * Measured: rent-will 0/168, my-younger-brother 0/186, my-wife 270/270.
+     *
+     * So the shared block is the longest run of trailing sections that is
+     * byte-identical across every prompt in the story — which is the literal
+     * meaning of "identical on all 168 prompts" — and config is used only to
+     * say whether the two agree.
+     *
+     * ---------------------------------------------------------------------
+     * THIS IS NOT THE REFERENCE-SHEET STALENESS CHECK. NEITHER COVERS THE OTHER.
+     * ---------------------------------------------------------------------
+     *
+     * `Character::referenceStyleState()` and `StyleFingerprint` answer a
+     * different question about a different artefact, and that item is already
+     * closed. It asks: was this character's reference SHEET drawn in the style
+     * configured now. This asks: do this story's stored PROMPTS carry the style
+     * configured now.
+     *
+     * The decisive point is that the remedies are disjoint. Regenerating a
+     * character sheet does nothing whatever to the stored prompts, and
+     * re-drafting the scenes does not touch the sheets. So a story can sit in
+     * any combination of the two, and fixing the one this reports can never
+     * fix the one that reports.
+     *
+     * Reachable in a single step from live data: rent-will has no reference
+     * sheets at all AND drifted prompts. Generate its sheets and it has CURRENT
+     * sheets and drifted prompts — a story whose faces are drawn in one look
+     * and whose scenes are prompted in another, with the sheet check green.
+     *
+     * And the two are not enforced alike. A stale sheet is a REFUSAL at asset
+     * dispatch. This is a report on a page and nothing refuses on it, which is
+     * the weaker of the two and is deliberate for now — it is named as an open
+     * item in CLAUDE.md rather than left to look covered.
+     *
+     * @return array{words: int, text: string, scenes: int, matches_config: bool, configured: bool}
+     */
+    #[Computed]
+    public function styleBlock(): array
+    {
+        $none = ['words' => 0, 'text' => '', 'scenes' => 0, 'matches_config' => false, 'configured' => false];
+
+        $prompts = $this->story->scenes()
+            ->whereNotNull('image_prompt')
+            ->pluck('image_prompt')
+            ->map(fn ($prompt): array => array_values(array_filter(
+                // Line endings normalised before splitting. A prompt carrying
+                // CRLF splits into ONE section on "\n\n", which does not throw
+                // and does not look wrong — the shared block silently reports
+                // as absent and the panel disappears. That is the failure this
+                // file keeps naming, so it is cheaper to normalise than to
+                // trust that nothing ever writes a \r.
+                array_map('trim', explode("\n\n", str_replace("\r\n", "\n", (string) $prompt))),
+                fn (string $section): bool => $section !== '',
+            )))
+            ->filter(fn (array $sections): bool => $sections !== [])
+            ->values();
+
+        if ($prompts->count() < 2) {
+            return $none;
+        }
+
+        $first = $prompts->first();
+        $shortest = (int) $prompts->map(fn (array $s): int => count($s))->min();
+        $shared = 0;
+
+        // Stop one short of the whole prompt: the frame is the part that
+        // differs, and a "shared block" that swallowed it would mean every
+        // scene had the same picture.
+        for ($back = 1; $back <= $shortest - 1; $back++) {
+            $section = $first[count($first) - $back];
+
+            $identical = $prompts->every(
+                fn (array $sections): bool => ($sections[count($sections) - $back] ?? null) === $section,
+            );
+
+            if (! $identical) {
+                break;
+            }
+
+            $shared = $back;
+        }
+
+        if ($shared === 0) {
+            return $none;
+        }
+
+        $text = implode("\n\n", array_slice($first, -$shared));
+
+        $configured = trim(implode("\n\n", array_filter([
+            trim((string) config('scenes.art_style')),
+            trim((string) config('scenes.constraints')),
+        ])));
+
+        return [
+            'words' => count(preg_split('/\s+/u', $text) ?: []),
+            'text' => $text,
+            'scenes' => $prompts->count(),
+            'matches_config' => $configured !== '' && $text === $configured,
+            'configured' => $configured !== '',
+        ];
+    }
+
+    /**
+     * Whether this scene has assets that were paid for.
+     *
+     * A marker, not a price. The per-scene state is known exactly — the still
+     * is on disk or it is not — while a per-scene DOLLAR figure is not: the
+     * estimate prices narration by character across the whole story, and no
+     * image vendor returns a cost on a response anyway. So the row says
+     * "editing this costs money", which is the question being asked while
+     * scrolling after a reopen, and does not invent a number to say it with.
+     */
+    public function isPaidFor(Scene $scene): bool
+    {
+        return $scene->image_path !== null || $scene->sceneAudio->isNotEmpty();
+    }
+
+    /**
+     * The per-scene half of the prompt — the part that actually differs.
+     *
+     * Read through `ImagePromptBuilder::frameFrom()` rather than by splitting
+     * here, because the sections are joined by that class and the convention
+     * for taking them apart is its to state. A second copy of that rule in a
+     * Livewire component is a second thing to correct when it changes.
+     */
+    public function frameOf(Scene $scene): string
+    {
+        return ImagePromptBuilder::frameFrom((string) $scene->image_prompt);
+    }
+
+    public function showFrameOnly(): void
+    {
+        $this->promptMode = 'frame';
+    }
+
+    public function showFullPrompt(): void
+    {
+        $this->promptMode = 'full';
+    }
+
     public function render(): View
     {
         return view('livewire.gates.scenes-gate', [
-            'scenes' => $this->story->scenes()->with('act')->paginate(self::PER_PAGE),
+            // `characters` and `sceneAudio` are eager-loaded because the row now
+            // asks both questions of every scene on the page. Twenty rows each
+            // firing two queries is the kind of thing that looks fine on the
+            // fixture and is felt on a 270-scene story.
+            'scenes' => $this->story->scenes()
+                ->with(['act', 'characters', 'sceneAudio'])
+                ->paginate(self::PER_PAGE),
             'motions' => MotionPreset::cases(),
         ]);
     }

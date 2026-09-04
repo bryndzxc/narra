@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Support\AssetRateCard;
+use App\Support\NarrationPace;
 use App\Support\SceneAssetEstimate;
 use App\Support\SceneChangeSet;
 use App\Support\SceneSelection;
@@ -56,7 +57,12 @@ class EstimateSceneAssets
             usdPerImage: $this->rates->usdPerImage(),
             usdPerThousandSpeechCharacters: $this->rates->usdPerThousandSpeechCharacters(),
             usdPerTranscribedMinute: $this->rates->usdPerTranscribedMinute(),
-            wordsPerMinute: (int) config('render.narration.words_per_minute'),
+            // The rate this narrator actually READS at, not the rate the
+            // script was sized to — this figure turns pending narration into a
+            // runtime an operator is about to authorise money against. Read
+            // from the fallback constant it was 23% slow: story 21's 8,065
+            // words quoted 50.4 minutes and the render came back at 40.6.
+            wordsPerMinute: NarrationPace::bestKnownWpm($story->voice_id, $story->locale_profile),
             imageProvider: $this->rates->imageProvider(),
             speechProvider: $this->rates->speechProvider(),
             transcriberProvider: $this->rates->transcriberProvider(),

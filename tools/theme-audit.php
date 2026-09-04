@@ -35,7 +35,16 @@
  *   php tools/theme-audit.php                       contrast + remap check
  *   php tools/theme-audit.php --against=<file>      also diff dark vs a baseline
  */
-const STYLESHEET = __DIR__.'/../resources/views/partials/base-css.blade.php';
+// Overridable so the audit can be run against a sheet whose answer is known.
+define('STYLESHEET', (static function (array $argv): string {
+    foreach (array_slice($argv, 1) as $arg) {
+        if (str_starts_with($arg, '--css=')) {
+            return substr($arg, strlen('--css='));
+        }
+    }
+
+    return __DIR__.'/../resources/views/partials/base-css.blade.php';
+})($argv));
 
 $args = array_slice($argv, 1);
 $baseline = null;
@@ -341,7 +350,6 @@ $inkSurfaces = [
     ['--ok-ink', '--ok', 0.12, '--panel-2', 'badge.ok'],
     ['--run-ink', '--run', 0.12, '--panel-2', 'badge.run'],
     ['--money-ink', '--money', 0.14, '--panel-2', 'badge.money'],
-    ['--run-ink', null, 0.0, '--panel', 'links'],
     ['--text', null, 0.0, '--panel', 'body text'],
     ['--muted', null, 0.0, '--panel', 'secondary prose'],
     ['--meta', null, 0.0, '--panel', 'labels, th'],
@@ -350,6 +358,11 @@ $inkSurfaces = [
     ['--danger-ink', '--danger-from', 1.0, '--panel-2', 'button.danger'],
     ['--gate-ink', '--gate-from', 1.0, '--panel-2', 'button.gate'],
     ['--on-accent', '--run', 1.0, '--panel', 'pagination current'],
+    ['--accent-ink', null, 0.0, '--panel', 'links'],
+    ['--accent-ink', null, 0.0, '--bg-2', 'nav, current item'],
+    // The band's own ink, on the band's own ground rather than on a panel.
+    ['--alarm-ink', '--alarm-from', 1.0, '--panel', 'alarm band text'],
+    ['--alarm-warn-ink', '--alarm-warn-from', 1.0, '--panel', 'absent band text'],
 ];
 
 foreach (['light' => $light, 'dark' => $dark] as $themeName => $tokens) {
@@ -425,6 +438,14 @@ $loudSurfaces = [
     ['panel.money', ['--money-panel-from', '--money-panel-to'], 3],
     ['warnfill (panel/row)', ['--warnfill-bg'], 4],
     ['gates .current', ['--gate-current-bg'], 2],
+    /*
+     * The alarm band. Not a wash on a panel — a saturated flood with near-white
+     * text — so it is measured the same way and expected to be far louder than
+     * anything above it. If it ever stops being the largest number in this
+     * table, something has gone quiet that must not.
+     */
+    ['band (alarm)', ['--alarm-from', '--alarm-to'], 1],
+    ['band (absent)', ['--alarm-warn-from', '--alarm-warn-to'], 1],
 ];
 
 /**
@@ -512,7 +533,27 @@ if ($baseline !== null) {
     }
 
     $oldCss = styleBody($baseline);
-    $oldTokens = tokensFrom($oldCss, [':root']);
+
+    /*
+     * THE BASELINE IS RESOLVED IN DARK, LIKE THE SHEET IT IS COMPARED AGAINST.
+     *
+     * This read `tokensFrom($oldCss, [':root'])` — the LIGHT palette — and
+     * compared it against the current sheet resolved in dark. Every rule
+     * mentioning a themed token therefore differed by construction, and a file
+     * compared against ITSELF reported 159 of 343 rules as MOVED.
+     *
+     * That is worse than a broken tool. CLAUDE.md leans on this check to catch
+     * "one mistyped hex in two hundred token lines" during the palette split —
+     * and a real mistyped hex would have been one line in a hundred and fifty
+     * nine false ones, which is indistinguishable from not being reported.
+     * Caught by the only test that can catch it: diffing the file against a
+     * copy of itself and requiring zero.
+     */
+    $oldTokens = array_merge(
+        tokensFrom($oldCss, [':root']),
+        tokensFrom($oldCss, [':root[data-theme="dark"]']),
+    );
+
     $oldRules = rulesFrom($oldCss);
     $newRules = rulesFrom($css);
 

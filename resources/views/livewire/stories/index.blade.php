@@ -54,6 +54,12 @@
                         <td>
                             <a href="{{ route('stories.show', $story) }}">{{ $story->title }}</a>
                             <div class="muted mono small">{{ $story->slug }} &middot; {{ $story->format->label() }}</div>
+                            @if ($story->isFixture())
+                                {{-- Kept on this list — it is the list of what exists — but
+                                     marked, so its absence from every "needs you" count is
+                                     explained where somebody would notice it. --}}
+                                <span class="badge" title="{{ $story->fixture_note }}">fixture</span>
+                            @endif
                         </td>
 
                         <td><span class="badge">{{ $story->status->value }}</span></td>

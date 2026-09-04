@@ -1,10 +1,10 @@
 <div>
     @if ($saved)
-        <div class="alert ok">{{ $saved }}</div>
+        <div class="alert ok wide">{{ $saved }}</div>
     @endif
 
     @if ($problem)
-        <div class="alert err pre-line">{{ $problem }}</div>
+        <div class="alert err pre-line wide">{{ $problem }}</div>
     @endif
 
     {{-- The writing panel. This stage was `story:write` and nothing else for
@@ -49,7 +49,7 @@
                 </table>
 
                 @if ($confirmingWrite)
-                    <div class="alert warn mt-4">
+                    <div class="alert warn wide mt-4">
                         <strong>{{ $estimate['calls'] }} billed call(s)</strong> queued on the
                         <span class="mono">{{ $this->workers()['queue'] }}</span> queue.
                         @if ($this->workers()['state'] === \App\Support\WorkerHealth::ABSENT)
@@ -76,19 +76,230 @@
     @elseif ($this->writeRefusal())
         {{-- Said, not swallowed. A panel that disappears when an action is
              unavailable is a page saying nothing where it should say why. --}}
-        <div class="alert warn">
+        <div class="alert warn wide">
             <strong>The script cannot be written from here.</strong> {{ $this->writeRefusal() }}
         </div>
     @endif
 
-    @if (! $this->editable())
+    {{--
+        THE RATE THE SCRIPT IS SIZED TO, AND WHERE THE NUMBER CAME FROM.
+
+        THE GAP. The word target moved from the fallback 160 to the measured 197
+        and `sized_against_wpm` freezes whatever each story was written to — so
+        story 9 has a 5,600-word target and a story written today has 6,895, and
+        nothing on any page said why. A figure that is right and unexplained
+        reads as a figure that is wrong, and two of them side by side read as a
+        bug somebody should go and find.
+
+        It sits directly under the money panel because that is where the target
+        is DECIDED: the panel above quotes the bill, this says what the bill
+        buys and at what rate, before it is authorised.
+
+        THREE STATES, AND UNKNOWN IS NOT HIDDEN. The column is nullable so that
+        "nobody recorded this" and "this was 160" cannot be the same value, and
+        a page that resolved a null to today's rate — or that quietly dropped
+        the row — would put that distinction straight back. A script with no
+        rate on record says so, and prints NO target: computing one from today's
+        rate and setting it beside the written word count would compare a script
+        against a budget it never had, which is the exact false comparison the
+        column was added to prevent.
+
+        The group elides only where there is nothing at all to say — nothing
+        written and nothing writable. `sample-story` is that case and is parked
+        at `rendered` permanently.
+    --}}
+    <x-gate-group>
+        @if ($this->hasSizingToShow())
+            @php($sizing = $this->sizing())
+
+            <div class="panel">
+                @if ($sizing['state'] === 'unknown')
+                    <label>Script length &mdash; the rate it was sized to is not on record</label>
+                @else
+                    <label>Script length &mdash; sized at
+                        <span class="mono">{{ $sizing['wpm'] }}</span> words per minute</label>
+                @endif
+
+                <div class="muted small mt-1 measure">
+                    @if ($sizing['state'] === 'unknown')
+                        <strong>Unknown, not assumed.</strong>
+                        This script was written before the rate was recorded, so there is no target to
+                        hold it to. Showing today's would compare it against a budget it was never
+                        written to, which is the one thing this record exists to prevent.
+                    @else
+                        {{ $this->voice()->sizingFixed() }}
+
+                        @if ($sizing['measured'])
+                            {{-- The provenance is data, not a claim: NarrationPace
+                                 knows whether this pair was measured and on what. --}}
+                            Measured on
+                            <span class="mono">{{ $sizing['voice'] }}</span>
+                            reading <span class="mono">{{ $story->locale_profile }}</span>@if ($sizing['measured_on']),
+                            {{ $sizing['measured_on'] }}@endif.
+                        @else
+                            <strong>Not measured.</strong> No narration by
+                            <span class="mono">{{ $sizing['voice'] ?? 'this narrator' }}</span>
+                            on <span class="mono">{{ $story->locale_profile }}</span> has been timed, so this
+                            is the best rate on record for the setting rather than for the voice. The
+                            first run establishes the real one.
+                        @endif
+                    @endif
+                </div>
+
+                <table class="mt-4">
+                    <tbody>
+                    @if ($sizing['target'] !== null)
+                        <tr>
+                            <td>Word target</td>
+                            <td class="mono">{{ number_format($sizing['target']) }}</td>
+                            <td class="muted small">
+                                {{ number_format($sizing['per_act']) }} across {{ $sizing['acts'] }} act(s).
+                            </td>
+                        </tr>
+                    @endif
+                    @if ($sizing['written'] > 0)
+                        <tr>
+                            <td>Written</td>
+                            <td class="mono">{{ number_format($sizing['written']) }}</td>
+                            <td class="muted small">
+                                @if ($sizing['target'] === null)
+                                    No target on record to compare it against.
+                                @else
+                                    {{-- The gap between asked and written is generation
+                                         variance and is nothing to do with the rate.
+                                         Story 21 overshot its target by 44%. --}}
+                                    {{ $sizing['written'] >= $sizing['target'] ? '+' : '' }}{{ number_format(($sizing['written'] - $sizing['target']) / max(1, $sizing['target']) * 100, 1) }}%
+                                    against the target it was written to.
+                                @endif
+                            </td>
+                        </tr>
+                    @endif
+                    <tr>
+                        <td>{{ $sizing['projected'] ? 'Runtime if written to target' : 'Runtime' }}</td>
+                        <td class="mono">{{ number_format($sizing['minutes'], 1) }} min</td>
+                        <td class="muted small">
+                            <span class="badge {{ $sizing['in_window'] ? 'ok' : 'warn' }}">
+                                {{ $sizing['in_window'] ? 'in window' : 'outside the window' }}
+                            </span>
+                            {{ $story->target_duration_min }}&ndash;{{ $story->target_duration_max }} min.
+                            {{-- Reported, never refused. The floor is a preference
+                                 and the operator decides, the same split Gate 3
+                                 keeps for the finished render. --}}
+                            Reported, not enforced &mdash; the decision is yours.
+                        </td>
+                    </tr>
+
+                    {{-- THE SECOND NUMBER. The row above is the design point —
+                         what this runs to IF the writer hits the target. It
+                         mostly does not: across five measured stories the fitted
+                         response to the target is +0.30, so an act comes back at
+                         ~1,100 words whatever it was asked for.
+
+                         Both are shown, and the projection carries its own
+                         provenance in the cell rather than in a footnote,
+                         because one measured act is a projection and not a
+                         forecast. Same reason `sized_against_wpm` is null rather
+                         than 160 when nothing was recorded: a number without its
+                         provenance is a number the next reader cannot weigh. --}}
+                    @if ($sizing['projected'])
+                        <tr>
+                            <td>Projected runtime</td>
+                            <td class="mono">{{ number_format($sizing['projected']['minutes'], 1) }} min</td>
+                            <td class="muted small">
+                                <span class="badge {{ $sizing['projected']['in_window'] ? 'ok' : 'warn' }}">
+                                    {{ $sizing['projected']['in_window'] ? 'in window' : 'outside the window' }}
+                                </span>
+                                {{ number_format($sizing['projected']['words']) }} words at the
+                                <span class="mono">{{ number_format($sizing['projected']['per_act']) }}</span>
+                                words an act the writer actually returns.
+                                <strong>A projection from one measured act</strong>@if ($sizing['projected']['measured_on'])
+                                &mdash; {{ $sizing['projected']['measured_on'] }}@endif.
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Word target</td>
+                            <td class="mono">advisory</td>
+                            <td class="muted small">
+                                The prompt states the target and the writer largely ignores it: the
+                                fitted response across five stories is
+                                <span class="mono">+{{ number_format($sizing['projected']['slope'], 2) }}</span>,
+                                so a hundred more words asked buys about thirty.
+                                <strong>The act count is the lever that moves runtime</strong>, because it
+                                multiplies a length the prompt cannot argue with.
+                            </td>
+                        </tr>
+                    @endif
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </x-gate-group>
+
+    {{--
+        THE LAYOUT IS A FUNCTION OF STATE, NOT A CONSTANT.
+
+        Drawn for the editable case — a write panel, a premise the operator is
+        typing into, a spine to fix — and a story past Gate 1 has none of those.
+        The busy layout with nothing in it is not a calm page: it is the same
+        containers at the same size holding gaps, and empty ones compete with
+        the one thing that can still be acted on.
+
+        Nothing is dropped and nothing is quietened: the advisories keep their
+        own alerts at full width, the outline stays readable in full, and the
+        reopen — the one action that DOES exist here — stays a button on the
+        line rather than going behind the disclosure.
+    --}}
+    @php($quiet = ! $this->canWrite() && ! $this->canApprove() && ! $this->editable())
+
+    @if ($quiet)
+        <div class="strip">
+            {{-- Through the voice, though this one was already right. Gate 1 is
+                 the only gate that CANNOT carry the position defect Gate 4
+                 shipped: nothing precedes `draft`, so "not editable" and "past
+                 this gate" are the same set here by accident of where it sits
+                 in the lifecycle. That is a property of the lifecycle, not of
+                 this template, and a hand-written sentence that is true for a
+                 reason outside itself is one condition change from being the
+                 same defect. --}}
+            <span><strong>{{ $this->voice()->standing() }}</strong> The outline is read-only and the
+                  act scripts were written against it.</span>
+
+            @if ($this->canReopen())
+                <button wire:click="reopen"
+                        wire:confirm="Reopen Gate 1? Scripts written against this outline stay on record.">
+                    Reopen Gate 1
+                </button>
+            @else
+                <span>Reopening is not available: {{ $this->reopenRefusal() }}</span>
+            @endif
+
+            <details class="why">
+                <summary>What reopening would cost</summary>
+                <div class="small muted mt-2">
+                    The scripts do not disappear and nothing is deleted. Every act written against
+                    this outline stays on record, and regenerating them is a paid text call each —
+                    which is why the reopen is explicit rather than implied by editing.
+                </div>
+            </details>
+        </div>
+    @endif
+
+    @if (! $quiet && ! $this->editable())
         {{-- The reopen is offered only where it works. This block used to show
              the button at every locked status — nine of them — while
              `scripted -> outlined` is legal from one. --}}
-        <div class="alert warn">
-            The outline is locked &mdash; Gate 1 has been approved and the act scripts are written
-            against it. Reopening is legal and explicit; the scripts do not disappear, but
+        <div class="alert warn wide">
+            {{-- `wide` is the surface; the prose keeps its own measure, or this
+                 is one sentence across a 1770px viewport. --}}
+            <div class="measure">
+            {{-- Through the voice for the same reason as the strip above: this
+                 sentence is right wherever it renders, and it is right because
+                 of where Gate 1 sits in the lifecycle rather than because of
+                 anything in this file. --}}
+            The outline is locked &mdash; {{ $this->voice()->approved() }} and the act scripts are
+            written against it. Reopening is legal and explicit; the scripts do not disappear, but
             regenerating them costs money from Phase 2 onward.
+            </div>
             <div class="mt-3">
                 @if ($this->canReopen())
                     <button wire:click="reopen" wire:confirm="Reopen Gate 1? Scripts written against this outline stay on record.">
@@ -103,6 +314,86 @@
         </div>
     @endif
 
+    {{--
+        THE THREE ADVISORY GROUPS LEAD, AND THEY ARE A ROW.
+
+        Spine problems, locale terms and structural warnings, side by side,
+        above the premise. They were stacked BELOW the premise panel and under
+        the spine heading, so the reader met a 4-row textarea before the two
+        things that are cheap to fix at this gate and expensive at Gate 3.
+
+        `x-gate-row` and `x-gate-group`, never a hand-written `.gatecols` with
+        hand-written wrappers. A story routinely has findings in two of the
+        three, and a fixed row still took a `1fr` track for the empty one and
+        pushed the other two right — `.dash.quiet`'s defect at the width of a
+        column. A group with an empty slot renders no element and the grid cuts
+        no track for it, so the void is unreachable rather than something an
+        author remembers to prevent. The row's own condition is gone with it: it
+        was a hand-written restatement of the three inside it, and a fourth
+        group would have made the copies disagree.
+
+        Every clause here that names an action comes from GateVoice. On a story
+        at `scenes_drafted` these three panels offered three decisions that do
+        not exist — "cheaper to fix here", "judging these is yours" — one screen
+        away from a strip saying reopening is not available.
+    --}}
+    <x-gate-row>
+        <x-gate-group>
+            @if ($this->spineReview()['problems'])
+                <div class="alert fail wide">
+                    <strong>The outline is missing part of its structure.</strong>
+                    <ul class="small indent">
+                        @foreach ($this->spineReview()['problems'] as $problem)
+                            <li>{{ $problem }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+        </x-gate-group>
+
+        <x-gate-group>
+            {{-- Wrong for the setting, but with a legitimate reading, so the
+                 stage was paid for and kept. Computed for two phases and
+                 printed only by `story:write` — the one place it could be acted
+                 on was a terminal. --}}
+            @if ($this->localeWarnings())
+                <div class="alert warn wide">
+                    <strong>{{ count($this->localeWarnings()) }} term(s) read wrong for {{ $this->localeLabel() }}.</strong>
+                    <ul class="small indent">
+                        @foreach ($this->localeWarnings() as $hit)
+                            <li>
+                                Act {{ $hit['act'] }} &mdash; <code>{{ $hit['term'] }}</code>
+                                <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                    <div class="muted small mt-2">
+                        None of these block anything. Each has a legitimate reading, which is why the
+                        stage was not failed &mdash; the unambiguous terms are refused before an act
+                        is ever stored. {{ $this->voice()->judgement() }}
+                    </div>
+                </div>
+            @endif
+        </x-gate-group>
+
+        <x-gate-group>
+            @if ($this->spineReview()['warnings'])
+                <div class="alert warn wide">
+                    <strong>Structural warnings.</strong>
+                    <ul class="small indent">
+                        @foreach ($this->spineReview()['warnings'] as $warning)
+                            <li>{{ $warning }}</li>
+                        @endforeach
+                    </ul>
+                    <div class="muted small mt-2">
+                        {{ $this->voice()->blocksApproval() }} They are the ways this format is
+                        actually written wrong, and {{ $this->voice()->fixHere() }}
+                    </div>
+                </div>
+            @endif
+        </x-gate-group>
+    </x-gate-row>
+
     <div class="panel">
         {{-- The setting, read-only. Chosen at creation, and every act on this
              page was written against it — so it is shown rather than edited. --}}
@@ -111,6 +402,10 @@
             &middot; fixed at creation, because the outline and the acts were generated against it.
         </div>
 
+        {{-- TWO-UP. Premise and cast age are the pair the operator writes
+             together, and stacked they are two short textareas above a column
+             of whitespace on any real screen. --}}
+        <div class="twoup">
         <div class="field">
             <label for="premise">Premise</label>
             <textarea id="premise" wire:model="premise" rows="4"
@@ -127,7 +422,7 @@
              to state. After that, changing it means reopening Gate 1 and
              re-extracting, which rewrites every description the scene prompts
              were built from. --}}
-        <div class="field mt-7">
+        <div class="field">
             <label for="cast-age">
                 Cast age range
                 <span class="muted small">optional</span>
@@ -143,6 +438,7 @@
                 by every story, so it can describe how age is drawn but never who is in this one.
             </div>
         </div>
+        </div>
     </div>
 
     {{--
@@ -157,54 +453,6 @@
         say how the narrator is wronged and where it comes out; the last three say that they leave,
         that they are searched for, and what they say when they are found.
     </p>
-
-    @if ($this->spineReview()['problems'])
-        <div class="alert fail">
-            <strong>The outline is missing part of its structure.</strong>
-            <ul class="indent">
-                @foreach ($this->spineReview()['problems'] as $problem)
-                    <li>{{ $problem }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
-    {{-- Wrong for the setting, but with a legitimate reading, so the stage was
-         paid for and kept. This was computed for two phases and printed only by
-         `story:write` — the one place it could be acted on was a terminal. --}}
-    @if ($this->localeWarnings())
-        <div class="alert warn">
-            <strong>{{ count($this->localeWarnings()) }} term(s) read wrong for {{ $this->localeLabel() }}.</strong>
-            <ul class="indent">
-                @foreach ($this->localeWarnings() as $hit)
-                    <li>
-                        Act {{ $hit['act'] }} &mdash; <code>{{ $hit['term'] }}</code>
-                        <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
-                    </li>
-                @endforeach
-            </ul>
-            <div class="muted small mt-2">
-                None of these block anything. Each has a legitimate reading, which is why the stage
-                was not failed &mdash; the unambiguous terms are refused before an act is ever
-                stored. Judging these is yours.
-            </div>
-        </div>
-    @endif
-
-    @if ($this->spineReview()['warnings'])
-        <div class="alert warn">
-            <strong>Structural warnings.</strong>
-            <ul class="indent">
-                @foreach ($this->spineReview()['warnings'] as $warning)
-                    <li>{{ $warning }}</li>
-                @endforeach
-            </ul>
-            <div class="muted small mt-2">
-                None of these block approval. They are the ways this format is actually written wrong,
-                and they are all cheaper to fix here than at Gate 3.
-            </div>
-        </div>
-    @endif
 
     <div class="panel">
         @foreach ($this->spineReview()['spine'] as $key => $field)

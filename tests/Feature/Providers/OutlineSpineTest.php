@@ -265,24 +265,38 @@ class OutlineSpineTest extends TestCase
         $this->assertNotEmpty($story->refusal);
     }
 
-    public function test_a_single_narrative_gets_seven_acts_by_default(): void
+    public function test_a_single_narrative_gets_six_acts_by_default(): void
     {
-        // Six was the count while the arc was escalation -> exposure -> end.
-        // The reversal needs somewhere to go, and taking it out of the
-        // escalation would trade one missing phase for another.
+        // It was six, then seven, and it is six again — and the two moves were
+        // made for different reasons, both of which are still true.
+        //
+        // Six -> seven was for the reversal: the arc had been escalation ->
+        // exposure -> end, and the departure, the search and the refusal needed
+        // somewhere to go. Seven -> six is because the writer's natural act
+        // length was then MEASURED at ~1,100 words and the word target barely
+        // steers it (fitted slope +0.30). Seven acts of that is 39.9 minutes
+        // against a 30-40 window; six is 34.2.
+        //
+        // The reversal is not what gives ground — see the phase test below.
         $story = $this->draftStory();
 
         app(GenerateOutline::class)->handle($story);
 
-        $this->assertSame(7, $story->acts()->count());
-        $this->assertSame(7, GenerateOutline::defaultActCountFor($story));
+        $this->assertSame(6, $story->acts()->count());
+        $this->assertSame(6, GenerateOutline::defaultActCountFor($story));
     }
 
     public function test_the_acts_are_laid_out_across_the_four_phases(): void
     {
         // Escalation through roughly the first two thirds, then the departure,
-        // then the search and the refusal. The reversal is three acts of seven,
-        // not the last ninety seconds of act seven.
+        // then the search and the refusal. The reversal is three acts of six,
+        // not the last ninety seconds of act six.
+        //
+        // THE PART THE ACT-COUNT CHANGE HAD TO NOT BREAK. Dropping seven to six
+        // costs one ESCALATION act — four down to three — and nothing else.
+        // `departureActFor()` never lets the departure past `count - 2`, so the
+        // search and the refusal always have an act each. A six that had eaten
+        // one of those would be the trade the seven was chosen to avoid.
         $story = $this->draftStory();
 
         app(GenerateOutline::class)->handle($story);
@@ -292,10 +306,9 @@ class OutlineSpineTest extends TestCase
                 1 => ActPhase::Escalation,
                 2 => ActPhase::Escalation,
                 3 => ActPhase::Escalation,
-                4 => ActPhase::Escalation,
-                5 => ActPhase::Departure,
-                6 => ActPhase::Search,
-                7 => ActPhase::Refusal,
+                4 => ActPhase::Departure,
+                5 => ActPhase::Search,
+                6 => ActPhase::Refusal,
             ],
             $story->acts()->orderBy('sequence')->get()->pluck('phase', 'sequence')->all(),
         );
@@ -331,9 +344,9 @@ class OutlineSpineTest extends TestCase
         $calls = collect($this->writer->calls)->where('method', 'actScript')->keyBy('sequence');
 
         $this->assertSame('escalation', $calls[1]['phase']);
-        $this->assertSame('departure', $calls[5]['phase']);
-        $this->assertSame('search', $calls[6]['phase']);
-        $this->assertSame('refusal', $calls[7]['phase']);
+        $this->assertSame('departure', $calls[4]['phase']);
+        $this->assertSame('search', $calls[5]['phase']);
+        $this->assertSame('refusal', $calls[6]['phase']);
 
         $this->assertTrue(
             $calls->every(fn (array $call): bool => trim((string) $call['escalation_beat']) !== ''),
@@ -445,14 +458,22 @@ class OutlineSpineTest extends TestCase
 
     public function test_a_departure_in_the_last_two_acts_is_flagged_as_compressed(): void
     {
+        // Hand-set, not generated: the point is an outline the planner would
+        // never produce, so the act numbers move with the default rather than
+        // being a second statement of it.
         $story = $this->outlinedStory();
-        $story->acts()->where('sequence', '<', 6)->update(['phase' => ActPhase::Escalation]);
-        $story->acts()->where('sequence', 6)->update(['phase' => ActPhase::Departure]);
-        $story->acts()->where('sequence', 7)->update(['phase' => ActPhase::Refusal]);
+        $last = $story->acts()->max('sequence');
+
+        $story->acts()->where('sequence', '<', $last - 1)->update(['phase' => ActPhase::Escalation]);
+        $story->acts()->where('sequence', $last - 1)->update(['phase' => ActPhase::Departure]);
+        $story->acts()->where('sequence', $last)->update(['phase' => ActPhase::Refusal]);
 
         $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
 
-        $this->assertStringContainsString('The narrator leaves in act 6 of 7', implode(' ', $review['warnings']));
+        $this->assertStringContainsString(
+            sprintf('The narrator leaves in act %d of %d', $last - 1, $last),
+            implode(' ', $review['warnings']),
+        );
     }
 
     public function test_an_outline_written_before_the_reversal_says_so_once(): void

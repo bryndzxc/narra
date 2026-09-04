@@ -41,6 +41,78 @@ final class NarrationPace
     }
 
     /**
+     * The best measurement available for this pair.
+     *
+     * A DIFFERENT QUESTION FROM `expectedWpm()`, and the difference is not
+     * academic: a script is sized before there is a narrator. `voice_id` is
+     * null until the channel's narrator is locked — `providers.default_voice_id`
+     * is deliberately null, `GenerateSceneNarration` refuses to synthesize
+     * without one, and `voices:list --set` assigns it — so at act-script time
+     * the story routinely knows its locale and not its voice.
+     *
+     * **That is why pointing the word target at `expectedWpm()` alone would
+     * have been a fix that did not fix.** `expectedWpm(null, 'en-US')` returns
+     * the fallback 160, so every story created through the console would have
+     * gone on being sized 18% short while the code read as corrected. Absence
+     * reading as agreement, in the change written to stop exactly that.
+     *
+     * So this asks the locale when it cannot ask the voice, and it uses only
+     * real measurements to do it. Three steps:
+     *
+     *   1. this voice, measured on this locale — the precise answer;
+     *   2. otherwise the HIGHEST rate any voice has been measured at on this
+     *      locale;
+     *   3. otherwise the fallback constant, unchanged and still the honest
+     *      answer when nothing at all has been measured.
+     *
+     * **Highest, not lowest, and that is the direction that protects the
+     * floor.** Runtime is `minutes * wpm_sized / wpm_actual`, so sizing BELOW
+     * the true reading rate is what produces a short video — 160 against 197 is
+     * the 28.4-minute script this whole change exists to fix. Sizing slightly
+     * above costs a little length, and the ceiling is not the constraint: 8
+     * minutes is the only hard line, and the reference channels in this niche
+     * run 44 and 54 minutes.
+     *
+     * ANYTHING ESTIMATING A RUNTIME USES THIS, not just the word target — and
+     * that was found by a test rather than by design. The first version had
+     * sizing ask this and the runtime estimate ask `expectedWpm()`, which for a
+     * story carrying an unmeasured voice id meant one number for how long to
+     * write and a different one for how long it would run: 197 and 160, in the
+     * same app, about the same narration. That is the drift this whole change
+     * exists to remove, reintroduced inside the change. Every story between 3
+     * and 12 carries `narrator-us-01`, the placeholder the fake invented, so it
+     * was not a hypothetical.
+     *
+     * `expectedWpm()` is untouched and stays the GUARD's figure. Its fallback
+     * semantics are load-bearing for `isEnforceable()` — measured or not is the
+     * question that decides whether a disagreement may cancel a batch — and
+     * widening it to the locale would quietly make an unmeasured pair look
+     * measured.
+     *
+     * It takes a voice and a locale rather than a Story ON PURPOSE. The thing
+     * it must never read is `stories.sized_against_wpm`, and it structurally
+     * cannot — see ScriptSizing, which is where the frozen figure is consulted.
+     */
+    public static function bestKnownWpm(?string $voiceId, ?string $localeProfile): int
+    {
+        if (self::isMeasured($voiceId, $localeProfile)) {
+            return self::expectedWpm($voiceId, $localeProfile);
+        }
+
+        $measured = [];
+
+        foreach (array_keys((array) config('render.narration.voices', [])) as $candidate) {
+            if (self::isMeasured((string) $candidate, $localeProfile)) {
+                $measured[] = self::expectedWpm((string) $candidate, $localeProfile);
+            }
+        }
+
+        return $measured === []
+            ? max(1, (int) config('render.narration.words_per_minute', 160))
+            : max($measured);
+    }
+
+    /**
      * Whether this narrator has been measured ON THIS KIND OF SCRIPT.
      *
      * The locale half is not a refinement, it is the whole question. Brian is

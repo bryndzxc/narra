@@ -47,7 +47,26 @@
  *
  * Usage:  php tools/class-audit.php [--all] [--json]
  */
-const VIEWS = __DIR__.'/../resources/views';
+/*
+ * Overridable so the tool can be pointed at a KNOWN input.
+ *
+ * A tool that can only be run against the live tree cannot be run against a
+ * case whose answer is known in advance, and three defects in three turns were
+ * found by accident because none of these had ever been. See
+ * tests/Feature/ToolsAnswerKnownCasesTest.php.
+ */
+define('VIEWS', pathArg($argv, '--views=') ?? __DIR__.'/../resources/views');
+
+function pathArg(array $argv, string $flag): ?string
+{
+    foreach (array_slice($argv, 1) as $arg) {
+        if (str_starts_with($arg, $flag)) {
+            return substr($arg, strlen($flag));
+        }
+    }
+
+    return null;
+}
 
 $args = array_slice($argv, 1);
 $showAll = in_array('--all', $args, true);
@@ -353,7 +372,28 @@ function reach(array $rules, string $tag, array $has, array $scopes): array
 
 // -- run ---------------------------------------------------------------------
 
-$css = (string) file_get_contents(VIEWS.'/partials/base-css.blade.php');
+$css = styleBodyOf((string) file_get_contents(VIEWS.'/partials/base-css.blade.php'));
+
+/**
+ * Only what is between <style> and </style>.
+ *
+ * The sheet is a blade partial: a comment, then a <style> tag. Read whole, the
+ * first rule after that tag parses as `<style> .thing` — an ANCESTOR-scoped
+ * rule — so the tool answers CONTEXT, its benign verdict, for a rule that is
+ * not scoped at all. Latent on this sheet today only because the first rule
+ * happens to be `:root`, which carries no class.
+ *
+ * Found by running the tool against a fixture whose answer was known, which is
+ * the only way any of this gets found deliberately.
+ */
+function styleBodyOf(string $source): string
+{
+    if (preg_match('#<style[^>]*>(.*)</style>#s', $source, $m) === 1) {
+        return $m[1];
+    }
+
+    return $source;
+}
 [$rules, $ruleCount, $scopes] = stylesheetRules($css);
 $usages = markupUsages(VIEWS);
 

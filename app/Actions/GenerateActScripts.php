@@ -10,6 +10,7 @@ use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\ScriptSizing;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use RuntimeException;
@@ -197,22 +198,25 @@ class GenerateActScripts
     }
 
     /**
-     * The per-act share of the story's word budget.
+     * The per-act share of the story's word budget, and the rate it is frozen
+     * against.
      *
-     * Derived from the story's own target runtime, not a fixed word count.
-     * Runtime is the product in this format; word count is a proxy for it. A
-     * 35-minute midpoint at the configured 160 wpm asks 5,600 words, split
-     * across the acts. Acts land within ~15% of their share, which is close
-     * enough that the total lands in both the runtime window and the
-     * 5,500-8,000 word band. See config/render.php -> narration.
+     * Both moved to `ScriptSizing`, which is now the only thing in the app that
+     * answers "how many words is this script". Four places used to derive
+     * something from the raw constant — this, the dispatch estimate, two prompt
+     * figures in ClaudeScriptWriter and `story:write`'s reported runtime — and a
+     * constant corrected in one of four places is the shape that gave one
+     * narration three different prices.
+     *
+     * The freeze happens HERE rather than in the getter, because this is the
+     * moment the budget becomes binding on a script somebody is about to be
+     * billed for. Everything else asks the same question without writing.
      */
     private function targetWordsPerAct(Story $story, int $actCount): int
     {
-        $midpointMinutes = ($story->target_duration_min + $story->target_duration_max) / 2;
+        ScriptSizing::freezeFor($story);
 
-        $wpm = (int) config('render.narration.words_per_minute');
-
-        return (int) round($midpointMinutes * $wpm / max(1, $actCount));
+        return ScriptSizing::targetWordsPerAct($story, $actCount);
     }
 
     private function summaryFor(Act $act): string

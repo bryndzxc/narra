@@ -238,6 +238,101 @@ class ScenesGateTest extends TestCase
         $this->assertStringContainsString('Diane Kessler', $warnings);
     }
 
+    /**
+     * The style block is read out of the PROMPTS, never asserted from config.
+     *
+     * `GenerateSceneImage` sends `image_prompt` verbatim and nothing re-appends
+     * the art style at dispatch, so a story drafted before the look was retuned
+     * carries the OLD style in every one of its stored prompts for ever. Config
+     * describes what the NEXT story would get.
+     *
+     * Reading config and printing it as "identical on all 168 prompts" would
+     * therefore put a false sentence on the one screen where 150-250 stills are
+     * authorised. It is not hypothetical: measured on live data, rent-will has
+     * 0 of 168 prompts carrying the configured style, my-younger-brother 0 of
+     * 186, and my-wife 270 of 270.
+     *
+     * This is the failure this check exists to catch, so it is the case the
+     * test builds: prompts whose shared block is NOT the configured one.
+     */
+    public function test_the_style_block_is_read_from_the_prompts_and_reports_drift(): void
+    {
+        config(['scenes.art_style' => 'anime, cel shaded, glossy strand-rendered hair', 'scenes.constraints' => '']);
+
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+
+        // Drafted under an EARLIER style. Frame differs per scene; the trailing
+        // block is identical across all of them, as ImagePromptBuilder writes it.
+        foreach ($story->scenes as $scene) {
+            $scene->forceFill([
+                'image_prompt' => "frame for scene {$scene->sequence}
+
+painted realism, oil on canvas, muted palette",
+            ])->save();
+        }
+
+        $block = Livewire::test(ScenesGate::class, ['story' => $story])->instance()->styleBlock();
+
+        $this->assertSame(
+            'painted realism, oil on canvas, muted palette',
+            $block['text'],
+            'The shared block must come from what the prompts actually carry.',
+        );
+        $this->assertSame(7, $block['words']);
+        $this->assertFalse(
+            $block['matches_config'],
+            'A story drafted under an earlier style must be reported as drifted, not as current.',
+        );
+
+        // And it says so where the operator is about to spend.
+        Livewire::test(ScenesGate::class, ['story' => $story])
+            ->assertSee('It is not the style currently declared');
+    }
+
+    /** The agreeing case, so the check is not simply always-red. */
+    public function test_a_story_drafted_under_the_current_style_reports_as_matching(): void
+    {
+        config(['scenes.art_style' => 'painted realism, oil on canvas', 'scenes.constraints' => '']);
+
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+
+        foreach ($story->scenes as $scene) {
+            $scene->forceFill([
+                'image_prompt' => "frame for scene {$scene->sequence}
+
+painted realism, oil on canvas",
+            ])->save();
+        }
+
+        $block = Livewire::test(ScenesGate::class, ['story' => $story])->instance()->styleBlock();
+
+        $this->assertTrue($block['matches_config']);
+        $this->assertSame(5, $block['scenes']);
+    }
+
+    /**
+     * The frame is never swallowed by the shared block.
+     *
+     * If every prompt in a story were byte-identical the "longest common
+     * trailing run" would be the whole prompt, and the page would report that
+     * there is no per-scene content at all — which is true but useless, and it
+     * would leave the rows blank. The loop stops one section short.
+     */
+    public function test_the_shared_block_never_consumes_the_frame(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+
+        foreach ($story->scenes as $scene) {
+            $scene->forceFill(['image_prompt' => "same frame
+
+same style"])->save();
+        }
+
+        $block = Livewire::test(ScenesGate::class, ['story' => $story])->instance()->styleBlock();
+
+        $this->assertSame('same style', $block['text'], 'The first section is the frame and is never shared away.');
+    }
+
     private function storyWithScenes(StoryStatus $status): Story
     {
         $story = Story::factory()->status($status)->create(['slug' => 'gate-two']);

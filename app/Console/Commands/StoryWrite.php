@@ -13,7 +13,9 @@ use App\Exceptions\LocaleViolationException;
 use App\Models\Act;
 use App\Models\Story;
 use App\Support\ModelRoster;
+use App\Support\NarrationPace;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\ScriptSizing;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Throwable;
@@ -195,7 +197,10 @@ class StoryWrite extends Command
             return true;
         }
 
-        $acts = $story->acts()->count() ?: (int) ($this->option('acts') ?: 5);
+        // The Action's answer, not a literal. This said 5 whatever the format
+        // was, so the confirmation before eight billed calls announced six.
+        $acts = $story->acts()->count()
+            ?: (int) ($this->option('acts') ?: GenerateOutline::defaultActCountFor($story));
         $calls = $story->acts()->count() === 0 ? $acts + 1 : $acts;
 
         $this->warn(sprintf(
@@ -217,9 +222,14 @@ class StoryWrite extends Command
     private function report(Story $story, float $startedAt): void
     {
         $words = $story->acts()->get()->sum(fn (Act $act): int => str_word_count((string) $act->script));
-        // One constant, shared with the word target and the fake TTS.
-        $wpm = (int) config('render.narration.words_per_minute');
-        $minutes = $words / $wpm;
+
+        // What this script will RUN to, which is the narrator's measured rate
+        // and not the rate the script was sized against. Those were the same
+        // number while both came from the constant, and reporting the sizing
+        // rate here would have said story 9's 5,781 words run 36.1 minutes when
+        // the render came back at 29:39.
+        $minutes = ScriptSizing::minutesFor($story, $words);
+        $wpm = NarrationPace::bestKnownWpm($story->voice_id, $story->locale_profile);
 
         $entries = $story->costEntries()->get();
         $text = $entries->where('category', CostCategory::Text);

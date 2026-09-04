@@ -6,12 +6,14 @@ use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Models\Act;
+use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Support\RunFingerprint;
 use App\Support\WorkerHealth;
 use App\Support\WorkerRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -276,6 +278,143 @@ class StrandedQueueTest extends TestCase
         $this->assertStringContainsString('class="alert err mt-4"', $html);
         $this->assertStringNotContainsString('class="alert warn mt-4"', $html);
         $this->assertStringContainsString('152 job(s) stranded', $html);
+    }
+
+    /**
+     * A worker that stopped heartbeating is gone, however recently the CACHE
+     * KEY was written.
+     *
+     * The reading to prevent: a panel naming pids that no longer exist on the
+     * machine. The registry holds one map per queue and rewrites the whole map
+     * on every heartbeat, so a live worker keeps refreshing the key's TTL for
+     * everything in it — the expiry that matters is therefore per ENTRY, on
+     * `seen_at`, not on the key.
+     *
+     * This pins that, because the two are easy to confuse and the failure is
+     * silent: the panel would go on reporting a dead worker as live and current
+     * for as long as any worker on that queue kept the key alive.
+     */
+    public function test_an_entry_that_stopped_heartbeating_is_not_live(): void
+    {
+        $now = microtime(true);
+
+        // One worker last seen four and a half hours ago, one seen just now —
+        // in the same map, so the key is fresh either way.
+        Cache::put('narra:workers:text', [
+            '99999' => [
+                'pid' => 99999,
+                'booted_at' => $now - 16380,
+                'seen_at' => $now - 16380,
+                'fingerprint' => ['code' => 'old'],
+                'digest' => 'deadbeefdead',
+            ],
+            '11111' => [
+                'pid' => 11111,
+                'booted_at' => $now - 600,
+                'seen_at' => $now - 5,
+                'fingerprint' => RunFingerprint::shared(),
+                'digest' => RunFingerprint::digest(RunFingerprint::shared()),
+            ],
+        ], 300);
+
+        WorkerHealth::forget();
+        $health = WorkerHealth::forQueue('text');
+
+        $this->assertSame(1, $health['live'], 'A worker that stopped heartbeating is still being counted.');
+        $this->assertSame(0, $health['stale']);
+        $this->assertSame([11111], $health['pids'], 'The panel is naming a pid that is gone.');
+        $this->assertSame(WorkerHealth::OK, $health['state']);
+    }
+
+    /**
+     * Every reading carries the moment it was taken.
+     *
+     * A rendered page cannot know how long it has been open, and the renders
+     * views deliberately drop their meta refresh whenever nothing is running —
+     * which is exactly when workers get restarted. Without a stamp, a panel
+     * loaded before a restart is indistinguishable from a live one: every
+     * number on it correct, as of a moment that has passed.
+     *
+     * That is the same defect as a render page reporting a previous run's
+     * stages as current, and it is the one this panel could least afford,
+     * because it is the reading taken before authorising a spend.
+     */
+    public function test_the_panel_says_when_it_was_read(): void
+    {
+        $this->queueDepthIs(0);
+
+        $health = WorkerHealth::forQueue('text');
+
+        $this->assertEqualsWithDelta(microtime(true), $health['read_at'], 5.0);
+
+        $html = $this->get(route('renders.index'))->getContent();
+
+        // The stamp, and the pids beside it. Both exist so the panel can be
+        // checked against the machine rather than believed.
+        $this->assertStringContainsString('data-read-at=', $html);
+        $this->assertStringContainsString('data-reading-age', $html);
+    }
+
+    /**
+     * A worker inside a long job stays visible.
+     *
+     * The reading to prevent, and it is the inverse of every other test in this
+     * file: the panel saying nothing is listening while a worker is mid-encode.
+     *
+     * `Looping` does not fire while a job runs and `JobProcessing` fires once
+     * before it, so anything longer than the registry TTL used to age its own
+     * worker out. On this pipeline that is not a corner case — the mux
+     * re-encodes a 40-minute video in a single job, and the assets queue runs
+     * hundreds of image calls at about 53 seconds each. The panel an operator
+     * reads before authorising a spend would have said ABSENT while everything
+     * was fine, which is the same false reading as a stranded queue with the
+     * sign flipped.
+     *
+     * The long jobs already tick `RenderJob::heartbeat()` for the row's own
+     * staleness clock. This asserts that beat now reaches the registry too.
+     */
+    public function test_a_worker_inside_a_long_job_stays_visible(): void
+    {
+        config(['queue.default' => 'redis']);
+        $this->queueDepthIs(0);
+
+        // The worker announces itself once, as `Looping` does at the top of the
+        // poll, and then picks up a job.
+        WorkerRegistry::heartbeat('render', RunFingerprint::shared());
+
+        $this->assertSame(1, WorkerHealth::forQueue('render')['live']);
+
+        // Now the silence. `Looping` will not fire again until the job is done
+        // and `JobProcessing` has already fired, so nothing refreshes the entry
+        // and it ages out — which `flush()` stands in for here, because the
+        // alternative is a test that sleeps for five minutes.
+        WorkerRegistry::flush('render');
+        WorkerHealth::forget();
+
+        $this->assertSame(
+            0,
+            WorkerHealth::forQueue('render')['live'],
+            'The entry should be gone — otherwise this test proves nothing.',
+        );
+
+        // Now the same silence, with the job ticking its heartbeat the way
+        // ConcatRenderJob, GenerateSubtitlesJob and RenderStageJob all do.
+        $story = Story::factory()->create(['status' => StoryStatus::Rendering]);
+        $job = RenderJob::create([
+            'story_id' => $story->id,
+            'stage' => RenderStage::Mux,
+            'status' => RenderJobStatus::Running,
+            'started_at' => now(),
+        ]);
+
+        $job->heartbeat();
+        WorkerHealth::forget();
+
+        $health = WorkerHealth::forQueue('render');
+
+        $this->assertSame(1, $health['live'], 'A worker mid-job is being reported as gone.');
+        $this->assertSame(WorkerHealth::OK, $health['state']);
+        $this->assertSame([getmypid()], $health['pids']);
     }
 
     private function queueDepthIs(int $jobs): void

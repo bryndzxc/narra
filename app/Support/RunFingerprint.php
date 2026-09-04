@@ -81,6 +81,43 @@ final class RunFingerprint
     }
 
     /**
+     * The code marker as it is ON DISK RIGHT NOW. Read this warning first.
+     *
+     * ---------------------------------------------------------------------
+     * THIS MUST NEVER BE ANNOUNCED, COMPARED AGAINST, OR RETURNED BY shared()
+     * ---------------------------------------------------------------------
+     *
+     * Everything above this method exists because a stale worker must not be
+     * allowed to certify itself. `sealCode()` freezes the marker at boot for
+     * exactly that reason: a worker that read the file system later would read
+     * the NEW files and report itself current — a check that passes precisely
+     * because it is being run by the thing it is supposed to catch.
+     *
+     * This method is that forbidden read, and it is safe for one use and one
+     * only: **deciding to die.** A worker compares its sealed marker against
+     * this and, if they differ, exits so its supervisor can bring it back on
+     * current code. The polarity is what makes it safe —
+     *
+     *   used to certify: a wrong answer says "I am current" when it is not,
+     *                    and 117 scenes get narrated at the wrong speed;
+     *   used to die:     a wrong answer costs a restart.
+     *
+     * So the only caller is `StaleWorkerRestart`, and `shared()` continues to
+     * announce `code()`, the sealed one. If this value ever reaches the
+     * registry, the fingerprint guard is over — a stale worker would announce
+     * a fresh marker and the dispatcher would wave it through. There is a test
+     * asserting exactly that it does not.
+     *
+     * Deliberately NOT memoised: a cached "what is on disk now" is a
+     * contradiction, and the throttling belongs to the caller that knows how
+     * often it is worth asking.
+     */
+    public static function codeOnDiskNow(): string
+    {
+        return self::computeCodeMarker();
+    }
+
+    /**
      * The half of the fingerprint that belongs to the machine, not to a story.
      *
      * This is what a queue worker can announce about itself. A worker serves

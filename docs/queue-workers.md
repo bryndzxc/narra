@@ -290,6 +290,71 @@ php artisan render:dispatch sample-story
 #    The row is still `running`; the page is yellow and names the stage and scene.
 ```
 
+## Rehearsing the self-restart
+
+A worker that finds itself running superseded code exits between jobs and NSSM
+brings it back current. That is a recovery nobody watches, on a machine with no
+supervisor UI, so it gets rehearsed the same way the stale-heartbeat alarm does.
+
+```bash
+php artisan workers:drill idle    # the ordinary case: code edited, nothing running
+php artisan workers:drill busy    # the bound: code edited mid-batch
+php artisan workers:drill check   # what a FRESH dispatcher makes of the workers now
+```
+
+Both drills touch a file's **mtime only** — no content change, nothing to
+revert, `git status` unaffected. They refuse to start while any queue holds work
+or a render job is running, and the jobs `busy` dispatches resolve no provider
+and take no story, so nothing here can bill.
+
+**`idle`** touches a file and watches all three workers go superseded, exit, and
+come back. Measured on this box: first worker back at ~10s, every queue listened
+to again by a current worker at ~16s. It also asserts the thing that must never
+change — that a superseded worker still ANNOUNCES the marker it booted with, and
+that a freshly-booted dispatcher still refuses to queue work into it.
+
+**`busy`** dispatches ten sleeping jobs, waits for the batch to be underway, then
+makes the same edit mid-run. Every job must come back with one pid and one
+sealed marker, and the restart must happen after the queue drains:
+
+```
+t+ 6.6s  TOUCH                  queued=9   worker superseded, stays up
+t+ 7.2s  fresh dispatcher: REFUSED
+t+54.5s  10/10 done             queued=0
+t+64.5s  worker restarts, current
+```
+
+### What the drill found the first time it ran
+
+`busy` failed. The worker stood down at t+13s with eight jobs still queued and
+the batch finished on a different code marker than it started with.
+
+The `text` worker's own bound was correct and never fired. The **idle `assets`
+worker** self-restarted — its queue was empty, so by its own lights it was right
+— and `queue:restart` is a **machine-wide broadcast**. The bound was evaluated
+per worker while the action reached every worker.
+
+The fix is that a broadcast may only be sent when the whole machine is idle.
+`StaleWorkerRestart` now checks every configured queue, and an **unreadable**
+depth blocks the restart too — a queue that cannot be counted is not a queue
+known to be empty. The cost is the conservative direction: a long mux on
+`render` delays `text` and `assets` refreshing until it finishes.
+
+### The mechanism cannot bootstrap itself
+
+A worker that booted **before** `StaleWorkerRestart` existed has no listener,
+cannot notice anything, and sits stale forever. That is how the above was found
+— all three workers stale for half an hour with the feature merged.
+
+**After adding or moving the `Looping` listener, restart the workers by hand
+once.** Every restart after that is automatic.
+
+```bash
+php artisan queue:restart
+# then confirm they actually came back, from a fresh process:
+php artisan workers:drill check --queue=assets
+```
+
 ## Restarting workers
 
 ```bash

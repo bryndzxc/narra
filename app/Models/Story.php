@@ -8,12 +8,14 @@ use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Exceptions\GateViolationException;
 use Database\Factories\StoryFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -72,6 +74,12 @@ class Story extends Model
      *
      * `total_cost_usd` too — it is maintained from cost_entries, not set.
      *
+     * `sized_against_wpm` too, and for the reason `locale_profile` is frozen:
+     * the act scripts are generated against it, so a value that could be
+     * reassigned would describe a script that no longer exists. It is written
+     * once by GenerateActScripts and never again — see
+     * `sizedAgainstWpm()` there, and the migration that added the column.
+     *
      * @return array<string, string>
      */
     protected function casts(): array
@@ -81,10 +89,49 @@ class Story extends Model
             'reopened_from' => StoryStatus::class,
             'format' => StoryFormat::class,
             'target_publish_at' => 'datetime',
+            'is_fixture' => 'boolean',
             'total_cost_usd' => 'decimal:4',
             'target_duration_min' => 'integer',
             'target_duration_max' => 'integer',
+            'sized_against_wpm' => 'integer',
         ];
+    }
+
+    /**
+     * The runtime window a story gets when nobody names one.
+     *
+     * READ FROM THE COLUMN, not written out here. `CreateStory` deliberately
+     * omits these keys so the schema answers — "a second copy of those numbers
+     * in PHP is exactly the drift CLAUDE.md warns about with the
+     * words-per-minute constant" — and the new-story form needs the same answer
+     * before a row exists to ask. Writing `[30, 40]` in a form estimate would be
+     * that second copy, in the one place that has already been wrong twice
+     * about a default it kept its own version of.
+     *
+     * Resolved once per request. It is a schema read, not a row read.
+     *
+     * @return array{min: int, max: int}
+     */
+    public static function defaultDurationWindow(): array
+    {
+        static $window = null;
+
+        if ($window === null) {
+            $defaults = [];
+
+            foreach (Schema::getColumns('stories') as $column) {
+                if (in_array($column['name'], ['target_duration_min', 'target_duration_max'], true)) {
+                    $defaults[$column['name']] = (int) trim((string) $column['default'], "'");
+                }
+            }
+
+            $window = [
+                'min' => $defaults['target_duration_min'] ?? 30,
+                'max' => $defaults['target_duration_max'] ?? 40,
+            ];
+        }
+
+        return $window;
     }
 
     /**
@@ -266,6 +313,52 @@ class Story extends Model
             ->implode(',');
 
         return hash('sha256', $pairs);
+    }
+
+    /**
+     * A story kept to be measured against rather than published.
+     *
+     * ---------------------------------------------------------------------
+     * WHY THIS EXISTS, AND WHY IT IS A COLUMN RATHER THAN A NAME CHECK
+     * ---------------------------------------------------------------------
+     *
+     * Three of these sit on this machine and every operator surface was
+     * treating them as outstanding work: the Phase 0 render fixture is parked
+     * at `rendered`, which made it a permanent resident of "Waiting on you" —
+     * the one section of the dashboard that is supposed to be the only
+     * actionable thing on it — and the two style-preview casts sat forever in
+     * "Not moving", a section whose entire meaning is "this should be moving
+     * and is not".
+     *
+     * **A section that always contains something it should not teaches you to
+     * skim it, and you skim it right past the day something real lands
+     * there.** That is the same failure as an alarm that is always on: not a
+     * wrong number, a true one that has stopped being read.
+     *
+     * A column rather than a slug prefix or a title match, because those are
+     * guesses about intent that a rename silently breaks — and a fixture that
+     * quietly became ordinary work again would reintroduce exactly the noise
+     * this removes, with nothing to notice it by.
+     *
+     * It hides a story from the sections that mean "do something about this".
+     * It does NOT hide the story: it still appears on the index, still has its
+     * own page, still carries its costs into every total, and that page says
+     * plainly what it is and why it never advances.
+     */
+    public function isFixture(): bool
+    {
+        return (bool) $this->is_fixture;
+    }
+
+    /**
+     * Stories that represent outstanding work.
+     *
+     * @param  Builder<Story>  $query
+     * @return Builder<Story>
+     */
+    public function scopeRealWork(Builder $query): Builder
+    {
+        return $query->where('is_fixture', false);
     }
 
     /** The gate currently waiting on the operator, if the story is parked at one. */

@@ -6,15 +6,18 @@ use App\Actions\CancelRenderBatch;
 use App\Actions\DispatchRenderPipeline;
 use App\Enums\Gate;
 use App\Enums\OperatorAction;
+use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Exceptions\DispatchRefusedException;
 use App\Exceptions\GateViolationException;
 use App\Models\RenderJob;
 use App\Models\Story;
+use App\Support\GateVoice;
 use App\Support\RenderWorkspace;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\CarbonInterface;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Throwable;
@@ -212,6 +215,13 @@ class PreviewGate extends Component
             $this->canDispatchRender,
             $this->dispatchRefusal,
             $this->canCancelRender,
+            $this->voice,
+            $this->phase,
+            $this->artifact,
+            $this->muxState,
+            $this->windowBar,
+            $this->chapterMarks,
+            $this->clipProgress,
         );
     }
 
@@ -317,6 +327,259 @@ class PreviewGate extends Component
         if ($this->problem === null) {
             $this->notice = 'Sent back for a re-render. '.(string) $this->notice;
         }
+    }
+
+    /**
+     * How this page is allowed to talk about its own decisions.
+     *
+     * Gate 3 is deliberately NOT in GateVoiceTest's agreement table: this
+     * component's `canApprove()` is the status AND a file on disk, while the
+     * voice models the STATUS only. That is not drift, it is the split the
+     * missing-file state exists for — a story at `rendered` with no artifact is
+     * still a story whose decision is Gate 3, and the page has to say so rather
+     * than fall silent.
+     */
+    #[Computed]
+    public function voice(): GateVoice
+    {
+        return GateVoice::for(Gate::Preview, $this->story->status);
+    }
+
+    /**
+     * Where this story is relative to the gate, in one word.
+     *
+     * The mock draws two states, `ready` and `running`. Gate 2's mock draws
+     * three and the third is `locked` — so Gate 3 was drawn with no settled
+     * state, which is where two of this project's three rendered stories
+     * actually live. Same defect as Gate 1's, one layer earlier: in the design
+     * rather than in the page.
+     *
+     *   ahead    the render has not happened and is not happening
+     *   running  a clip batch is in flight
+     *   waiting  the decision is this gate's, now
+     *   behind   the gate has been crossed
+     */
+    #[Computed]
+    public function phase(): string
+    {
+        return match (true) {
+            $this->story->status === StoryStatus::Rendering => 'running',
+            $this->story->status === StoryStatus::Rendered => 'waiting',
+            $this->story->status->rank() > StoryStatus::Rendered->rank() => 'behind',
+            default => 'ahead',
+        };
+    }
+
+    /**
+     * The artifact, which is a different question from the status.
+     *
+     * THE THIRD STATE THE MOCK FOLDS AWAY. `rendered` with no file is not "still
+     * encoding": the mux row says the stage finished and the file is not there.
+     * That is the false-success shape this project keeps a table of — rows
+     * reporting success over an absent artifact — and sending the operator to
+     * watch progress that completed hours ago is the page agreeing with it.
+     */
+    #[Computed]
+    public function artifact(): string
+    {
+        if ($this->videoExists()) {
+            return 'ready';
+        }
+
+        // A mux row that finished, or a status past the render, both mean a
+        // file was supposed to exist. Anything earlier simply has not got there.
+        $muxFinished = $this->muxJob()?->status === RenderJobStatus::Succeeded;
+
+        return $muxFinished || $this->story->status->rank() >= StoryStatus::Rendered->rank()
+            ? 'missing'
+            : 'none';
+    }
+
+    /**
+     * The last mux, as the row actually records it.
+     *
+     * The mock paints `EXIT 0` beside the log as a constant. A failed mux is a
+     * real state, and a success badge painted over one is this codebase's whole
+     * defect class inside a single span.
+     *
+     * @return array{status: ?RenderJobStatus, label: string, tone: string, log: ?string, error: ?string, finished_at: ?CarbonInterface}
+     */
+    #[Computed]
+    public function muxState(): array
+    {
+        $job = $this->muxJob();
+
+        $tone = match ($job?->status) {
+            RenderJobStatus::Succeeded => 'ok',
+            RenderJobStatus::Failed => 'fail',
+            RenderJobStatus::Running, RenderJobStatus::Queued => 'run',
+            RenderJobStatus::Cancelled => 'warn',
+            default => '',
+        };
+
+        return [
+            'status' => $job?->status,
+            'label' => $job === null ? 'never run' : $job->status->value,
+            'tone' => $tone,
+            'log' => $job?->log,
+            'error' => $job?->error,
+            'finished_at' => $job?->finished_at,
+        ];
+    }
+
+    /**
+     * The runtime against the story's own target window.
+     *
+     * THE AXIS IS DERIVED, NOT DRAWN. The mock hardcodes 30 min at 20% and 40
+     * min at 67% — a scale of roughly 25.7 to 47 minutes, which is fine for the
+     * story it was drawn against and puts `sample-story` at 2:42 somewhere
+     * around MINUS 108%. That fixture is parked at `rendered` permanently, so
+     * the state the scale cannot express is the one most often on screen.
+     *
+     * So the axis is the story's window plus half its span at each end, the
+     * marker is clamped into it, and — because a clamped marker on its own says
+     * "just outside" for anything from 22 seconds to 27 minutes — the distance
+     * is stated in words beside it. Not one story in this database is inside the
+     * window; `IN WINDOW` is the only window state the mock draws.
+     *
+     * The verdict itself is unchanged: `in_target_window` still decides, and
+     * Gate 3 still reports rather than refuses. The floor is a preference and
+     * the operator's call.
+     *
+     * @return array{percent: float, band_start: float, band_end: float, inside: bool, direction: ?string, distance: ?string, label: string, tone: string}
+     */
+    #[Computed]
+    public function windowBar(): array
+    {
+        $minMs = $this->story->target_duration_min * 60_000;
+        $maxMs = $this->story->target_duration_max * 60_000;
+        $actual = (int) $this->story->acts()->sum('duration_ms');
+
+        $span = max($maxMs - $minMs, 60_000);
+        $axisStart = $minMs - intdiv($span, 2);
+        $axisEnd = $maxMs + intdiv($span, 2);
+
+        $place = static fn (int $ms): float => round(
+            max(0.0, min(100.0, ($ms - $axisStart) / ($axisEnd - $axisStart) * 100)),
+            2,
+        );
+
+        $inside = $actual >= $minMs && $actual <= $maxMs;
+        $direction = $inside ? null : ($actual < $minMs ? 'under' : 'over');
+        $gap = $inside ? 0 : ($actual < $minMs ? $minMs - $actual : $actual - $maxMs);
+
+        return [
+            'percent' => $place($actual),
+            'band_start' => $place($minMs),
+            'band_end' => $place($maxMs),
+            'inside' => $inside,
+            'direction' => $direction,
+            'distance' => $direction === null ? null : $this->gap($gap).' '.$direction,
+            'label' => $inside ? 'in window' : strtoupper((string) $direction),
+            'tone' => $inside ? 'ok' : 'warn',
+        ];
+    }
+
+    /**
+     * Act boundaries as positions on the finished runtime.
+     *
+     * The mock puts these on the video scrubber. Nothing can draw on a native
+     * `<video controls>` scrubber, and swapping in a custom player to gain seven
+     * tick marks would put this gate's one job — watching the file — behind a
+     * pile of JavaScript. They are their own strip under the player instead:
+     * same information, same source, no player to go wrong.
+     *
+     * Clamped for the same reason the runtime marker is. An act that keeps an
+     * older `start_ms` through a partial re-render can name a position past the
+     * end of the video, and a tick outside its own rail is not a tick.
+     *
+     * @return array<int, array{percent: float, timestamp: string, title: string}>
+     */
+    #[Computed]
+    public function chapterMarks(): array
+    {
+        $total = (int) $this->story->acts()->sum('duration_ms');
+
+        if ($total <= 0) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $chapter): array => [
+                'percent' => round(max(0.0, min(100.0, $chapter['start_ms'] / $total * 100)), 2),
+                'timestamp' => $chapter['timestamp'],
+                'title' => $chapter['title'],
+            ],
+            $this->chapters(),
+        );
+    }
+
+    /**
+     * Clip encoding, counted against the scenes rather than against the rows.
+     *
+     * ROW 7 OF THE FALSE-SUCCESS TABLE, AND THE REASON THIS METHOD IS NOT A
+     * ONE-LINER. `RenderJob::open()` runs INSIDE the job, so a scene still
+     * queued has no row at all — `render_jobs` cannot count a backlog however
+     * carefully it is asked. Story 21 reported "118 stills done, nothing
+     * failed, no stale heartbeat" while 152 scenes sat in Redis with nothing
+     * listening, and every number on that page was true.
+     *
+     * The denominator is therefore the scene count, which is the one figure that
+     * does not come from the rows. `RenderProgress::stages()` already made this
+     * call for the render page — "saying 185/185 for a 186-scene story hides
+     * that rather than showing it" — and this is the same denominator on the
+     * gate.
+     *
+     * @return array{done: int, total: int, percent: int, unrecorded: int}
+     */
+    #[Computed]
+    public function clipProgress(): array
+    {
+        $total = $this->story->scenes()->count();
+
+        $done = RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::SceneClips)
+            ->where('status', RenderJobStatus::Succeeded)
+            ->count();
+
+        $recorded = RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::SceneClips)
+            ->count();
+
+        return [
+            'done' => $done,
+            'total' => $total,
+            'percent' => $total === 0 ? 0 : (int) floor($done / $total * 100),
+            // Scenes with no row of their own. Not "failed" and not "done" —
+            // unseen, which is the only honest word for it.
+            'unrecorded' => max(0, $total - $recorded),
+        ];
+    }
+
+    private function muxJob(): ?RenderJob
+    {
+        return RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::Mux)
+            ->latest('id')
+            ->first();
+    }
+
+    /** A gap in words, so 22 seconds and 27 minutes do not read the same. */
+    private function gap(int $ms): string
+    {
+        $seconds = (int) round($ms / 1000);
+
+        if ($seconds < 60) {
+            return $seconds.' s';
+        }
+
+        $minutes = intdiv($seconds, 60);
+        $rest = $seconds % 60;
+
+        return $rest === 0 ? $minutes.' min' : $minutes.' min '.$rest.' s';
     }
 
     public function render(): View

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Ffmpeg;
 use App\Support\RunFingerprint;
+use App\Support\StaleWorkerRestart;
 use App\Support\WorkerRegistry;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Queue\Events\JobProcessing;
@@ -66,10 +67,13 @@ class AppServiceProvider extends ServiceProvider
      * so the workers announce themselves.
      *
      * `Looping` fires on every poll, which makes the entry a heartbeat that ages
-     * out on its own when a worker is killed. `JobProcessing` refreshes it too,
-     * because a worker inside a long job is not looping and must not be mistaken
-     * for a dead one. `WorkerStopping` removes it on a clean exit so a restarted
-     * worker does not appear twice.
+     * out on its own when a worker is killed. `JobProcessing` refreshes it at
+     * the START of a job — but only at the start, which is why it is not enough
+     * on its own: `Looping` is silent for the whole of a job, so anything longer
+     * than the registry's TTL used to age its own worker out and read as ABSENT
+     * mid-encode. `RenderJob::heartbeat()` covers the inside of a long job.
+     * `WorkerStopping` removes the entry on a clean exit so a restarted worker
+     * does not appear twice.
      *
      * The fingerprint is deliberately NOT story-specific here — a worker serves
      * every story on the queue. RunFingerprint::for() reads the per-story fields
@@ -92,7 +96,23 @@ class AppServiceProvider extends ServiceProvider
             }
         };
 
-        Event::listen(Looping::class, fn (Looping $e) => $announce($e->queue));
+        Event::listen(Looping::class, function (Looping $e) use ($announce): void {
+            $announce($e->queue);
+
+            /*
+             * And, on the same beat, ask whether this process is still running
+             * the code that is on disk. `Looping` is the right place and the
+             * only safe one: it fires when the daemon polls rather than while
+             * it works, so nothing is ever interrupted mid-job.
+             *
+             * This does not touch what the dispatch-time guard does. See
+             * StaleWorkerRestart, which explains why reading the marker here is
+             * safe when RunFingerprint says at length that it is not — the
+             * short version being that it is used to decide to die, never to
+             * decide that anything is fine.
+             */
+            StaleWorkerRestart::consider($e->queue);
+        });
         Event::listen(JobProcessing::class, fn (JobProcessing $e) => $announce($e->job->getQueue() ?? ''));
         Event::listen(WorkerStopping::class, function (): void {
             try {

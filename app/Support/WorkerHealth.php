@@ -92,7 +92,11 @@ final class WorkerHealth
      *     live: int,
      *     stale: int,
      *     oldest_boot: ?string,
+     *     pids: array<int, int>,
+     *     read_at: float,
      *     pending: ?int,
+     *     fact: string,
+     *     advice: string,
      *     headline: string,
      * }>
      */
@@ -116,7 +120,11 @@ final class WorkerHealth
      *     live: int,
      *     stale: int,
      *     oldest_boot: ?string,
+     *     pids: array<int, int>,
+     *     read_at: float,
      *     pending: ?int,
+     *     fact: string,
+     *     advice: string,
      *     headline: string,
      * }
      */
@@ -136,11 +144,15 @@ final class WorkerHealth
                 'live' => 0,
                 'stale' => 0,
                 'oldest_boot' => null,
+                'pids' => [],
+                'read_at' => microtime(true),
                 'pending' => 0,
-                'headline' => sprintf(
+                'fact' => $inline = sprintf(
                     'Queue driver is "%s" — jobs run in the web process, so no worker can be stale.',
                     $driver,
                 ),
+                'advice' => '',
+                'headline' => $inline,
             ];
         }
 
@@ -165,38 +177,68 @@ final class WorkerHealth
             'live' => count($live),
             'stale' => count($stale),
             'oldest_boot' => self::oldestBoot($live),
+
+            /*
+             * The pids, so this panel can be CHECKED rather than believed.
+             *
+             * Nothing else in the console can be verified against the machine
+             * it runs on. Every other number here comes from our own
+             * bookkeeping; a pid is the one fact an operator can put next to
+             * `Get-CimInstance` and see agree or disagree in one glance. That
+             * matters most on exactly the reading this panel exists for — the
+             * one taken before authorising a spend.
+             */
+            'pids' => array_map(static fn (array $e): int => (int) $e['pid'], $live),
+
+            /*
+             * WHEN this reading was taken.
+             *
+             * Every value above is true as of a moment, and a rendered page has
+             * no way to say which moment. The renders pages deliberately stop
+             * refreshing when nothing is running — which is precisely when
+             * workers get restarted — so a page left open across a restart goes
+             * on showing the old registry, correctly, forever. Nothing on it is
+             * wrong; the page as a whole is, which is the false-success shape
+             * this project keeps finding.
+             *
+             * The reading cannot know its own age, so it carries its timestamp
+             * and the browser ages it. See `.reading` in the stylesheet.
+             */
+            'read_at' => microtime(true),
+
             'pending' => $pending,
-            'headline' => match ($state) {
+            /*
+             * The message, in two halves.
+             *
+             * `fact` is about THIS queue — its name, its counts. `advice` is
+             * about the STATE and is identical for every queue in it. They are
+             * separate because the dashboard's alarm band shows one block per
+             * state rather than one per queue: three stranded queues get their
+             * three facts and one copy of the ~30 words explaining what
+             * stranded means, instead of the same paragraph three times.
+             *
+             * Splitting the message rather than paraphrasing it in the blade is
+             * the point. A view that composed its own summary would be a second
+             * author for a message this class already writes, and the two would
+             * eventually say different things about the same state.
+             *
+             * `headline` is DERIVED from the two, so every existing caller — the
+             * worker-health panel, the stories index, the render page, the
+             * per-button compact form — sees exactly the string it saw before.
+             */
+            'fact' => $fact = match ($state) {
                 self::STALE => sprintf(
-                    '%d of %d worker(s) on "%s" booted before the current code. Anything dispatched here '
-                    .'is refused until they are restarted.%s',
+                    '%d of %d worker(s) on "%s" booted before the current code.',
                     count($stale),
                     count($live),
                     $queue,
-                    ($pending ?? 0) > 0
-                        ? sprintf(' %d job(s) are already waiting on it.', $pending)
-                        : '',
                 ),
                 self::STRANDED => sprintf(
-                    '%d job(s) are waiting on "%s" and nothing is listening. This is not "about to '
-                    .'start" — no job on this queue will run until a worker does.',
+                    '%d job(s) are waiting on "%s" and nothing is listening.',
                     $pending,
                     $queue,
                 ),
-                self::ABSENT => sprintf(
-                    'Nothing is listening on "%s". %s',
-                    $queue,
-                    $pending === null
-                        // An unreadable depth is not an empty one. Without the
-                        // number this cannot be told apart from a queue that is
-                        // simply idle, and saying so is the whole of the fix —
-                        // a check that could not run reports that it could not
-                        // run, never that it passed.
-                        ? 'Its depth could not be read, so an idle queue and a stalled one look the '
-                          .'same from here.'
-                        : 'It is empty, so nothing is waiting — but nothing dispatched here will run '
-                          .'either.',
-                ),
+                self::ABSENT => sprintf('Nothing is listening on "%s".', $queue),
                 default => sprintf(
                     '%d worker(s) on "%s" agree with this process (fingerprint %s)%s.',
                     count($live),
@@ -204,6 +246,37 @@ final class WorkerHealth
                     RunFingerprint::digest($current),
                     ($pending ?? 0) > 0 ? sprintf(', working through %d queued job(s)', $pending) : '',
                 ),
+            },
+
+            'advice' => $advice = match ($state) {
+                self::STALE => 'Anything dispatched here is refused until they are restarted.',
+                // Phrased without "this queue": it is the per-STATE half of the
+                // message and the dashboard prints one copy of it above three
+                // queue names, so a singular reference would be quietly wrong
+                // in exactly the place the collapse was meant to improve.
+                self::STRANDED => 'This is not "about to start" — nothing waiting on a queue with no '
+                    .'worker will run until one starts.',
+                self::ABSENT => $pending === null
+                    // An unreadable depth is not an empty one. Without the
+                    // number this cannot be told apart from a queue that is
+                    // simply idle, and saying so is the whole of the fix —
+                    // a check that could not run reports that it could not
+                    // run, never that it passed.
+                    ? 'Its depth could not be read, so an idle queue and a stalled one look the '
+                      .'same from here.'
+                    : 'It is empty, so nothing is waiting — but nothing dispatched here will run '
+                      .'either.',
+                default => '',
+            },
+
+            'headline' => match ($state) {
+                // Fact, advice, then the aside — the order this sentence has
+                // always been read in.
+                self::STALE => $fact.' '.$advice.(($pending ?? 0) > 0
+                    ? sprintf(' %d job(s) are already waiting on it.', $pending)
+                    : ''),
+                self::STRANDED, self::ABSENT => $fact.' '.$advice,
+                default => $fact,
             },
         ];
     }

@@ -19,6 +19,7 @@ use App\Support\Providers\OutlineDraft;
 use App\Support\Providers\SceneDraft;
 use App\Support\Providers\SceneDraftSet;
 use App\Support\Providers\ScriptWriterException;
+use App\Support\ScriptSizing;
 use RuntimeException;
 
 /**
@@ -662,7 +663,11 @@ class ClaudeScriptWriter implements ScriptWriter
 
     private function lengthGuidance(Story $story): string
     {
-        $wpm = (int) config('render.narration.words_per_minute');
+        // The SIZING rate, so the word range this asks the model for is the
+        // same one `targetWordsPerAct()` will hold the result to. Read from the
+        // raw constant, these two agreed only for as long as nothing corrected
+        // one of them.
+        $wpm = ScriptSizing::wpmFor($story);
 
         return sprintf(
             'TARGET RUNTIME: %d-%d minutes of narration, roughly %s-%s words in total at the '
@@ -805,7 +810,11 @@ class ClaudeScriptWriter implements ScriptWriter
                 'This act opens at roughly minute %d, where viewers leave. Its first two sentences '
                 .'are a re-hook: give someone about to close the tab a reason not to. Open on the '
                 .'next indignity already in progress. Do not open by recapping act %d.',
-                (int) round(($act->sequence - 1) * $targetWords / (int) config('render.narration.words_per_minute')),
+                // The same rate the word target was derived from, necessarily:
+                // this converts that target back into minutes, and a different
+                // divisor would place the re-hook at a minute the script never
+                // reaches.
+                (int) round(($act->sequence - 1) * $targetWords / ScriptSizing::wpmFor($story)),
                 $act->sequence - 1,
             );
 

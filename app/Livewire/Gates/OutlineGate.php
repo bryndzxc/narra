@@ -13,8 +13,11 @@ use App\Exceptions\DispatchRefusedException;
 use App\Exceptions\GateViolationException;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\GateVoice;
 use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
+use App\Support\NarrationPace;
+use App\Support\ScriptSizing;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Computed;
@@ -96,6 +99,20 @@ class OutlineGate extends Component
         }
 
         $this->loadActs();
+    }
+
+    /**
+     * How this page is allowed to talk about its own decisions.
+     *
+     * Every sentence on a gate page that names an action goes through here, so
+     * that "cheaper to fix here" and "judging these is yours" cannot survive
+     * onto a story whose outline is read-only. See GateVoice for the three
+     * sentences that shipped side by side with a strip contradicting them.
+     */
+    #[Computed]
+    public function voice(): GateVoice
+    {
+        return GateVoice::for(Gate::Outline, $this->story->status);
     }
 
     /**
@@ -331,6 +348,140 @@ class OutlineGate extends Component
         ];
     }
 
+    /**
+     * The reading rate this story's script is sized against, and what it buys.
+     *
+     * ---------------------------------------------------------------------
+     * THE GAP THIS CLOSES, WHICH THIS PASS CREATED
+     * ---------------------------------------------------------------------
+     *
+     * `targetWordsPerAct()` moved from the fallback 160 to the measured 197, and
+     * `sized_against_wpm` freezes whatever a story was written to. So story 9
+     * has a 5,600-word target and a story written today has 6,895, and until
+     * now nothing on any page said why. Two stories, two budgets, no
+     * explanation — which is the shape this file keeps recording from the other
+     * side: a figure that is right and unexplained is read as a figure that is
+     * wrong.
+     *
+     * Gate 1 is where it belongs because Gate 1 is where the target is DECIDED.
+     * The money panel above quotes the bill for a run; this says what the run
+     * will produce and at what rate, before the money is spent.
+     *
+     * ---------------------------------------------------------------------
+     * THREE STATES, AND THE THIRD IS THE ONE THAT MATTERS
+     * ---------------------------------------------------------------------
+     *
+     *   RECORDED     the rate is frozen. Show it, its provenance, the target it
+     *                produced, and how the written script compares.
+     *   PROSPECTIVE  nothing is frozen and a run can still be made. Show what
+     *                that run WOULD fix, labelled as not yet fixed.
+     *   UNKNOWN      a script exists and no rate was recorded for it.
+     *
+     * The first version of this had two states and elided the third, which was
+     * wrong in exactly the way the column exists to prevent. Null means unknown,
+     * and hiding unknown is how absence comes to read as agreement — the defect
+     * this project has now recorded eleven times. A script whose target is not
+     * on record is a fact about that script, and the page says it.
+     *
+     * **UNKNOWN prints no target, and that is the point rather than a gap.**
+     * Computing one from today's rate and setting it beside the written word
+     * count would compare a script against a budget it never had — which is the
+     * precise false comparison `sized_against_wpm` was added to make
+     * impossible. A number that cannot be stood behind does not get printed;
+     * the same rule the Gate 4 banner's date lost its figure to.
+     *
+     * `wpmFor()` reads the frozen value and never writes. Freezing is the
+     * generator's job — a page that recorded provenance as a side effect of
+     * being looked at would be writing history by being read.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function sizing(): array
+    {
+        $story = $this->story;
+
+        $written = $story->acts()->get()->sum(
+            fn (Act $act): int => str_word_count((string) $act->script)
+        );
+
+        $state = match (true) {
+            $story->sized_against_wpm !== null => 'recorded',
+            $this->canWrite() => 'prospective',
+            default => 'unknown',
+        };
+
+        $acts = $story->acts()->count() ?: GenerateOutline::defaultActCountFor($story);
+
+        // Withheld on UNKNOWN rather than computed and hidden by the template:
+        // a figure that exists in the payload is a figure some later surface
+        // will print.
+        $target = $state === 'unknown' ? null : ScriptSizing::targetWords($story);
+
+        return [
+            'state' => $state,
+            // Only meaningful where a rate is claimed. Null on UNKNOWN for the
+            // same reason as the target.
+            'wpm' => $state === 'unknown' ? null : ScriptSizing::wpmFor($story),
+            'measured' => NarrationPace::isMeasured($story->voice_id, $story->locale_profile),
+            'measured_on' => NarrationPace::measuredOn($story->voice_id, $story->locale_profile),
+            'voice' => NarrationPace::voiceName($story->voice_id) ?? $story->voice_id,
+            'acts' => $acts,
+            'target' => $target,
+            'per_act' => $target === null ? null : ScriptSizing::targetWordsPerAct($story, $acts),
+            'written' => $written,
+            // The runtime the words on the page imply, or the runtime the target
+            // implies where nothing is written yet. Both at the narrator's
+            // measured rate, never at the sizing rate — ScriptSizing::minutesFor().
+            'minutes' => ScriptSizing::minutesFor($story, $written > 0 ? $written : (int) $target),
+            'in_window' => ScriptSizing::withinWindow(
+                $story,
+                ScriptSizing::minutesFor($story, $written > 0 ? $written : (int) $target)
+            ),
+
+            // THE SECOND NUMBER, and it is here because the first one is a
+            // design point rather than a forecast. The target says what the
+            // script is asked for; the writer returns ~1,100 words an act
+            // whatever it is asked for, so a page showing only the target's
+            // runtime shows the runtime of a script nobody is going to get.
+            //
+            // Both, labelled, rather than one replacing the other: a figure and
+            // its provenance travel together or the next reader inherits a
+            // number with no way to weigh it. Withheld once a script exists —
+            // by then `written` is the measurement and a projection beside it
+            // would be a guess competing with a fact.
+            'projected' => $written > 0 ? null : [
+                'words' => ScriptSizing::projectedWords($acts),
+                'per_act' => ScriptSizing::naturalActWords(),
+                'minutes' => ScriptSizing::projectedMinutes($story, $acts),
+                'in_window' => ScriptSizing::withinWindow($story, ScriptSizing::projectedMinutes($story, $acts)),
+                'measured_on' => ScriptSizing::naturalActWordsMeasuredOn(),
+                'slope' => ScriptSizing::targetResponseSlope(),
+            ],
+        ];
+    }
+
+    /**
+     * Whether there is anything worth saying about the sizing at all.
+     *
+     * Three of the four combinations have something: a recorded rate, a run
+     * that would fix one, or a written script with no rate on record. The
+     * fourth — nothing written, nothing writable — would say "nothing was
+     * sized, and you cannot size it", which is noise dressed as information.
+     *
+     * The group elides on that, rather than the blade carrying a condition. It
+     * is a real occurring case and not a hypothetical: `sample-story` is parked
+     * at `rendered` permanently, with acts imported from a Phase 0 fixture and
+     * no scripts in them.
+     */
+    #[Computed]
+    public function hasSizingToShow(): bool
+    {
+        return $this->story->sized_against_wpm !== null
+            || $this->canWrite()
+            || $this->story->acts()->whereNotNull('script')->exists();
+    }
+
     public function askToWrite(): void
     {
         $this->problem = null;
@@ -402,6 +553,7 @@ class OutlineGate extends Component
         unset(
             $this->editable,
             $this->canApprove,
+            $this->voice,
             $this->actsMissingRehooks,
             $this->spineReview,
             $this->canReopen,

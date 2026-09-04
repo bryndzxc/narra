@@ -42,6 +42,32 @@
         @endif
     </p>
 
+    {{--
+        A fixture says so on its own page, and says why.
+
+        Without this the flag is invisible from here and the only symptom is an
+        absence: the story never appears in "Waiting on you" or "Not moving" and
+        nothing explains it. Future-you finds a story parked at `rendered` for a
+        year, goes looking for the bug, and the bug is a deliberate decision
+        nobody wrote down — which is the shape this project keeps finding at the
+        bottom of its own defects.
+
+        Advisory rather than alarm: nothing is wrong here. It is the one panel on
+        a story page that exists to STOP somebody acting.
+    --}}
+    @if ($story->isFixture())
+        <div class="alert">
+            <strong>This is a fixture. It is not going to be published, and it is not waiting on you.</strong>
+            <div class="mt-1">{{ $story->fixture_note }}</div>
+            <div class="muted small mt-2">
+                It is kept out of &ldquo;Waiting on you&rdquo;, out of &ldquo;Not moving&rdquo; and out of
+                the count in the rail &mdash; a section that always holds something it should not is a
+                section you learn to skim. Everything else works normally: its costs count, its pages open,
+                and every gate below still does what it says.
+            </div>
+        </div>
+    @endif
+
     {{-- The stepper is the spine of the whole tool: four gates, always visible,
          always in order, so it is never unclear which decision is outstanding. --}}
     <div class="gates">

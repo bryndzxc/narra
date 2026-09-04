@@ -4,12 +4,15 @@ namespace App\Livewire\Stories;
 
 use App\Actions\CreateStory;
 use App\Actions\DispatchTextStage;
+use App\Actions\GenerateOutline;
 use App\Enums\OperatorAction;
 use App\Enums\StoryFormat;
 use App\Exceptions\DispatchRefusedException;
 use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
+use App\Support\NarrationPace;
+use App\Support\ScriptSizing;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Validation\Rule;
@@ -142,7 +145,31 @@ class NewStory extends Component
     #[Computed]
     public function estimate(): array
     {
-        $acts = $this->acts ?? ($this->format === 'anthology' ? 5 : 6);
+        // From the Action, not from a copy of its numbers. This line read
+        // `($this->format === 'anthology' ? 5 : 6)` and the Action said 7 for a
+        // single, so this money screen quoted 7 calls for a run that made 8.
+        $acts = $this->acts ?? GenerateOutline::defaultActCountForFormat(
+            StoryFormat::from($this->format)
+        );
+
+        // THE ACT COUNT IS THE LEVER, AND IT IS CHOSEN ON THIS FORM.
+        //
+        // This screen quoted calls and dollars and no runtime at all, which was
+        // survivable while the word target was believed to govern length. It
+        // does not: the fitted response is +0.30, so an act comes back at ~1,100
+        // words whatever it was asked for and the act count is what multiplies
+        // it. An operator moving this field from 6 to 8 was moving the runtime
+        // by nine minutes with nothing on screen saying so.
+        //
+        // Both numbers, for the reason Gate 1 shows both: the target's runtime
+        // is the design point and the projection is what the writer actually
+        // returns, and a figure without its provenance is one the next reader
+        // cannot weigh.
+        $window = Story::defaultDurationWindow();
+        $wpm = NarrationPace::bestKnownWpm(null, $this->localeProfile);
+
+        $targetWords = (int) round(($window['min'] + $window['max']) / 2 * $wpm);
+        $projectedWords = ScriptSizing::projectedWords($acts);
 
         return [
             // One outline call, then one per act. Sequential, each fed the
@@ -152,7 +179,25 @@ class NewStory extends Component
             'acts' => $acts,
             'roster' => app(ModelRoster::class)->lines(ModelRoster::SCRIPT_OPERATIONS),
             'provider' => (string) config('providers.script_writer'),
+
+            'window' => $window,
+            'wpm' => $wpm,
+            'target_words' => $targetWords,
+            'target_minutes' => $targetWords / max(1, $wpm),
+            'target_in_window' => self::inside($targetWords / max(1, $wpm), $window),
+            'projected_words' => $projectedWords,
+            'projected_per_act' => ScriptSizing::naturalActWords(),
+            'projected_minutes' => $projectedWords / max(1, $wpm),
+            'projected_in_window' => self::inside($projectedWords / max(1, $wpm), $window),
+            'projected_measured_on' => ScriptSizing::naturalActWordsMeasuredOn(),
+            'slope' => ScriptSizing::targetResponseSlope(),
         ];
+    }
+
+    /** @param  array{min: int, max: int}  $window */
+    private static function inside(float $minutes, array $window): bool
+    {
+        return $minutes >= $window['min'] && $minutes <= $window['max'];
     }
 
     /**

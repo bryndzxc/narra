@@ -17,6 +17,28 @@
     // here that means the pipeline has stopped RIGHT NOW. Stale refuses future
     // dispatches, which is loud and immediate wherever it fires; absent is a
     // note about an empty queue.
+    /*
+     * Declared HERE rather than inline further down the file, and it is not a
+     * style preference.
+     *
+     * Blade's raw-php-block pass runs BEFORE directives are compiled, and it
+     * pairs an opener with the next closer using a lazy regex that has no idea
+     * the parenthesised inline form exists. So an inline one placed ABOVE a
+     * block gets paired with that block's closer, and every line between the
+     * two — html, directives, all of it — is swallowed into raw PHP.
+     *
+     * It took every gate page in the console down, and the symptom was not a
+     * parse error at the offending line. It was "Undefined variable $grouped"
+     * a hundred lines below, because the block that defined it never compiled.
+     *
+     * The same reading is why this explanation does not quote the two
+     * directives it is about: that pass reads the raw file, so a literal opener
+     * or closer in a COMMENT is matched exactly like a real one. Writing the
+     * closing token here truncated this block and broke the component a second
+     * time. `tools/blade-php-scan.php` refuses both mistakes.
+     */
+    $selfRestart = \App\Support\StaleWorkerRestart::lastSelfRestart();
+
     $worst = collect($rows)->pluck('state')->pipe(fn ($s) => match (true) {
         $s->contains(\App\Support\WorkerHealth::STRANDED) => \App\Support\WorkerHealth::STRANDED,
         $s->contains(\App\Support\WorkerHealth::STALE) => \App\Support\WorkerHealth::STALE,
@@ -41,12 +63,51 @@
         </div>
     @endunless
 
-    <table class="mt-4">
+    {{--
+        WHEN this was read, aged in the browser.
+
+        Every number below is true as of a moment, and the markup has no way to
+        say which moment. The renders pages stop refreshing themselves when
+        nothing is running — which is exactly when workers get restarted — so a
+        page left open across a restart goes on reporting the old registry
+        indefinitely. That is not the registry holding dead entries: the entries
+        expire correctly. It is a page holding a dead reading, which looks
+        identical from the chair and is the reason this stamp exists.
+    --}}
+    {{--
+        A restart nobody ordered, explained.
+
+        With self-restart on, a code edit makes the workers stand down and come
+        back on their own — which without this note looks exactly like three
+        services crashing in unison. "The workers bounced and I do not know why"
+        is precisely the sort of unexplained state this console exists to
+        remove, and it would be a poor trade to add one while removing a chore.
+    --}}
+    @if ($selfRestart !== null)
+        <div class="muted small mt-4">
+            The workers restarted themselves
+            {{ \Illuminate\Support\Carbon::createFromTimestamp($selfRestart)->diffForHumans() }}: the code
+            on disk had moved past what they booted with, and the queues were empty, so they stood down and
+            came back current rather than sitting refused until somebody noticed.
+        </div>
+    @endif
+
+    <div class="reading mt-4" data-read-at="{{ (int) round(collect($rows)->min('read_at') ?? microtime(true)) }}">
+        <span data-reading-age>just now</span>
+        <span data-reading-warn hidden>
+            &mdash; this page has stopped refreshing itself. Reload before trusting it.
+        </span>
+    </div>
+
+    <table class="mt-3">
         <thead>
         <tr>
             <th>Queue</th>
             <th>State</th>
             <th>Live</th>
+            {{-- The one fact here that can be checked against the machine
+                 rather than against our own bookkeeping. --}}
+            <th>PID</th>
             <th>Waiting</th>
             <th>Oldest up</th>
             <th>What it runs</th>
@@ -75,6 +136,9 @@
                     @endswitch
                 </td>
                 <td class="mono">{{ $row['live'] }}{{ $row['stale'] ? ' ('.$row['stale'].' stale)' : '' }}</td>
+                <td class="mono muted" title="Compare against the machine: Get-CimInstance Win32_Process -Filter &quot;Name='php.exe'&quot;">
+                    {{ $row['pids'] === [] ? '—' : implode(', ', $row['pids']) }}
+                </td>
                 {{-- Read from the queue, not from `render_jobs`. A row is opened
                      inside the running job, so a scene still sitting in Redis has
                      no row and the progress page cannot count it. This is the

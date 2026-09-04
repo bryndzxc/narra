@@ -20,6 +20,7 @@ use App\Models\RenderJob;
 use App\Models\Story;
 use App\Models\YoutubeMetadata;
 use App\Support\ChapterRules;
+use App\Support\GateVoice;
 use App\Support\ModelRoster;
 use App\Support\PublishChecklist;
 use Illuminate\Contracts\View\View;
@@ -144,10 +145,50 @@ class MetadataGate extends Component
         }
     }
 
+    /**
+     * How this page is allowed to talk about its own decisions.
+     *
+     * One sentence uses it so far, and that sentence was wrong: "N thing(s)
+     * block approval" rendered on a story at `draft`. The body of this gate is
+     * still to be rebuilt; the mechanism is not gate 4's to invent when it is.
+     */
+    #[Computed]
+    public function voice(): GateVoice
+    {
+        return GateVoice::for(Gate::Metadata, $this->story->status);
+    }
+
     #[Computed]
     public function editable(): bool
     {
         return in_array($this->story->status, [StoryStatus::Rendered, StoryStatus::MetadataReady], true);
+    }
+
+    /**
+     * The story is past this gate, so writing the sheet is not an action that
+     * can exist here any more.
+     *
+     * NOT `! editable()`. That is false on both sides of the gate — at `draft`
+     * as much as at `published` — and the two want opposite treatment. Before
+     * the gate the refusal is the only thing on the page that says what has to
+     * happen first, so it stays and it stays loud. After it, the strip above
+     * has already said the gate is behind this story and why the sheet is
+     * read-only, and the drafting panel repeats that in red under a surface
+     * offering a button it cannot draw.
+     *
+     * A refusal repeated in a state that has already been explained is chrome,
+     * and chrome is what the alarm-band rule exists to prevent: this file's
+     * standing rule is that no refusal gets QUIETER, not that a refusal may
+     * never stop being repeated by a second surface. Nothing here is toned
+     * down — `draftBlockers()` is untouched, `draft()` still refuses through
+     * `OperatorAction::WriteMetadata`, and `metadata:generate` still refuses at
+     * the same statuses. What goes is a panel offering an action that cannot
+     * exist, which is `x-gate-group`'s empty slot at the size of a section.
+     */
+    #[Computed]
+    public function pastThisGate(): bool
+    {
+        return $this->story->status->rank() > Gate::Metadata->waitsAt()->rank();
     }
 
     #[Computed]
@@ -673,6 +714,102 @@ class MetadataGate extends Component
         $this->story->refresh();
 
         $this->notice = 'Gate 4 approved. The sheet is ready to copy — the upload itself is yours to do.';
+    }
+
+    /**
+     * Whether a sheet has actually been written, as opposed to a row existing.
+     *
+     * THE ROW IS NOT THE ANSWER AND CANNOT BE. `mount()` calls
+     * `firstOrCreate()`, so opening this page on any story creates a
+     * `youtube_metadata` row — two live stories have one for no other reason.
+     * A page that took row existence for "the sheet is here" would render the
+     * full form over something it manufactured itself, which is the original
+     * Gate 4 defect wearing a producer: the form was there, the limits were
+     * checked, and there was nothing behind any of it.
+     *
+     * The CONTENT is the answer. `pending` with no titles and no description is
+     * a sheet nobody has written.
+     */
+    #[Computed]
+    public function sheetGenerated(): bool
+    {
+        return $this->metadata->status !== MetadataStatus::Pending
+            || $this->titleOptions !== []
+            || trim($this->description) !== '';
+    }
+
+    /**
+     * The title against its target and its hard limit.
+     *
+     * The mock draws a target-70 / hard-100 meter for a title that is inside
+     * both. A title over 100 is the case the limit exists FOR, and a fill
+     * computed as `length / 100` walks off the element at 101 — the same shape
+     * as Gate 3's window bar before its axis was derived.
+     *
+     * Nothing here relaxes the limit: 100 characters stays hard and the
+     * validator still refuses. This only keeps the picture honest, and names
+     * the overage, because a clamped bar reports 101 and 200 identically.
+     *
+     * @return array{used: int, target: int, hard: int, used_percent: float, target_percent: float, over_target: int, over_hard: int, tone: string}
+     */
+    #[Computed]
+    public function titleMeter(): array
+    {
+        $used = mb_strlen(trim($this->titleSelected));
+        $hard = (int) config('youtube.limits.title_hard', 100);
+        $target = (int) config('youtube.limits.title_target', 70);
+
+        $percent = static fn (int $n): float => round(max(0.0, min(100.0, $n / max(1, $hard) * 100)), 2);
+
+        return [
+            'used' => $used,
+            'target' => $target,
+            'hard' => $hard,
+            'used_percent' => $percent($used),
+            'target_percent' => $percent($target),
+            'over_target' => max(0, $used - $target),
+            'over_hard' => max(0, $used - $hard),
+            'tone' => match (true) {
+                $used > $hard => 'fail',
+                $used > $target => 'warn',
+                default => 'ok',
+            },
+        ];
+    }
+
+    /**
+     * The tags, each one told whether it is inside the budget.
+     *
+     * "500-character total budget across all tags — enforce it, do not silently
+     * truncate" is the spec's own line, and a TOTAL cannot be acted on: the
+     * operator needs to know which entries are past the line, because dropping
+     * them here is a decision and dropping them at upload is an accident.
+     *
+     * The running count matches `YoutubeMetadata::charCountFor()` exactly —
+     * every tag plus the separator before it — rather than being a second
+     * arithmetic that agrees only on the day it is written.
+     *
+     * @return array<int, array{text: string, chars: int, running: int, over: bool}>
+     */
+    #[Computed]
+    public function tagRows(): array
+    {
+        $budget = (int) config('youtube.limits.tags_chars');
+        $running = 0;
+        $rows = [];
+
+        foreach ($this->parsedTags() as $i => $tag) {
+            $running += mb_strlen($tag) + ($i === 0 ? 0 : 1);
+
+            $rows[] = [
+                'text' => $tag,
+                'chars' => mb_strlen($tag),
+                'running' => $running,
+                'over' => $running > $budget,
+            ];
+        }
+
+        return $rows;
     }
 
     public function render(): View

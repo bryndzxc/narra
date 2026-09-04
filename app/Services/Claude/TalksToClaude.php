@@ -184,7 +184,8 @@ trait TalksToClaude
      * of the standard rate.
      *
      * `quantity` on the cost row is total tokens, which is the number that
-     * means something when scanning the table. The split lives in `detail`.
+     * means something when scanning the table, and the unit says so. The split
+     * lives in `detail`. See CostUnit for the two vintages of token row.
      *
      * @param  array{model: string, effort: string|null, max_tokens: int}  $config
      */
@@ -215,7 +216,12 @@ trait TalksToClaude
             // gate. See App\Enums\CostCategory.
             category: CostCategory::Text,
             quantity: (float) $message->totalTokens(),
-            unit: CostUnit::OutputTokens,
+            // The unit the quantity has always actually held. It said
+            // `OutputTokens` for a phase while carrying the total, which no
+            // reader hard-coding "tok" could notice and which
+            // `ProviderUsage::summary()` printed verbatim to the operator —
+            // "9581 output_tokens" for a call whose output was 3,651.
+            unit: CostUnit::TotalTokens,
             usdCost: round($usd, 6),
             detail: [
                 'model' => $config['model'],

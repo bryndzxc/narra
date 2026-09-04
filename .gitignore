@@ -30,3 +30,18 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# The exported design canvas.
+#
+# Deliberately not committed. It is a MOCK — invented stories, invented
+# failures, three directions of which one was built — and a mock in the repo
+# beside the thing it described drifts from it the first time a token is tuned.
+# This codebase's own rule is that a documented guard nobody maintains is worse
+# than a missing one, because it is read as covered; a stale design reference is
+# the same shape.
+#
+# What was worth keeping from it is in the code: the palette provenance and the
+# alarm band's reasoning are in partials/base-css.blade.php, and the decisions
+# are in CLAUDE.md. Those cannot drift from the console because they are the
+# console.
+/redesign
