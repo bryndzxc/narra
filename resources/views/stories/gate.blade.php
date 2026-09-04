@@ -33,6 +33,13 @@
         {{ $story->slug }} &middot; {{ $story->scenes()->count() }} scenes &middot;
         {{ $story->acts()->count() }} acts &middot;
         ${{ number_format((float) $story->total_cost_usd, 4) }} spent
+        @if ($story->evaluationSpend() > 0)
+            {{-- Kept out of the total on purpose: a style preview or a bake-off
+                 borrowed this cast to test the channel and is not part of this
+                 video. Shown anyway, because spend that is logged and nowhere
+                 on screen is the shape this project keeps mistaking for fine. --}}
+            &middot; <span class="muted">+ ${{ number_format($story->evaluationSpend(), 4) }} evaluation</span>
+        @endif
     </p>
 
     {{-- The stepper is the spine of the whole tool: four gates, always visible,

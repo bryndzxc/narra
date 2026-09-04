@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\CreateStory;
+use App\Actions\DispatchTextStage;
 use App\Actions\GenerateActScripts;
 use App\Actions\GenerateOutline;
 use App\Enums\CostCategory;
+use App\Enums\OperatorAction;
 use App\Enums\StoryFormat;
 use App\Exceptions\LocaleViolationException;
 use App\Models\Act;
@@ -39,6 +42,7 @@ class StoryWrite extends Command
         {--max=40 : Target maximum runtime, minutes.}
         {--outline-only : Stop after the outline, before any act is written.}
         {--acts-only= : Comma-separated act sequences to rewrite. Implies the outline exists.}
+        {--queue : Dispatch to the text queue instead of writing here. What the Gate 1 button does.}
         {--yes : Skip the spend confirmation.}';
 
     protected $description = 'Generate a story outline and its act scripts, chunked and sequential.';
@@ -67,8 +71,25 @@ class StoryWrite extends Command
         }
         $this->line('');
 
+        // The same predicate the Gate 1 button consults. This command had its
+        // own opinion about status — GenerateOutline::assertReady() refuses
+        // past `outlined`, the acts stage refuses separately, and neither of
+        // them is the sentence the page shows. `assets:generate` and its button
+        // disagreed this way for a whole phase.
+        $refusal = OperatorAction::WriteScript->refusal($story->status);
+
+        if ($refusal !== null && $this->parseActsOnly() === []) {
+            $this->error($refusal);
+
+            return self::FAILURE;
+        }
+
         if (! $this->confirmSpend($story)) {
             return self::FAILURE;
+        }
+
+        if ($this->option('queue')) {
+            return $this->queueInstead($story);
         }
 
         $startedAt = microtime(true);
@@ -292,30 +313,51 @@ class StoryWrite extends Command
             );
         }
 
-        $title = trim((string) $this->option('title')) ?: Str::limit($premise, 60, '');
+        // One implementation, two front doors. This was the only copy of story
+        // creation in the app for the whole of Phase 2, which is why the tool
+        // built so an operator would not need a terminal required one to begin.
+        return app(CreateStory::class)->handle(
+            premise: $premise,
+            title: (string) $this->option('title'),
+            format: StoryFormat::from((string) $this->option('format')),
+            targetMin: (int) $this->option('min'),
+            targetMax: (int) $this->option('max'),
+        );
+    }
 
-        // Refreshed, not just created. `status` and `total_cost_usd` are
-        // deliberately absent from $fillable — they are a state machine and a
-        // derived total, not attributes to assign — so they come from the
-        // column defaults and are not on the in-memory model until it is read
-        // back.
-        $story = Story::create([
-            'title' => $title,
-            'slug' => Story::slugFor($title, (string) random_int(1000, 9999)),
-            'premise' => $premise,
-            'format' => StoryFormat::from((string) $this->option('format')),
-            'locale_profile' => config('locale.default'),
-            // NOT a hard-coded id any more. 'narrator-us-01' lived here since
-            // Phase 1 and is a string FakeSpeechSynthesizer invented to have
-            // something to record — it is not a voice on any vendor, and every
-            // story written before this carried it. Null is the honest default:
-            // GenerateSceneNarration refuses to synthesize without a voice, and
-            // `voices:list --set` is how one gets chosen from the real account.
-            'voice_id' => config('providers.default_voice_id'),
-            'target_duration_min' => (int) $this->option('min'),
-            'target_duration_max' => (int) $this->option('max'),
-        ]);
+    /**
+     * Hand the same work to the `text` queue instead of doing it here.
+     *
+     * The command keeps its synchronous default — somebody typed it, somebody
+     * is watching, and six sequential calls is a reasonable thing to sit
+     * through when you chose to. This flag exists so the command can exercise
+     * the path the button takes, which is the only way a seam between the two
+     * gets crossed by anything other than an operator.
+     */
+    private function queueInstead(Story $story): int
+    {
+        try {
+            $result = app(DispatchTextStage::class)->writeScript(
+                story: $story,
+                actCount: $this->option('acts') !== null ? (int) $this->option('acts') : null,
+                actsOnly: $this->parseActsOnly(),
+                outlineOnly: (bool) $this->option('outline-only'),
+            );
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
 
-        return $story->refresh();
+            return self::FAILURE;
+        }
+
+        foreach ($result['notes'] as $note) {
+            $note['level'] === 'warn'
+                ? $this->warn($note['message'])
+                : $this->line('<info>OK</info> — '.$note['message']);
+        }
+
+        $this->newLine();
+        $this->info(sprintf('Queued on the "%s" queue. Watch it at /renders/%s.', $result['queue'], $story->slug));
+
+        return self::SUCCESS;
     }
 }

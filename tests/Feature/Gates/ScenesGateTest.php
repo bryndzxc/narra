@@ -9,6 +9,7 @@ use App\Enums\StoryStatus;
 use App\Exceptions\GateViolationException;
 use App\Livewire\Gates\ScenesGate;
 use App\Models\Act;
+use App\Models\Character;
 use App\Models\CostEntry;
 use App\Models\Scene;
 use App\Models\Story;
@@ -185,6 +186,56 @@ class ScenesGateTest extends TestCase
         $this->assertStringContainsString('no image prompt', $warnings);
         $this->assertStringContainsString('opening hook', $warnings);
         $this->assertStringContainsString('thumbnail', $warnings);
+    }
+
+    /**
+     * Headwear reaches the operator, and nothing else stops it.
+     *
+     * The whole point of it being an advisory rather than a rule: a hat is real
+     * clothing and a script can require one, so extraction must not refuse it —
+     * but it covers the hair silhouette this cast is told apart by, so it must
+     * not be silent either. Gate 2 is the last screen before those prompts are
+     * bought, which makes it the only place the reading can land.
+     */
+    public function test_gate_two_reports_headwear_without_blocking_it(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+
+        Character::factory()->for($story)->create([
+            'name' => 'Kyle Ostergaard',
+            'description' => 'Late thirties, broad through the chest, short wavy brown hair, square jaw.',
+            'style_notes' => 'Wears fitted polo shirts and jeans with a ball cap pushed back.',
+        ]);
+
+        $component = Livewire::test(ScenesGate::class, ['story' => $story]);
+        $warnings = implode(' ', $component->instance()->warnings());
+
+        $this->assertStringContainsString('headwear', $warnings);
+        $this->assertStringContainsString('Kyle Ostergaard', $warnings);
+
+        // Reported, not enforced. The gate stays crossable and the cast stays
+        // as written — an operator who wants the hat keeps it.
+        $this->assertTrue($story->fresh()->status === StoryStatus::ScenesDrafted);
+    }
+
+    public function test_gate_two_reports_stored_ageing_texture(): void
+    {
+        // A story whose cast was extracted before the rule existed has the
+        // defect baked into every prompt that character appears in, and
+        // throwing at extraction cannot reach data already on disk.
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+
+        Character::factory()->for($story)->create([
+            'name' => 'Diane Kessler',
+            'description' => 'Late sixties, small and frail, thinning white hair in a low bun, '
+                .'deeply lined round face, soft sagging jawline.',
+            'style_notes' => 'Simple floral housedresses and a buttoned cardigan.',
+        ]);
+
+        $warnings = implode(' ', Livewire::test(ScenesGate::class, ['story' => $story])->instance()->warnings());
+
+        $this->assertStringContainsString('ageing texture', $warnings);
+        $this->assertStringContainsString('Diane Kessler', $warnings);
     }
 
     private function storyWithScenes(StoryStatus $status): Story

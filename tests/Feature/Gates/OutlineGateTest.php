@@ -37,6 +37,48 @@ class OutlineGateTest extends TestCase
         $this->assertFalse($story->fresh()->hasPassedGate(Gate::Outline));
     }
 
+    /**
+     * The cast age range has a producer, and it is this page.
+     *
+     * `stories.target_publish_at` sat in the schema for two phases with two
+     * display helpers and no input anywhere, so the column was null on every
+     * story and the block never rendered — while the Gate 4 checklist asked the
+     * operator to confirm a scheduled publish time the app had no way to hold.
+     * A column read by a prompt and written by nothing is that defect exactly,
+     * so the write path is pinned here rather than assumed.
+     */
+    public function test_the_cast_age_range_is_editable_at_gate_one(): void
+    {
+        $story = $this->draftStory();
+
+        Livewire::test(OutlineGate::class, ['story' => $story])
+            ->set('premise', 'A diner closes without telling the woman who has worked there for nineteen years.')
+            ->set('castAgeProfile', 'Spouses in their late twenties and thirties. Nobody over forty.')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(
+            'Spouses in their late twenties and thirties. Nobody over forty.',
+            $story->fresh()->cast_age_profile
+        );
+    }
+
+    public function test_a_blank_cast_age_range_is_stored_as_null_rather_than_an_empty_string(): void
+    {
+        // The extraction prompt tests this field for emptiness to decide
+        // whether to state a range at all, so '' and null must not be two
+        // different kinds of nothing.
+        $story = $this->draftStory();
+
+        Livewire::test(OutlineGate::class, ['story' => $story])
+            ->set('premise', 'A diner closes without telling the woman who has worked there for nineteen years.')
+            ->set('castAgeProfile', '   ')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertNull($story->fresh()->cast_age_profile);
+    }
+
     public function test_approving_crosses_gate_one(): void
     {
         $story = $this->draftStory(StoryStatus::Outlined);

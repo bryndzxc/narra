@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MotionPreset;
 use App\Enums\SceneStatus;
+use App\Support\AudioFrames;
 use App\Support\NarrationPace;
 use Database\Factories\SceneFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -310,15 +311,37 @@ class Scene extends Model
      *
      * The clip duration is exactly frames / fps by construction, because the
      * render uses -frames:v rather than -t.
+     *
+     * **Computed from the SAMPLE COUNT, never from duration_ms.** Milliseconds
+     * are a lossy intermediate: 360002 samples at 24 kHz is 15.0000833 s, which
+     * stores as 15000 and yields exactly 450 frames when the audio needs 451.
+     * The ceil above normally absorbs that, and does not when the rounded
+     * duration lands precisely on a frame boundary — story 21 scene 201, four
+     * samples over. See App\Support\AudioFrames.
+     *
+     * The millisecond path remains for audio whose sample count is not known:
+     * fixture stories, and rows written before the columns existed. It is named
+     * rather than implied, and the clip job fills those rows in as it meets
+     * them.
      */
     public function framesAt(?int $fps = null): ?int
     {
+        $fps ??= (int) config('render.video.fps');
+        $audio = $this->sceneAudio->first();
+
+        if ($audio?->samples !== null && $audio?->sample_rate !== null) {
+            return AudioFrames::forSamples(
+                (int) $audio->samples,
+                (int) $audio->sample_rate,
+                (int) config('render.audio.sample_rate'),
+                $fps,
+            );
+        }
+
         if ($this->duration_ms === null) {
             return null;
         }
 
-        $fps ??= (int) config('render.video.fps');
-
-        return (int) ceil($this->duration_ms / 1000 * $fps);
+        return AudioFrames::forMilliseconds((int) $this->duration_ms, $fps);
     }
 }

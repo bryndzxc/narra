@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\ActPhase;
 use App\Models\Act;
 use App\Models\Story;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -21,6 +22,10 @@ class ActFactory extends Factory
         return [
             'story_id' => Story::factory(),
             'sequence' => $this->faker->unique()->numberBetween(1, 8),
+            // Null by default: a factory-built act belongs to no particular
+            // arc, and the phase is a claim about where it sits in one. Tests
+            // that care set it with inPhase().
+            'phase' => null,
             'title' => rtrim($this->faker->sentence(4), '.'),
             'summary' => $this->faker->paragraph(2),
             'script' => null,
@@ -37,6 +42,12 @@ class ActFactory extends Factory
     public function atSequence(int $sequence): static
     {
         return $this->state(fn (): array => ['sequence' => $sequence]);
+    }
+
+    /** Place the act in one of the four phases of the arc. */
+    public function inPhase(ActPhase $phase): static
+    {
+        return $this->state(fn (): array => ['phase' => $phase]);
     }
 
     public function scripted(): static

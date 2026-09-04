@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ActPhase;
 use Database\Factories\ActFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +15,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * `summary` is not decoration. Acts are generated sequentially, each call fed
  * the outline plus the summaries of the acts before it — that is the mechanism
  * that keeps 7,000 words from drifting, repeating or contradicting themselves.
+ *
+ * `phase` is what the act generator writes AGAINST. Without it the prompt could
+ * only ask "is this the last act", and answered every other act with "end worse
+ * off than it started" — correct for an escalation act, and the exact opposite
+ * of what a search act needs.
+ *
+ * @property ?ActPhase $phase
  */
 class Act extends Model
 {
@@ -23,6 +31,9 @@ class Act extends Model
     protected $fillable = [
         'story_id',
         'sequence',
+        // Which of the four phases this act belongs to. Null on an anthology,
+        // where each act runs the whole arc internally. See ActPhase.
+        'phase',
         'title',
         'summary',
         // What this act makes worse. Each act compounds; none resolves before
@@ -41,6 +52,7 @@ class Act extends Model
     {
         return [
             'sequence' => 'integer',
+            'phase' => ActPhase::class,
             'is_rehook_written' => 'boolean',
             'start_ms' => 'integer',
             'duration_ms' => 'integer',

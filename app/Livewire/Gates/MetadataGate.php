@@ -4,10 +4,13 @@ namespace App\Livewire\Gates;
 
 use App\Actions\AssertWorkersCurrent;
 use App\Actions\ComposeDescription;
+use App\Actions\ComposeThumbnails;
+use App\Actions\DeliverThumbnail;
 use App\Actions\ValidateYoutubeMetadata;
 use App\Contracts\MetadataWriter;
 use App\Enums\Gate;
 use App\Enums\MetadataStatus;
+use App\Enums\OperatorAction;
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
@@ -18,10 +21,12 @@ use App\Models\Story;
 use App\Models\YoutubeMetadata;
 use App\Support\ChapterRules;
 use App\Support\ModelRoster;
+use App\Support\PublishChecklist;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Throwable;
 
 /**
  * Gate 4 — the publish sheet.
@@ -57,6 +62,16 @@ class MetadataGate extends Component
 
     public ?int $thumbnailSceneId = null;
 
+    /**
+     * The composed split-panel candidate the operator picked.
+     *
+     * A composition rather than a still, and picked here the way a title is:
+     * four options, one choice, and the choice is what gets copied out beside
+     * the video. `thumbnailSceneId` is a different question and stays — that
+     * one names the single representative frame, and this one is a pair.
+     */
+    public string $thumbnailChoice = '';
+
     public string $pinnedComment = '';
 
     /**
@@ -78,6 +93,22 @@ class MetadataGate extends Component
 
     /** @var array<string, bool> */
     public array $checklist = [];
+
+    /**
+     * The checklist with the VALUE each item is asking about.
+     *
+     * Computed rather than stored: every channel item comes from config and
+     * every per-story one from the record in front of us, so there is nothing
+     * here worth holding in Livewire state where it could go stale against the
+     * config it was read from.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function checklistItems(): array
+    {
+        return PublishChecklist::items($this->story, $this->metadata);
+    }
 
     public ?string $notice = null;
 
@@ -102,6 +133,7 @@ class MetadataGate extends Component
         $this->thumbnailTextInput = implode("\n", $this->metadata->thumbnail_text_options ?? []);
         $this->thumbnailSceneId = $this->metadata->thumbnail_scene_id
             ?? $story->scenes()->where('is_thumbnail_candidate', true)->value('id');
+        $this->thumbnailChoice = (string) $this->metadata->thumbnail_selected;
         $this->pinnedComment = (string) $this->metadata->pinned_comment;
         $this->publishAtEastern = $story->targetPublishAtEastern()?->format('Y-m-d\TH:i') ?? '';
 
@@ -193,6 +225,87 @@ class MetadataGate extends Component
             ])->all();
     }
 
+    // -- Thumbnail composition -----------------------------------------------
+
+    /**
+     * The composed candidates, as they were stored.
+     *
+     * Read off the record rather than recomposed on render: composing shells
+     * out to FFmpeg four times, and a computed property runs on every Livewire
+     * round trip — a checkbox tick would rebuild four JPEGs.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function thumbnailOptions(): array
+    {
+        return (array) ($this->metadata->thumbnail_options ?? []);
+    }
+
+    /**
+     * Whether composing is possible, and what is missing when it is not.
+     *
+     * Said rather than swallowed. A button that quietly disappears when a story
+     * has no stills is a page saying nothing where it should say why.
+     */
+    #[Computed]
+    public function thumbnailBlocker(): ?string
+    {
+        if (! $this->editable()) {
+            return 'The sheet is read-only once Gate 4 is approved.';
+        }
+
+        $stills = $this->story->scenes()->whereNotNull('image_path')->count();
+
+        return $stills >= 2
+            ? null
+            : sprintf(
+                'This story has %d still with an image on disk, and a split panel needs two. Stills '
+                .'are generated after Gate 2.',
+                $stills,
+            );
+    }
+
+    /**
+     * Build the candidates from stills the story already owns.
+     *
+     * Free, and that is the constraint the feature is built around rather than
+     * a side benefit: it crops frames that have already been paid for and never
+     * generates one. So there is no confirm step here, unlike the drafting
+     * button beneath it — the thing a confirm protects against is a bill.
+     */
+    public function composeThumbnails(): void
+    {
+        $this->problem = null;
+        $this->notice = null;
+
+        if (($blocked = $this->thumbnailBlocker()) !== null) {
+            $this->problem = $blocked;
+
+            return;
+        }
+
+        try {
+            $result = app(ComposeThumbnails::class)->handle($this->story);
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->metadata->refresh();
+        $this->thumbnailChoice = (string) $this->metadata->thumbnail_selected;
+        unset($this->thumbnailOptions);
+
+        $this->notice = sprintf(
+            '%d thumbnail composition(s) built from %d still(s). Nothing was generated and nothing '
+            .'was billed — these are frames this story already owns. %s',
+            count($result['composed']),
+            $result['pool'],
+            implode(' ', $result['notes']),
+        );
+    }
+
     // -- Drafting ------------------------------------------------------------
 
     /**
@@ -209,9 +322,14 @@ class MetadataGate extends Component
     {
         $blockers = app(ChapterRules::class)->problems($this->metadata->chapters());
 
-        if ($this->story->status->rank() < StoryStatus::Rendered->rank()) {
-            $blockers[] = 'The story has not been rendered, so there are no act timings to build '
-                .'chapters from.';
+        // The shared predicate, not a second expression of it. This block used
+        // to compare the status rank here and nowhere else, which meant the
+        // page and `metadata:generate` each carried their own answer to "may
+        // this run" — the arrangement that has produced this bug five times.
+        $refusal = OperatorAction::WriteMetadata->refusalReason($this->story->status);
+
+        if ($refusal !== null) {
+            $blockers[] = ucfirst($refusal);
         }
 
         if ($this->stale() && ! $this->metadata->hasFreshRender()) {
@@ -454,6 +572,7 @@ class MetadataGate extends Component
             'tags' => $this->parsedTags() ?: null,
             'thumbnail_text_options' => $this->parsedThumbnailText() ?: null,
             'thumbnail_scene_id' => $this->thumbnailSceneId,
+            'thumbnail_selected' => $this->thumbnailChoice ?: null,
             'pinned_comment' => $this->pinnedComment ?: null,
             'checklist_state' => $this->checklist,
         ]);
@@ -473,6 +592,47 @@ class MetadataGate extends Component
         $this->metadata->refresh();
         $this->story->refresh();
         $this->notice ??= 'Saved.';
+
+        // After the save, so the record is right whatever the copy does, and
+        // reported rather than silent: this writes to a folder outside the
+        // project, which is the one place in this app where "it worked" and
+        // "it worked on my machine" can differ.
+        $this->notice .= $this->deliverThumbnail();
+    }
+
+    /**
+     * Copy the picked composition out beside the video, as `<slug>.jpg`.
+     *
+     * Returns what happened, for the notice. A failure here does not throw:
+     * the sheet is saved and correct, the workspace still holds the image, and
+     * an unplugged drive should not lose the operator's edits. It is SAID,
+     * though — a delivery that did not happen and reports nothing is the
+     * false-success shape this project keeps paying for.
+     */
+    private function deliverThumbnail(): string
+    {
+        if ($this->thumbnailChoice === '') {
+            return '';
+        }
+
+        try {
+            $delivered = app(DeliverThumbnail::class)->handle($this->story, $this->metadata);
+        } catch (Throwable $e) {
+            $this->problem = 'The sheet is saved, but the thumbnail could not be copied out: '
+                .$e->getMessage();
+
+            return '';
+        }
+
+        if (! $delivered['delivered']) {
+            return ' '.(string) $delivered['reason'];
+        }
+
+        return sprintf(
+            ' Thumbnail %s to %s.',
+            $delivered['replaced'] ? 'replaced' : 'copied',
+            (string) $delivered['destination'],
+        );
     }
 
     /**

@@ -23,6 +23,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+# The nssm binary, fetched by scripts/install-worker-services.ps1. A vendored
+# third-party .exe is not something this repo should carry.
+/tools/nssm
 /vendor
 Homestead.json
 Homestead.yaml

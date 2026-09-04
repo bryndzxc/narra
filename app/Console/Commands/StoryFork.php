@@ -74,13 +74,16 @@ class StoryFork extends Command
                 'slug' => Str::slug(Str::limit($title, 60, '')).'-'.Str::lower(Str::random(4)),
                 'premise' => $source->premise,
 
-                // The genre spine travels with the outline. These four fields
+                // The genre spine travels with the outline. These seven fields
                 // are what every act call is written against, so a fork that
                 // dropped them would not be running the same experiment.
                 'narrator_grievance' => $source->narrator_grievance,
                 'antagonist_justification' => $source->antagonist_justification,
                 'withheld_information' => $source->withheld_information,
                 'exposure_moment' => $source->exposure_moment,
+                'departure' => $source->departure,
+                'reversal_beats' => $source->reversal_beats,
+                'refusal' => $source->refusal,
 
                 'format' => $source->format,
                 'locale_profile' => $source->locale_profile,
@@ -93,6 +96,7 @@ class StoryFork extends Command
                 Act::create([
                     'story_id' => $fork->id,
                     'sequence' => $act->sequence,
+                    'phase' => $act->phase,
                     'title' => $act->title,
                     'summary' => $act->summary,
                     'escalation_beat' => $act->escalation_beat,

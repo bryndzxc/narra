@@ -22,6 +22,7 @@ use App\Services\Fake\FakeSpeechSynthesizer;
 use App\Services\Fake\FakeTranscriber;
 use App\Services\Fal\FalSeedreamImageGenerator;
 use App\Services\WhisperX\WhisperXTranscriber;
+use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
 use GuzzleHttp\Client as Guzzle;
 use Illuminate\Support\ServiceProvider;
@@ -56,6 +57,7 @@ class ProviderBindings extends ServiceProvider
             'anthropic' => fn (): ClaudeScriptWriter => new ClaudeScriptWriter(
                 $this->anthropic(),
                 $this->app->make(LocaleGuard::class),
+                $this->app->make(CharacterTextGuard::class),
             ),
         ]);
 

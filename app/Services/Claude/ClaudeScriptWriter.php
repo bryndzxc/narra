@@ -4,10 +4,12 @@ namespace App\Services\Claude;
 
 use Anthropic\Client;
 use App\Contracts\ScriptWriter;
+use App\Enums\ActPhase;
 use App\Enums\MotionPreset;
 use App\Enums\StoryFormat;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
@@ -53,6 +55,12 @@ class ClaudeScriptWriter implements ScriptWriter
     public function __construct(
         private readonly Client $client,
         private readonly LocaleGuard $locale,
+        // Held so the retry prompt can render the guard's OWN rules rather
+        // than a hand-written copy of them. The copy is what failed: the
+        // guard banned `weathered` and the copy did not name it, so a
+        // rejected extraction was corrected with a note that never
+        // mentioned the word it was rejected for.
+        private readonly CharacterTextGuard $text,
     ) {}
 
     public function outline(Story $story, int $actCount): OutlineDraft
@@ -73,6 +81,17 @@ class ClaudeScriptWriter implements ScriptWriter
 
         $decoded = $this->decodeJson($content, 'outline');
 
+        // The phase plan is OURS, not the model's. It is not in the schema and
+        // it is not asked for: the prompt states which slot is which phase and
+        // the model writes to that, while the column that the act generator
+        // later branches on is assigned here from the same arithmetic the
+        // prompt was built from. A phase the model returned could disagree with
+        // the slot it was given, and there would be no way to tell which of the
+        // two the summary was actually written for.
+        $plan = $story->format === StoryFormat::Anthology
+            ? []
+            : ActPhase::planFor($actCount);
+
         $acts = [];
 
         foreach (($decoded['acts'] ?? []) as $index => $act) {
@@ -81,6 +100,7 @@ class ClaudeScriptWriter implements ScriptWriter
                 title: trim((string) ($act['title'] ?? '')),
                 summary: trim((string) ($act['summary'] ?? '')),
                 escalationBeat: trim((string) ($act['escalation_beat'] ?? '')),
+                phase: $plan[$index + 1] ?? null,
             );
         }
 
@@ -104,6 +124,9 @@ class ClaudeScriptWriter implements ScriptWriter
             antagonistJustification: trim((string) ($decoded['antagonist_justification'] ?? '')),
             withheldInformation: trim((string) ($decoded['withheld_information'] ?? '')),
             exposureMoment: trim((string) ($decoded['exposure_moment'] ?? '')),
+            departure: trim((string) ($decoded['departure'] ?? '')),
+            reversalBeats: trim((string) ($decoded['reversal_beats'] ?? '')),
+            refusal: trim((string) ($decoded['refusal'] ?? '')),
             requestedActCount: $actCount,
         );
     }
@@ -218,7 +241,9 @@ class ClaudeScriptWriter implements ScriptWriter
         $discarded = [];
         $fallback = (string) (config('providers.anthropic.operations.draft_scenes.fallback') ?? '');
 
-        if (! $this->draftIsUsable($scenes, $sentences) && $fallback !== '') {
+        $reason = $this->unusableReason($scenes, $sentences);
+
+        if ($reason !== null && $fallback !== '') {
             // The first attempt was billed. It is kept and handed back so it
             // writes its own cost row: a fallback that quietly swallowed the
             // wasted call would report a saving it did not make.
@@ -242,7 +267,7 @@ class ClaudeScriptWriter implements ScriptWriter
             throw new ScriptWriterException("Scene drafting for act {$act->sequence} returned no scenes.");
         }
 
-        return new SceneDraftSet($scenes, $usage, $discarded);
+        return new SceneDraftSet($scenes, $usage, $discarded, $reason);
     }
 
     /**
@@ -303,10 +328,14 @@ class ClaudeScriptWriter implements ScriptWriter
      * @param  array<int, SceneDraft>  $scenes
      * @param  array<int, string>  $sentences
      */
-    private function draftIsUsable(array $scenes, array $sentences): bool
+    private function unusableReason(array $scenes, array $sentences): ?string
     {
         if (! $this->rangesTile($scenes, count($sentences))) {
-            return false;
+            return sprintf(
+                'sentence ranges did not tile the act (%d scenes over %d sentences)',
+                count($scenes),
+                count($sentences),
+            );
         }
 
         $minWords = (int) config('scenes.min_words', 8);
@@ -327,15 +356,30 @@ class ClaudeScriptWriter implements ScriptWriter
             $short += $words < $minWords ? 1 : 0;
         }
 
-        if (($short / max(count($scenes), 1)) > $threshold) {
-            return false;
+        $shortShare = $short / max(count($scenes), 1);
+
+        if ($shortShare > $threshold) {
+            return sprintf(
+                '%.1f%% of scenes under %d words, ceiling %.0f%% (%d of %d)',
+                100 * $shortShare,
+                $minWords,
+                100 * $threshold,
+                $short,
+                count($scenes),
+            );
         }
 
-        return $this->motionIsVaried($scenes);
+        return $this->motionReason($scenes);
     }
 
     /**
-     * Whether the camera does more than one thing across this act.
+     * Why the camera is too monotonous across this act, or null if it is fine.
+     *
+     * Returns a MEASUREMENT, not a verdict. A gate that fires on seven acts
+     * out of seven and records only "fell back" costs the same diagnosis
+     * every time: story 21 spent $0.16 on discarded attempts and the log
+     * could not say which of the three axes had failed, so it had to be
+     * inferred by measuring the finished draft against all three.
      *
      * The third axis, added for the same reason as the second: the gate only
      * tested what it already knew to test. Length was checked, motion was not,
@@ -354,7 +398,7 @@ class ClaudeScriptWriter implements ScriptWriter
      *
      * @param  array<int, SceneDraft>  $scenes
      */
-    private function motionIsVaried(array $scenes): bool
+    private function motionReason(array $scenes): ?string
     {
         $total = count($scenes);
 
@@ -362,7 +406,7 @@ class ClaudeScriptWriter implements ScriptWriter
         // is a coincidence, not a pattern, and failing on it would re-bill an
         // act for nothing.
         if ($total < 8) {
-            return true;
+            return null;
         }
 
         $counts = [];
@@ -377,19 +421,34 @@ class ClaudeScriptWriter implements ScriptWriter
 
         $static = $counts[MotionPreset::Static->value] ?? 0;
 
-        if ($static / $total > (float) config('scenes.static_share_threshold', 0.15)) {
-            return false;
+        $staticCeiling = (float) config('scenes.static_share_threshold', 0.15);
+
+        if ($static / $total > $staticCeiling) {
+            return sprintf(
+                '%.1f%% static, ceiling %.0f%% (%d of %d scenes hold still)',
+                100 * $static / $total,
+                100 * $staticCeiling,
+                $static,
+                $total,
+            );
         }
 
         $monotony = (float) config('scenes.motion_monotony_threshold', 0.55);
 
         foreach ($counts as $preset => $count) {
             if ($preset !== MotionPreset::Static->value && $count / $total > $monotony) {
-                return false;
+                return sprintf(
+                    '%.1f%% of scenes are "%s", ceiling %.0f%% (%d of %d)',
+                    100 * $count / $total,
+                    $preset,
+                    100 * $monotony,
+                    $count,
+                    $total,
+                );
             }
         }
 
-        return true;
+        return null;
     }
 
     /**
@@ -480,23 +539,56 @@ class ClaudeScriptWriter implements ScriptWriter
         - They are supported by other people who find the excuse reasonable.
           Isolation of the narrator is the mechanism.
 
-        THE SHAPE
-        - Escalating humiliation. Every act costs the narrator more than the
-          last: money, standing, a relationship, dignity, in front of more
-          people each time.
-        - Nothing is resolved before the end. No act ends with the narrator
-          winning a round, being vindicated, or getting an apology that sticks.
-        - The narrator holds information the antagonist does not have. It is
-          established early and never used until the end.
+        THE SHAPE — FIVE MOVEMENTS, IN THIS ORDER
+        This is the part most often got wrong, and getting it wrong produces a
+        video that is competent and that nobody finishes. The arc is NOT
+        escalation -> exposure -> end.
 
-        THE PAYOFF
-        - Exposure, in front of witnesses. The truth comes out publicly, at a
-          moment the antagonist chose and controlled.
-        - NOT revenge. The narrator does not sabotage, retaliate, or destroy
-          anything. They produce the truth and let it do the work.
-        - The antagonist's own excuse is what convicts them. The best version is
-          the antagonist repeating their justification in front of people who
-          now know it is false.
+        1. ESCALATION. Every act costs the narrator more than the last: money,
+           standing, a relationship, dignity, in front of more people each
+           time. Nothing is resolved. No act ends with the narrator winning a
+           round, being vindicated, or getting an apology that sticks. The
+           narrator holds information the antagonist does not have, established
+           early and not used.
+
+        2. THE DEPARTURE. The narrator goes. Not a threat, not an ultimatum,
+           not a final speech — they leave, and THEY DO NOT ANNOUNCE IT. This
+           is load-bearing: an announced departure cannot be searched for, and
+           the search is the next third of the video. The antagonist finds out
+           later, from somebody else, that they are simply gone.
+
+        3. THE SEARCH. The antagonist looks for them, and each attempt costs
+           HER more than the last — money, standing, the people who backed her
+           excuse. These are the humiliation beats running the other way and
+           they escalate the same way. A search that costs her nothing is a
+           montage of somebody looking worried.
+
+        4. THE REFUSALS. She finds them. The narrator says no. Each refusal
+           answers ONE specific earlier humiliation, in the words it was done
+           in. This is the private payoff, and it is the thing the audience has
+           been waiting the whole video for.
+
+        5. THE END, within a few sentences of the last refusal landing.
+
+        The reversal — movements 2, 3 and 4 — is a PHASE, and it is roughly the
+        last third of the runtime. It is not a scene at the end. A story that
+        escalates for thirty minutes and gives the narrator power in the final
+        ninety seconds has written the wrong video.
+
+        THE TWO PAYOFFS
+        - PUBLIC: exposure, in front of witnesses. The truth comes out at a
+          moment the antagonist chose and controlled. The antagonist's own
+          excuse is what convicts them — the best version is the antagonist
+          repeating their justification in front of people who now know it is
+          false.
+        - PRIVATE: the refusal. Said to the antagonist, usually with nobody
+          else there, and it answers something specific she said or did
+          earlier. The public one is what the title promises. The private one
+          is what the viewer stayed forty minutes for. A video with only one of
+          them is half a video.
+        - NEITHER is revenge. The narrator does not sabotage, retaliate, or
+          destroy anything. They produce the truth, and then they decline, and
+          both are allowed to do their own work.
         - No violence, no crime by the narrator, no supernatural element.
 
         WHAT THIS IS NOT
@@ -593,8 +685,20 @@ class ClaudeScriptWriter implements ScriptWriter
         // because each act becomes one YouTube chapter, and it cannot be a
         // schema constraint - structured outputs reject any minItems other
         // than 0 or 1.
+        // Each slot names its PHASE, not just its number. A bare numbered list
+        // produced escalation all the way down and a reversal crushed into the
+        // last act, which is the exact shape story 21 shipped as. The phases
+        // are assigned here rather than asked for, from the same arithmetic
+        // `acts.phase` is written from, so the plan the model writes to and the
+        // plan the act generator later reads cannot disagree.
+        $plan = $story->format === StoryFormat::Anthology
+            ? []
+            : ActPhase::planFor($actCount);
+
         $slots = implode("\n", array_map(
-            fn (int $n): string => "  {$n}. <act {$n}>",
+            fn (int $n): string => isset($plan[$n])
+                ? sprintf('  %d. <act %d> — %s. %s', $n, $n, strtoupper($plan[$n]->value), $plan[$n]->guidance())
+                : "  {$n}. <act {$n}>",
             range(1, $actCount)
         ));
 
@@ -612,20 +716,36 @@ class ClaudeScriptWriter implements ScriptWriter
             .'antagonist does not. It must already be true at the start of the story, and '
             ."the narrator must have a plausible reason not to say it.\n"
             .'- exposure_moment: where the truth comes out, and WHO IS IN THE ROOM. Name the '
-            ."occasion and the witnesses. This is the payoff of the whole video.\n\n"
+            ."occasion and the witnesses. This is the PUBLIC payoff.\n"
+            .'- departure: how and when the narrator leaves, and what finally makes staying '
+            .'impossible. THEY DO NOT ANNOUNCE IT and they make no farewell speech — they go, and '
+            .'the antagonist finds out later, from somebody else, that they are gone. An announced '
+            ."departure cannot be searched for, and the search is the next third of the video.\n"
+            .'- reversal_beats: what the antagonist does to find them, as at least two escalating '
+            .'attempts, and what each one COSTS HER. Money, then standing, then the people who '
+            .'backed her excuse. These are the humiliation beats running the other way, and a '
+            ."search that costs her nothing is a montage of somebody looking worried.\n"
+            .'- refusal: what the narrator says when they are finally found, and WHICH EARLIER '
+            .'MOMENT EACH REFUSAL ANSWERS. Name that moment. The strongest version hands back the '
+            ."antagonist's own sentence from act 2 or 3, in her words, from the other side of it. "
+            ."This is the PRIVATE payoff and it is what viewers stay forty minutes for.\n\n"
             .'Then fill in every one of these %d slots. Return exactly %d act objects, in '
             ."this order:\n\n%s\n\n"
             .'Do not merge slots, do not leave one out, and do not add another. Each slot '
-            .'becomes one YouTube chapter, so the count is fixed before any of it is '
-            ."written.\n\n"
+            .'becomes one YouTube chapter, so the count is fixed before any of it is written. '
+            .'The phase on each slot is fixed too: an act written in the wrong phase is worse '
+            .'than a missing one, because the escalation has to stop when the narrator leaves '
+            ."and start running against the antagonist instead.\n\n"
             ."For each act give:\n"
             .'- title: works as a YouTube chapter title. 2-6 words. Marks a stage of the '
             ."escalation. Does not give away the exposure. No numbering, no 'Act One'.\n"
             .'- summary: 3-5 sentences. What actually happens, concretely. The act script is '
             ."written from this and nothing else, so anything vague here gets invented later.\n"
-            .'- escalation_beat: one sentence naming what this act COSTS the narrator that '
-            .'the previous act did not. Each act must cost more than the one before it. No '
-            ."act resolves anything, wins a round, or produces an apology that sticks.\n\n"
+            .'- escalation_beat: one sentence naming what this act COSTS, and to whom. In the '
+            .'escalation and departure phases that is the narrator, each act costing more than '
+            .'the one before it, and nothing resolving — no round won, no apology that sticks. '
+            .'In the search and refusal phases it is the ANTAGONIST, escalating the same way. '
+            ."The cost changes direction at the departure and never changes back.\n\n"
             .'Finally, the title of the whole video. Under 70 characters. This genre does '
             .'NOT withhold: the title states the ending, because the promise of the payoff '
             .'is the hook. Front-load the grievance, then name what happens. Something in '
@@ -650,8 +770,12 @@ class ClaudeScriptWriter implements ScriptWriter
     ): string {
         $outlineBlock = implode("\n", array_map(
             fn (ActOutline $entry): string => sprintf(
-                "%d. %s\n   %s\n   COSTS: %s%s",
+                "%d. [%s] %s\n   %s\n   COSTS: %s%s",
                 $entry->sequence,
+                // The phase is in the context block, not only on the act being
+                // written. An act 6 that cannot see act 5 was the departure
+                // has no way to know the narrator is already gone.
+                strtoupper($entry->phase?->value ?? 'act'),
                 $entry->title,
                 $entry->summary,
                 $entry->escalationBeat,
@@ -685,18 +809,7 @@ class ClaudeScriptWriter implements ScriptWriter
                 $act->sequence - 1,
             );
 
-        $ending = $isLast
-            ? "THIS IS THE FINAL ACT. It contains the exposure:\n\n"
-                .$story->exposure_moment."\n\n"
-                .'The withheld information comes out here and nowhere earlier. Put the witnesses in '
-                .'the room and name them. The antagonist repeats their justification in front of '
-                .'people who now know it is false — that is the moment the video exists for. '
-                .'The narrator does not retaliate, gloat, or explain the moral. They state the fact, '
-                .'and the room reacts. End within a few sentences of the reveal landing: no epilogue '
-                .'about what everyone learned, no ambiguity, no "I still think about it sometimes".'
-            : 'This is NOT the final act. The withheld information does not come out here. Nothing '
-                .'is resolved: the narrator does not win a round, get a real apology, or find an '
-                .'ally who fixes anything. End the act worse off than it started.';
+        $ending = $this->endingFor($story, $act, $isLast);
 
         return implode("\n\n", [
             'THE SPINE OF THIS STORY:',
@@ -714,7 +827,7 @@ class ClaudeScriptWriter implements ScriptWriter
             $priorBlock,
             sprintf('NOW WRITE ACT %d: %s', $act->sequence, $act->title),
             $act->summary,
-            'What this act must cost the narrator: '.$act->escalationBeat,
+            sprintf('%s: %s', $act->phase?->beatLabel() ?? 'What this act must cost the narrator', $act->escalationBeat),
             $rehook,
             $ending,
             sprintf(
@@ -729,45 +842,269 @@ class ClaudeScriptWriter implements ScriptWriter
         ]);
     }
 
+    /**
+     * What this act has to do with its ending, decided by its PHASE.
+     *
+     * This branched on "is this the last act" for two phases, and that is the
+     * defect the reversal was added to fix. Every non-final act was told to end
+     * worse off than it started, which is right for an escalation act and the
+     * precise opposite of what a search act needs — there the narrator is
+     * already gone and the ground is being lost by the ANTAGONIST. A sequence
+     * number cannot express that, so the phase is carried on the act.
+     *
+     * `$isLast` survives as the fallback for an outline with no phases: an
+     * anthology, where each act is a self-contained story running the whole arc
+     * itself, and the stories outlined before the reversal existed, whose acts
+     * are still re-writable one at a time. Neither should be handed a phase
+     * instruction that its outline was never built for.
+     */
+    private function endingFor(Story $story, ActOutline $act, bool $isLast): string
+    {
+        return match ($act->phase) {
+            ActPhase::Escalation => 'This act is in the ESCALATION phase. The withheld information '
+                .'does not come out here and the narrator does not leave here. Nothing is resolved: '
+                .'no round is won, no real apology arrives, no ally fixes anything. End the act '
+                .'worse off than it started.',
+
+            ActPhase::Departure => "THIS IS THE DEPARTURE ACT. The narrator goes:\n\n"
+                .$story->departure."\n\n"
+                .'It is still an escalation act until they leave — this is the worst it gets, and it '
+                .'is what makes staying impossible. Then they go. THEY DO NOT ANNOUNCE IT: no '
+                .'ultimatum, no farewell speech, no note, no final phone call. They are simply not '
+                .'there any more, and the antagonist has not worked that out yet when the act ends. '
+                .'The withheld information does not come out here. Do not explain where they went — '
+                .'the audience may know, the antagonist must not.',
+
+            ActPhase::Search => 'This act is in the SEARCH phase. The narrator is gone, and the '
+                ."antagonist is looking for them:\n\n"
+                .$story->reversal_beats."\n\n"
+                .'The direction of the escalation has reversed. Everything in this act costs the '
+                .'ANTAGONIST — money, standing, the people who found her excuse reasonable — and it '
+                .'costs her more than the last attempt did. She does not find them in this act. The '
+                .'narrator does not gloat, does not send a message, and is not watching: they are '
+                .'living, elsewhere, and the little the audience sees of that should be quiet. End '
+                .'the act with her worse off than she started it and no closer.',
+
+            ActPhase::Refusal => 'THIS IS THE FINAL ACT. Both payoffs land here, in this '
+                ."order.\n\nFIRST, the exposure — the public one:\n\n"
+                .$story->exposure_moment."\n\n"
+                .'The withheld information comes out here and nowhere earlier. Put the witnesses in '
+                .'the room and name them. The antagonist repeats their justification in front of '
+                ."people who now know it is false.\n\nTHEN the refusal — the private one, and the "
+                ."thing the audience has waited the whole video for:\n\n"
+                .$story->refusal."\n\n"
+                .'She asks. The narrator says no, and each refusal answers ONE specific earlier '
+                .'humiliation in the words it was done in — hand her own sentence back to her. The '
+                .'narrator does not retaliate, gloat, or explain the moral. End within a few '
+                .'sentences of the last refusal landing: no epilogue about what everyone learned, '
+                .'no ambiguity, no "I still think about it sometimes".',
+
+            // No phase: an anthology act, or an outline written before the
+            // reversal phase existed. The old shape, unchanged, because that is
+            // the shape its outline was built to.
+            null => $isLast
+                ? "THIS IS THE FINAL ACT. It contains the exposure:\n\n"
+                    .$story->exposure_moment."\n\n"
+                    .'The withheld information comes out here and nowhere earlier. Put the witnesses '
+                    .'in the room and name them. The antagonist repeats their justification in front '
+                    .'of people who now know it is false — that is the moment the video exists for. '
+                    .'The narrator does not retaliate, gloat, or explain the moral. They state the '
+                    .'fact, and the room reacts. End within a few sentences of the reveal landing: no '
+                    .'epilogue about what everyone learned, no ambiguity, no "I still think about it '
+                    .'sometimes".'
+                : 'This is NOT the final act. The withheld information does not come out here. '
+                    .'Nothing is resolved: the narrator does not win a round, get a real apology, or '
+                    .'find an ally who fixes anything. End the act worse off than it started.',
+        };
+    }
+
     // -- Character extraction --------------------------------------------------
 
     private function characterSystemPrompt(Story $story): string
     {
-        return implode("\n\n", [
+        // Filtered, because castAgeBlock() returns an empty string for a story
+        // that states no age range, and an unfiltered implode would open that
+        // section with a blank gap where an instruction used to be.
+        return implode("\n\n", array_filter([
             <<<'TEXT'
-            You write character sheets for an illustrated video. Each description you write
-            will be pasted, WORD FOR WORD AND UNCHANGED, into 150-250 separate image
-            generation prompts across a 35-minute video.
+            You write character sheets for an ANIME-STYLE illustrated video. Each description
+            you write will be pasted, WORD FOR WORD AND UNCHANGED, into 150-250 separate
+            image generation prompts across a 35-minute video.
 
-            That is the whole job, and it dictates the form:
+            THE ONE RULE THAT DECIDES EVERYTHING ELSE: write SILHOUETTE, not TEXTURE.
 
-            - PHYSICAL AND FIXED ONLY. Age, build, height, hair colour and cut, face shape,
-              skin, eyes, facial hair, glasses, distinguishing marks.
+            Most of these frames are mid shots and wide shots, and this is an anime style.
+            Fine surface detail does not survive either. "Faint smile lines at the corners
+            of her eyes" and "a light spray of freckles" are real observations that render
+            as nothing at conversational distance, so a character built out of them is a
+            character who is identifiable in close-up and anonymous everywhere else. That
+            was measured, not guessed: a woman described that way read as mid-forties in a
+            close portrait and mid-thirties in a two-person kitchen shot, from the same
+            description, in the same run.
+
+            So every character must be identifiable from their HAIR AND HEAD SHAPE before a
+            single feature is read.
+
+            DO NOT DESCRIBE BUILD, HEIGHT OR FRAME. Not "broad-shouldered", not "stocky",
+            not "small and frail", not "tall". This was measured and it is not a matter of
+            taste: the illustration style draws every body toward one idealised frame, so a
+            character written "broad and thick through the chest" is drawn lean and one
+            written "small and frail with stooped shoulders" is drawn upright. A style
+            instruction saying stated build is preserved exactly was tried and changed
+            nothing. Words spent on build are words the renderer discards, and they read as
+            coverage that is not there — so the room goes to hair and face, which do render.
+
+            - HAIR IS THE PRIMARY IDENTIFIER, and it must differ in SHAPE across the cast,
+              not merely in colour and length. Three women all described as "shoulder-length"
+              plus a colour will collapse into one another at any distance.
+
+              Default to LONGER, STYLED hair. This look is long hair with visible styling,
+              not short and practical, so reach first for: long and straight with a centre
+              part, long with a high ponytail, a long braid over one shoulder, waist-length
+              with heavy volume, half-up with the rest loose, a low twisted knot with strands
+              down, long and layered with a deep side part. A bob, a crop or a tight bun is
+              a deliberate choice for one character, not the default for the cast.
+
+              THAT MAKES DISTINCTNESS HARDER, NOT EASIER, and it is the reason the check at
+              the bottom of these instructions is written the way it is. Three women with
+              long hair converge fast. Length alone stops separating them, so each one must
+              differ on the axes that still read at distance:
+                * where the mass sits — down the back, over one shoulder, piled high, at the
+                  nape, swinging free at the jaw
+                * up or down — and if up, how high and how tight
+                * the parting — centre, deep side, none, severe
+                * volume and texture in outline — flat and sleek, heavy and wavy, tight
+                  curls with width at the sides
+              Say what shape the hair makes, not just how long it is.
+            - AGE MUST READ IN THE HEAD. Three places carry it and they are the three that
+              survive a wide shot: hairline (receding, thinning, widow's peak), hair colour
+              (steel grey, white, salt-and-pepper, still dark) and face shape (gaunt,
+              jowled, softly rounded, angular, heavy-browed). State the decade explicitly as
+              well. Do not reach for the body: a stooped, narrow frame reads as age to a
+              reader and is drawn as an upright one, so it buys nothing.
+            - NEVER WRITE AGEING TEXTURE. Not "deeply lined", not "sagging", not
+              "weathered", not creased, furrowed, leathery, crepey or liver-spotted —
+              and the ban is on the WORD, not on one phrase it appears in. "Weathered
+              skin" and "weathered square jaw" are the same instruction to a generator;
+              the second one was written after the first was banned. This is not a
+              stylistic preference: this is drawn in an anime style, where the only thing a
+              generator has for photoreal ageing is to draw it literally, and it will. A
+              woman written as "late sixties, deeply lined round face, soft sagging
+              jawline" came back at eighty-five with the lines and the spots drawn on, in
+              every frame she appeared in. Every one of those words has a structural
+              replacement that reads at distance and none of them do — say what shape the
+              face is, not what the skin has been through.
+            - THEN the fixed features, all of them above the collar: face shape, eye shape
+              and colour, eyebrow shape, facial hair, glasses shape, and any single strong
+              distinguishing mark. Eye SHAPE matters here more than eye colour — an anime
+              style draws eye shape distinctly and reads colour as an afterthought.
             - Habitual clothing goes in style_notes, not in the description: what someone
               usually wears is stable, but it is not their face.
+            - NO HATS unless the script actually requires one. A hat is clothing, so nothing
+              else in these rules stops you writing one — but it covers the hair, and hair
+              is the thing this cast is told apart by. A cast in caps is a cast with one
+              silhouette. If the script gives someone a hat for a reason, keep it; if you
+              are reaching for one to make a character feel ordinary, do not.
             - style_notes is CLOTHING ONLY. Never props, never anything held or carried,
               never anything the word "often" or "sometimes" would apply to. style_notes is
               pasted into every one of that character's prompts, so "often holding a
               handheld microphone" puts a microphone in all 36 scenes they appear in,
-              including the ones in a parking lot four acts before the speech. If they
-              carry something in a particular scene, that scene's frame will say so.
+              including the ones in a parking lot four acts before the speech, and "and a
+              wooden cane" puts a cane in the hand of a man sitting at a kitchen table. If
+              they carry something in a particular scene, that scene's frame will say so.
             - NEVER anything that changes between scenes. No mood, no expression, no
-              posture, no action, no location, no lighting, no camera angle. Those belong
-              to the individual frame and will be written separately for each one.
+              posture, no gait, no action, no location, no lighting, no camera angle. Those
+              belong to the individual frame and will be written separately for each one.
+              "Walks with a stiffness in one hip" asks for a man mid-stride in every frame
+              he is in, including the ones where he is sitting down.
+            - NEVER a hedge. No "usually", "often", "typically", "sometimes". These fields
+              are applied unconditionally, so "hair usually pulled back" means hair pulled
+              back in all 92 of her scenes — write the one state you want drawn every time.
             - NEVER anything a picture cannot show. Not their job history, not their
               motives, not how the narrator feels about them.
-            - Concrete and unambiguous. "Mid-forties, heavy through the shoulders, short
-              greying brown hair receding at the temples, square jaw, deep-set brown eyes,
-              two-day stubble" is usable. "Tired-looking, worn down by life" is not — it
-              renders differently every time.
             - One flowing description, 25-45 words. No lists, no bullet points, no labels.
+
+            USABLE — hair shaped, age in the hairline and the face, nothing below the collar:
+              "Man in his late sixties, deeply receding white hairline swept back from a long
+              gaunt face, heavy grey eyebrows, deep-set narrow eyes, square rimless glasses."
+
+            USABLE — a woman, hair carrying the identification:
+              "Woman in her early thirties, long black hair in a high tight ponytail with a
+              deep side part, heart-shaped face, wide round eyes, fine arched brows."
+
+            NOT USABLE — build doing work the renderer discards:
+              "Mid-forties, heavy through the shoulders and thick-waisted, short greying hair
+              receding at the temples, square jaw, deep-set brown eyes."
+
+            NOT USABLE — texture doing the work, and it disappears past close-up:
+              "Mid-forties, short greying brown hair receding at the temples, deeply lined
+              brow, crow's feet, two-day stubble."
+
+            NOT USABLE — vague; renders differently every time:
+              "Tired-looking, worn down by life."
+
+            Before you answer, read your own cast back AS A GROUP and check every pair of
+            characters against each other. Two of them may both have long hair only if the
+            SHAPES read differently at a distance where no face is legible — different
+            parting, different volume, one up and one down, or the mass sitting somewhere
+            else. "Both long and dark" is two characters the viewer will confuse, however
+            different their faces are on the page.
+
+            Check age the same way: the oldest and the youngest must be orderable from
+            hairline, hair colour and face shape alone, with no body to help. If any pair
+            fails, change one of them. A viewer tells these people apart at a glance or not
+            at all.
 
             Consistency across the whole video depends on this text never varying. If a
             description is vague, the generator fills the gap differently in every scene and
             the character's face changes halfway through the video.
             TEXT,
+            $this->castAgeBlock($story),
             $this->locale->guidanceFor((string) $story->locale_profile),
-        ]);
+        ], fn (string $block): bool => trim($block) !== ''));
+    }
+
+    /**
+     * The story's stated cast age range, if it has one.
+     *
+     * This is where a per-story casting decision belongs, and it is here
+     * rather than in the art style constant for a reason worth keeping. The
+     * style constant is one string appended to every prompt in every story;
+     * asking it to carry "this cast is young" means asking one sentence to be
+     * true of a workplace marriage drama and of a story about a dead mother and
+     * an uncle with a cane at the same time. It cannot be, so it compensates —
+     * and a rendering rule compensating for a casting decision is how the style
+     * ended up instructing an anime generator to draw photoreal ageing.
+     *
+     * Note what this deliberately does NOT do: it does not override the script.
+     * The extractor's job is to read the cast that was written, and a profile
+     * that could rewrite a character's stated age would put the picture in
+     * contradiction with the narration — the exact failure the style line is
+     * also written to avoid. What it steers is INFERENCE, which is most of the
+     * work: scripts rarely state an age, the model guesses one, and in this
+     * genre it guesses old.
+     *
+     * Empty when the story states nothing, and array_filter drops it. Null
+     * means no intention was expressed, not that a young cast was intended.
+     */
+    private function castAgeBlock(Story $story): string
+    {
+        $profile = trim((string) $story->cast_age_profile);
+
+        if ($profile === '') {
+            return '';
+        }
+
+        return "THE INTENDED AGE RANGE OF THIS CAST, from the operator:
+
+  {$profile}
+
+"
+            .'Use this for every character whose age the script does not state outright. Where '
+            .'the script DOES state an age, or makes one unambiguous — a grandmother, a '
+            .'retirement, a character described as decades older than another — the script wins '
+            .'and you write that age. A description that contradicts the narration is worse than '
+            .'one outside the intended range, because the viewer hears both.';
     }
 
     /**
@@ -793,8 +1130,12 @@ class ClaudeScriptWriter implements ScriptWriter
 
         return "YOUR PREVIOUS ANSWER WAS REJECTED. Fix exactly this and change nothing else:\n\n  "
             .implode("\n  ", $rejectionNotes)
-            ."\n\nstyle_notes is applied to every prompt for that character. Write only what they "
-            ."wear in EVERY scene. If they carry something in one scene, leave it out entirely.\n\n";
+            ."\n\nThe rule you broke, in full:\n\n"
+            .$this->text->ruleSummary()
+            ."\n\nBoth description and style_notes are applied to EVERY prompt for that "
+            .'character, so anything conditional, carried, momentary or textural becomes '
+            .'unconditional and permanent. Remove the offending words and leave the rest of '
+            ."each description exactly as it is.\n\n";
     }
 
     private function characterPrompt(Story $story, array $scripts, array $rejectionNotes = []): string
@@ -811,12 +1152,23 @@ class ClaudeScriptWriter implements ScriptWriter
             .'Include the narrator. The narrator is on screen constantly and is the single '
             .'most important character to pin down — a narrator whose face changes is the '
             .'fastest way to lose a viewer. Name them from the script if they are named '
-            .'there; if the script never names them, give them a plain American name that '
-            ."fits and use it consistently.\n\n"
+            // Was "a plain American name", hardcoded, for the whole of the time
+            // there was only one setting to be wrong about. It would have named
+            // the narrator of a story set in China "Karen" — and that name is
+            // then pasted into every prompt she appears in and read aloud in
+            // every act. The setting is already in this call's system prompt,
+            // from the story's locale profile, so this defers to it rather than
+            // carrying a second opinion about it.
+            .'there; if the script never names them, give them a plain name that fits '
+            ."the setting described in your instructions, and use it consistently.\n\n"
             .'Do NOT include people mentioned once in passing, people who are only spoken '
             .'about and never seen, or crowds. Every entry costs prompt space in every '
             ."scene they appear in.\n\n"
-            .'For each: name, description (physical, fixed, 25-45 words), style_notes '
+            .'For each: name, description (physical, fixed, silhouette-first, 25-45 words '
+            .'— hair SHAPE distinct from every other character and longer and styled by '
+            .'default, age carried by hairline, hair colour and face shape, never by skin '
+            .'and never by build, height or frame, which this illustration style discards), '
+            .'style_notes '
             .'(habitual CLOTHING ONLY, one short phrase — no props, nothing held or carried, '
             .'and no "often" / "sometimes" / "usually"; style_notes is pasted into every '
             .'prompt this character appears in, so anything conditional in it becomes '
@@ -999,6 +1351,15 @@ class ClaudeScriptWriter implements ScriptWriter
                 'withheld_information' => ['type' => 'string'],
                 'exposure_moment' => ['type' => 'string'],
 
+                // The reversal half. Required for the same reason the first
+                // four are: asked for in prose, the awkward one gets dropped,
+                // and these are the awkward ones — a model trained on this
+                // genre's most common shape will happily escalate to an
+                // exposure and stop, which is exactly the video story 21 was.
+                'departure' => ['type' => 'string'],
+                'reversal_beats' => ['type' => 'string'],
+                'refusal' => ['type' => 'string'],
+
                 'acts' => [
                     'type' => 'array',
                     // No minItems/maxItems: structured outputs reject any
@@ -1023,6 +1384,9 @@ class ClaudeScriptWriter implements ScriptWriter
                 'antagonist_justification',
                 'withheld_information',
                 'exposure_moment',
+                'departure',
+                'reversal_beats',
+                'refusal',
                 'acts',
             ],
             'additionalProperties' => false,

@@ -28,6 +28,7 @@ class CharacterReference extends Model
         'batch',
         'sequence',
         'prompt',
+        'style_fingerprint',
         'seed',
         'provider',
         'model',

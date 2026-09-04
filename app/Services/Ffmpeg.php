@@ -489,6 +489,123 @@ class Ffmpeg
         ];
     }
 
+    /**
+     * Stitch several stills into one side-by-side panel image.
+     *
+     * The channel's thumbnail format: two existing stills, cropped to portrait
+     * panels and butted together, faces prominent, no text — the title carries
+     * the hook, so the image does not have to. Composed from stills the story
+     * already owns, which is why it costs nothing.
+     *
+     * The filter, per panel:
+     *
+     *   scale=<pw>:<h>:force_original_aspect_ratio=increase   cover the panel
+     *   crop=<pw>:<h>                                          centre crop
+     *
+     * `increase` then crop, never `decrease` then pad. Padding would put bars
+     * down the middle of the composition, and a thumbnail is judged at 210px
+     * wide in a sidebar where a bar reads as a broken image. The stills are
+     * 3416x1920 — 16:9 — so covering a 720-high panel is a horizontal crop
+     * only, and a face near the centre of a 16:9 frame survives it.
+     *
+     * The divider is a pad on the right of every panel but the last, so the
+     * arithmetic stays exact: `panels * pw + (panels - 1) * divider == width`.
+     * The caller derives `pw` from that identity rather than this method
+     * guessing, because a composition that is 1279 wide is a composition
+     * YouTube will rescale.
+     *
+     * MJPEG, because the output is a JPEG: `-q:v` here is 2 (best) to 31, not
+     * the H.264 CRF scale used everywhere else in this file.
+     *
+     * @param  array<int, string>  $sources  Two or more image files, left to right.
+     */
+    public function composeSplitPanel(
+        array $sources,
+        string $output,
+        int $width,
+        int $height,
+        int $divider,
+        string $dividerColor,
+        int $quality,
+        int $timeout,
+    ): void {
+        $panels = count($sources);
+
+        if ($panels < 2) {
+            throw new FfmpegException(
+                'A split panel needs at least two stills. One still is not a split panel, it is a '
+                .'still, and cropping it to a portrait panel would throw away most of the frame.'
+            );
+        }
+
+        $panelWidth = intdiv($width - $divider * ($panels - 1), $panels);
+
+        if ($panelWidth < 1) {
+            throw new FfmpegException(sprintf(
+                'A %dpx divider leaves no room for %d panels in %dpx.',
+                $divider,
+                $panels,
+                $width,
+            ));
+        }
+
+        // Any remainder from the integer division goes onto the LAST panel, so
+        // the composition is exactly `width` wide rather than one or two pixels
+        // short. An odd width divided by two is the ordinary case, not an edge.
+        $lastWidth = $width - ($panelWidth + $divider) * ($panels - 1);
+
+        $chains = [];
+        $labels = '';
+
+        foreach ($sources as $index => $source) {
+            $isLast = $index === $panels - 1;
+            $thisWidth = $isLast ? $lastWidth : $panelWidth;
+
+            $chain = sprintf(
+                '[%d:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d',
+                $index,
+                $thisWidth,
+                $height,
+                $thisWidth,
+                $height,
+            );
+
+            if (! $isLast && $divider > 0) {
+                $chain .= sprintf(
+                    ',pad=%d:%d:0:0:color=%s',
+                    $thisWidth + $divider,
+                    $height,
+                    $dividerColor,
+                );
+            }
+
+            $chains[] = $chain.sprintf('[p%d]', $index);
+            $labels .= sprintf('[p%d]', $index);
+        }
+
+        $chains[] = sprintf('%shstack=inputs=%d[out]', $labels, $panels);
+
+        $arguments = ['-y'];
+
+        foreach ($sources as $source) {
+            $arguments[] = '-i';
+            $arguments[] = $source;
+        }
+
+        $arguments = array_merge($arguments, [
+            '-filter_complex', implode(';', $chains),
+            '-map', '[out]',
+            '-frames:v', '1',
+            '-c:v', 'mjpeg',
+            '-q:v', (string) $quality,
+            $output,
+        ]);
+
+        Directory::ensure(dirname($output));
+
+        $this->run($arguments, $timeout);
+    }
+
     public function version(): string
     {
         $line = strtok($this->probe(['-version']), "\n");

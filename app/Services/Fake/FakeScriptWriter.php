@@ -3,8 +3,10 @@
 namespace App\Services\Fake;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\ActPhase;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Enums\StoryFormat;
 use App\Models\Act;
 use App\Models\Story;
 use App\Support\Providers\ActOutline;
@@ -100,9 +102,15 @@ class FakeScriptWriter implements ScriptWriter
     {
         $this->calls[] = ['method' => 'outline', 'story_id' => $story->id, 'act_count' => $actCount];
 
+        // The same arithmetic the real writer uses, so a test that asserts the
+        // act structure is asserting the structure production gets.
+        $plan = $story->format === StoryFormat::Anthology ? [] : ActPhase::planFor($actCount);
+
         $acts = [];
 
         for ($i = 1; $i <= $actCount; $i++) {
+            $phase = $plan[$i] ?? null;
+
             $acts[] = new ActOutline(
                 sequence: $i,
                 title: self::TITLES[($i - 1) % count(self::TITLES)],
@@ -117,12 +125,14 @@ class FakeScriptWriter implements ScriptWriter
                 // Distinct per act, and escalating. ValidateOutlineSpine flags
                 // two acts that claim the same beat, so a fake that repeated
                 // one would fail the genre check it exists to exercise.
-                escalationBeat: sprintf(
-                    'Act %d costs me %s, in front of %d more people than the last time.',
-                    $i,
-                    self::COSTS[($i - 1) % count(self::COSTS)],
-                    $i * 4
-                ),
+                //
+                // It also has to change DIRECTION at the departure: after the
+                // narrator leaves, the beat names what the attempt costs the
+                // antagonist. A fake that escalated against the narrator to the
+                // last act would model the exact video this phase was added to
+                // stop the pipeline producing.
+                escalationBeat: $this->beatFor($i, $phase),
+                phase: $phase,
             );
         }
 
@@ -148,8 +158,54 @@ class FakeScriptWriter implements ScriptWriter
             // conversation and a much worse video.
             exposureMoment: 'At the reception, in front of eighty guests and both families, when Dana '
                 .'stood up to thank everyone who had helped and named everyone except me.',
+            // Unannounced, because an announced departure cannot be searched
+            // for and ValidateOutlineSpine flags one. The fake has to be in
+            // the genre it is used to test, not merely the right shape.
+            departure: 'I moved out of the apartment two weeks after the reception and did not say '
+                .'where I was going. Nobody was given an address, no note was left on the table, and '
+                .'my number changed the same afternoon. Dana found out that I was gone three weeks '
+                .'later, from our mother, who had known and had said nothing.',
+            // Two attempts, each costing her something named, escalating.
+            reversalBeats: 'First she called every relative we have in common, and two of them '
+                .'stopped taking her calls by the third week. Then she paid a man to look for me, '
+                .'which was money she had spent a year telling everyone she did not have. Then she '
+                .'went to our mother and begged for the address, and our mother asked her what she '
+                .'thought the eleven months of payments had been.',
+            // Answers the grievance in the grievance's own words, which is what
+            // the refusal check looks for: shared, specific language.
+            refusal: 'When Dana finally found me at the care home in March, she asked me to come back '
+                .'and help, because family helps family. I said her own sentence back to her and then '
+                .'I said no. She had called me embarrassing at every dinner for eleven months; I told '
+                .'her she was welcome to say it again, to anyone she liked, and I went back inside.',
             requestedActCount: $actCount,
         );
+    }
+
+    /**
+     * One act's beat, in the direction its phase runs.
+     *
+     * @param  ActPhase|null  $phase  Null on an anthology act, which runs the
+     *                                whole arc itself and escalates throughout.
+     */
+    private function beatFor(int $sequence, ?ActPhase $phase): string
+    {
+        return match ($phase) {
+            ActPhase::Search => sprintf(
+                'Act %d costs Dana %s, and leaves her with fewer people to ask than she started it with.',
+                $sequence,
+                self::SEARCH_COSTS[($sequence - 1) % count(self::SEARCH_COSTS)],
+            ),
+            ActPhase::Refusal => sprintf(
+                'Act %d costs Dana the last relatives who believed her, in the room where she asked.',
+                $sequence,
+            ),
+            default => sprintf(
+                'Act %d costs me %s, in front of %d more people than the last time.',
+                $sequence,
+                self::COSTS[($sequence - 1) % count(self::COSTS)],
+                $sequence * 4,
+            ),
+        };
     }
 
     public function actScript(
@@ -165,6 +221,12 @@ class FakeScriptWriter implements ScriptWriter
             'method' => 'actScript',
             'story_id' => $story->id,
             'sequence' => $act->sequence,
+            // Both recorded so a test can assert they ARRIVED. The beat was
+            // required at outline, checked at Gate 1 and dropped on the way to
+            // this call for two phases, and nothing could see it because the
+            // fake never looked at what it was handed.
+            'phase' => $act->phase?->value,
+            'escalation_beat' => $act->escalationBeat,
             'prior_summaries' => count($priorSummaries),
             'target_words' => $targetWords,
             'outline_size' => count($fullOutline),
@@ -388,21 +450,53 @@ class FakeScriptWriter implements ScriptWriter
         'any version of this where I am still the reasonable one',
     ];
 
+    /**
+     * The reversal's costs, which run against the antagonist rather than the
+     * narrator. Kept separate from COSTS rather than sharing it, because the
+     * two lists are not interchangeable: "my seat at the head table" is a thing
+     * the narrator loses and reads as nonsense the other way round.
+     */
+    private const SEARCH_COSTS = [
+        'the two cousins who had backed her the loudest',
+        'a month of savings she had told everyone she did not have',
+        'the story she had been telling about why I stopped calling',
+        'her standing with the aunt who arranged the seating',
+    ];
+
     private const TOWNS = ['Bellefonte', 'Marion', 'Cold Spring', 'Delaware', 'Warrensburg'];
 
-    /** name, fixed physical description, wardrobe, importance. */
+    /**
+     * name, fixed physical description, wardrobe, importance.
+     *
+     * **This is the reference example of what a good extraction looks like**,
+     * and it is held to the same rules the real one is: CharacterTextGuard runs
+     * over it in every test that extracts a cast, so a fixture that drifts out
+     * of contract fails loudly rather than modelling the wrong thing. The first
+     * version of this list carried "usually pushed behind one ear", which is
+     * the exact hedge the guard exists to catch.
+     *
+     * Written silhouette-first for the anime style: each of the four has a hair
+     * SHAPE nobody else in the cast has — a blunt bob, a clipped receding cut,
+     * long centre-parted, a swept-back mane — because at a wide shot the
+     * outline is all a viewer gets, and three women distinguished only by hair
+     * COLOUR collapse into one another at that distance.
+     */
     private const CAST = [
-        ['Erin Vasquez', 'Woman in her early forties, tall and square-shouldered, dark brown hair cut '
-            .'to the jaw and usually pushed behind one ear, olive skin, heavy brows, a small white '
-            .'scar through the left eyebrow.', 'Plain crew-neck sweaters and jeans, a steel watch.', 'lead'],
-        ['Kyle Vasquez', 'Man in his mid thirties, broad and running to heavy, close-cropped sandy '
-            .'hair receding at the temples, round face, pale blue eyes, permanent flush across the '
-            .'cheekbones.', 'Work shirts untucked over a t-shirt, a ball cap.', 'lead'],
-        ['Danielle Vasquez', 'Woman in her early thirties, small and fine-boned, straight blonde hair '
-            .'to the shoulders with a middle part, fair skin, wide-set grey eyes.', 'Soft cardigans '
-            .'in cream and dusty pink.', 'supporting'],
-        ['Paul Ostrander', 'Man in his late sixties, thin and slightly stooped, full head of white '
-            .'hair combed back, long lined face, wire-rimmed glasses.', 'Grey suit, no tie.', 'minor'],
+        ['Erin Vasquez', 'Woman in her early forties, tall and square-shouldered, dark brown hair in '
+            .'a blunt jaw-length bob with a hard side part, long oval face, heavy straight brows, '
+            .'deep-set brown eyes, a small white scar through the left eyebrow.',
+            'Plain crew-neck sweaters and jeans, a steel watch.', 'lead'],
+        ['Kyle Vasquez', 'Man in his mid thirties, broad and thick through the chest, sandy hair '
+            .'clipped short above a high receding hairline, round heavy-jawed face, small pale blue '
+            .'eyes under low brows, permanent flush across the cheekbones.',
+            'Work shirts untucked over a t-shirt, a ball cap.', 'lead'],
+        ['Danielle Vasquez', 'Woman in her early thirties, small and fine-boned with narrow '
+            .'shoulders, straight pale blonde hair past the shoulder blades from a centre part, '
+            .'heart-shaped face, wide-set grey eyes, thin arched brows.',
+            'Soft cardigans in cream and dusty pink.', 'supporting'],
+        ['Paul Ostrander', 'Man in his late sixties, tall and stooped with narrow shoulders, a '
+            .'swept-back mane of white hair above a deeply receded temple line, long gaunt face, '
+            .'heavy grey brows, rectangular wire-rimmed glasses.', 'Grey suit, no tie.', 'minor'],
     ];
 
     /**

@@ -79,6 +79,7 @@ class DispatchAssetGeneration
         ?SceneSelection $only = null,
         bool $checkWorkers = true,
         bool $checkAligner = true,
+        bool $checkStyle = true,
     ): array {
         // Fires before anything is queued. The cost rows assert this too, but
         // that guard fires after a provider has already billed.
@@ -128,7 +129,7 @@ class DispatchAssetGeneration
         // preflight prints "restart your workers" — and an operator read it, and
         // 117 scenes were narrated at the wrong speed anyway. A check that can be
         // scrolled past is not a check.
-        $notes = $this->preflight->handle($story, $changes, $checkWorkers, $checkAligner);
+        $notes = $this->preflight->handle($story, $changes, $checkWorkers, $checkAligner, $checkStyle);
 
         // Everything on the `renders` disk that describes the audio or the
         // stills about to be replaced.

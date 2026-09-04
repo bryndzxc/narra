@@ -33,25 +33,41 @@ final class NarrationPace
      * The voice's own measured figure where there is one, the global fallback
      * otherwise. Never zero: everything downstream divides by it.
      */
-    public static function expectedWpm(?string $voiceId): int
+    public static function expectedWpm(?string $voiceId, ?string $localeProfile): int
     {
-        $measured = self::profile($voiceId)['words_per_minute'] ?? null;
+        $measured = self::profile($voiceId, $localeProfile)['words_per_minute'] ?? null;
 
         return max(1, (int) ($measured ?? config('render.narration.words_per_minute', 160)));
     }
 
-    /** Whether that figure came from a real measurement or is the fallback. */
-    public static function isMeasured(?string $voiceId): bool
+    /**
+     * Whether this narrator has been measured ON THIS KIND OF SCRIPT.
+     *
+     * The locale half is not a refinement, it is the whole question. Brian is
+     * measured — at 197 wpm, across 186 real scenes — and that figure says
+     * nothing about how he reads en-CN, where two scenes came back at 219 and
+     * 230. A method that answered "yes, measured" to both is what let the guard
+     * cancel a 270-scene batch on the strength of a number about other prose.
+     */
+    public static function isMeasured(?string $voiceId, ?string $localeProfile): bool
     {
-        return isset(self::profile($voiceId)['words_per_minute']);
+        return isset(self::profile($voiceId, $localeProfile)['words_per_minute']);
     }
 
-    /** Human name for the voice, where the profile carries one. */
+    /** Human name for the voice. A property of the narrator, not of a script. */
     public static function voiceName(?string $voiceId): ?string
     {
-        $name = self::profile($voiceId)['name'] ?? null;
+        $name = self::voice($voiceId)['name'] ?? null;
 
         return is_string($name) ? $name : null;
+    }
+
+    /** Where the figure for this pair came from, for a page or a command to cite. */
+    public static function measuredOn(?string $voiceId, ?string $localeProfile): ?string
+    {
+        $on = self::profile($voiceId, $localeProfile)['measured_on'] ?? null;
+
+        return is_string($on) ? $on : null;
     }
 
     /**
@@ -62,9 +78,9 @@ final class NarrationPace
      * a stale expectation is worse than no expectation, because the check built
      * on it would pass while being wrong.
      */
-    public static function measuredAtSpeed(?string $voiceId): ?float
+    public static function measuredAtSpeed(?string $voiceId, ?string $localeProfile): ?float
     {
-        $speed = self::profile($voiceId)['measured_at_speed'] ?? null;
+        $speed = self::profile($voiceId, $localeProfile)['measured_at_speed'] ?? null;
 
         return $speed === null ? null : (float) $speed;
     }
@@ -80,9 +96,9 @@ final class NarrationPace
      *
      * True when the voice is unmeasured — there is nothing to be stale.
      */
-    public static function profileMatchesConfiguredSpeed(?string $voiceId): bool
+    public static function profileMatchesConfiguredSpeed(?string $voiceId, ?string $localeProfile): bool
     {
-        $measuredAt = self::measuredAtSpeed($voiceId);
+        $measuredAt = self::measuredAtSpeed($voiceId, $localeProfile);
 
         return $measuredAt === null || abs($measuredAt - self::configuredSpeed()) < 0.001;
     }
@@ -95,6 +111,92 @@ final class NarrationPace
         }
 
         return $words / ($durationMs / 60000);
+    }
+
+    /**
+     * Whether a drift on this pair is grounds for STOPPING the run.
+     *
+     * Detection and enforcement are separate questions and conflating them is
+     * what made story 21 expensive. `violation()` always measures, because the
+     * expected figure is the assumption the SCRIPT WAS SIZED AGAINST and
+     * comparing reality to it is meaningful whether or not the narrator has
+     * been profiled — that is precisely how story 9's 18% drift is caught, on a
+     * story whose voice had no profile at all.
+     *
+     * What differs is what the disagreement PROVES.
+     *
+     *   Measured pair. The narrator is known on this kind of script, so reality
+     *   disagreeing means something is genuinely wrong — the wrong speed, the
+     *   wrong voice, a profile that has gone stale. Stop, at a cost of one
+     *   scene.
+     *
+     *   Unmeasured pair. The assumption was a guess: the fallback constant, or
+     *   a figure measured on different prose. Reality disagreeing means THE
+     *   GUESS was wrong, which is not a reason to destroy a 270-scene run — the
+     *   audio is unaffected and only the runtime estimate moves. Report it,
+     *   loudly and on the record, and let the run establish the real number.
+     *
+     * The mixed-tempo damage this is sometimes assumed to prevent is not
+     * prevented here and never was: a speed that moves mid-run is caught by
+     * `narration_speed` provenance and by the run fingerprint, neither of which
+     * consults this method.
+     */
+    public static function isEnforceable(?string $voiceId, ?string $localeProfile): bool
+    {
+        return self::isMeasured($voiceId, $localeProfile);
+    }
+
+    /**
+     * Why the pace guard cannot be enforced on this run, or null if it can.
+     *
+     * The counterpart to `violation()`, and the reason that method is allowed
+     * to stay quiet on an unmeasured pair. A check that cannot run must report
+     * that it could not — the same rule `SpeechQuota` follows for an unreadable
+     * balance, one level up. Returned as a sentence because the operator is
+     * reading it at the moment they decide to spend, and "unmeasured" on its
+     * own tells them nothing about what to do next.
+     *
+     * Deliberately NOT a refusal. A pace difference does not corrupt audio; it
+     * changes a runtime estimate. Stopping a 270-scene run over an estimate,
+     * using a figure from a different script, is a worse trade than letting the
+     * run establish the figure — and the mixed-tempo damage this is sometimes
+     * mistaken for is caught elsewhere, by `narration_speed` provenance and by
+     * the run fingerprint, neither of which depends on this.
+     */
+    public static function unmeasured(?string $voiceId, ?string $localeProfile): ?string
+    {
+        if ($localeProfile === null || trim($localeProfile) === '') {
+            return null;
+        }
+
+        if (self::isMeasured($voiceId, $localeProfile)) {
+            return null;
+        }
+
+        $name = self::voiceName($voiceId) ?? (string) $voiceId;
+        $others = array_keys(self::voice($voiceId)['locales'] ?? []);
+
+        return sprintf(
+            '%s has no measured reading pace for %s, so the pace guard cannot judge this run.
+'
+            .'  %s'.'
+'
+            .'  scripts are sized against %d wpm (the fallback) until one exists
+
+'
+            .'This is not a warning about quality — the audio is unaffected. It means the runtime '
+            .'estimate for this story is a guess.
+'
+            .'When the narration batch finishes, run `php artisan narration:measure <story>` and paste '
+            .'the result into render.narration.voices. The guard resumes at full strength for this '
+            .'pair the moment it exists.',
+            $name,
+            $localeProfile,
+            $others === []
+                ? sprintf('this voice has no measured locale at all')
+                : sprintf('measured elsewhere: %s — a different kind of prose, so not transferable', implode(', ', $others)),
+            self::expectedWpm($voiceId, $localeProfile),
+        );
     }
 
     /**
@@ -130,13 +232,13 @@ final class NarrationPace
      * the operator reading it needs to know which two numbers disagreed and
      * what to do — not that "a check failed".
      */
-    public static function violation(?string $voiceId, int $words, int $durationMs): ?string
+    public static function violation(?string $voiceId, ?string $localeProfile, int $words, int $durationMs): ?string
     {
         if (! self::isReliableSample($words) || $durationMs <= 0) {
             return null;
         }
 
-        $expected = self::expectedWpm($voiceId);
+        $expected = self::expectedWpm($voiceId, $localeProfile);
         $actual = self::measure($words, $durationMs);
         $drift = ($actual - $expected) / $expected;
         $tolerance = (float) config('render.narration.pace_tolerance', 0.12);
@@ -147,7 +249,7 @@ final class NarrationPace
         // against a number describing different audio — and it can PASS while
         // being meaningless, which is the version of this failure that is
         // hardest to ever notice. Re-measuring is one bake-off and one line.
-        if (! self::profileMatchesConfiguredSpeed($voiceId)) {
+        if (! self::profileMatchesConfiguredSpeed($voiceId, $localeProfile)) {
             return sprintf(
                 "The measured pace for %s was taken at speed %.2f, but the synthesizer is set to %.2f.\n"
                 ."  expected : %d wpm  (stale — it describes this voice at a different speed)\n"
@@ -157,7 +259,7 @@ final class NarrationPace
                 .'with `php artisan narration:bakeoff <story>` and update render.narration.voices, or '
                 .'put the speed back.',
                 self::voiceName($voiceId) ?? (string) $voiceId,
-                (float) self::measuredAtSpeed($voiceId),
+                (float) self::measuredAtSpeed($voiceId, $localeProfile),
                 self::configuredSpeed(),
                 $expected,
                 $actual,
@@ -183,9 +285,19 @@ final class NarrationPace
             .'Nothing after this scene is worth generating until the two agree.',
             $drift * 100,
             $expected,
-            self::isMeasured($voiceId)
-                ? sprintf('measured for %s', self::voiceName($voiceId) ?? $voiceId)
-                : 'the fallback constant — this voice has no measured profile',
+            self::isMeasured($voiceId, $localeProfile)
+                ? sprintf(
+                    'measured for %s on %s%s',
+                    self::voiceName($voiceId) ?? $voiceId,
+                    $localeProfile,
+                    self::measuredOn($voiceId, $localeProfile) === null
+                        ? ''
+                        : ', '.self::measuredOn($voiceId, $localeProfile),
+                )
+                : sprintf(
+                    'the fallback constant — this voice has no measured profile for %s',
+                    $localeProfile ?? 'this story',
+                ),
             $actual,
             $words,
             $durationMs / 1000,
@@ -200,14 +312,37 @@ final class NarrationPace
     /**
      * @return array<string, mixed>
      */
-    private static function profile(?string $voiceId): array
+    private static function profile(?string $voiceId, ?string $localeProfile): array
+    {
+        $voice = self::voice($voiceId);
+
+        if ($voice === [] || $localeProfile === null || trim($localeProfile) === '') {
+            return [];
+        }
+
+        $measured = $voice['locales'][$localeProfile] ?? null;
+
+        return is_array($measured) ? $measured : [];
+    }
+
+    /**
+     * The voice's own record, independent of any locale.
+     *
+     * Split out because the NAME is a property of the narrator and the RATE is
+     * not — the rate belongs to the narrator reading a particular kind of
+     * script. Keeping them in one lookup is what let an en-US measurement
+     * answer an en-CN question.
+     *
+     * @return array<string, mixed>
+     */
+    private static function voice(?string $voiceId): array
     {
         if ($voiceId === null || trim($voiceId) === '') {
             return [];
         }
 
-        $profile = config('render.narration.voices.'.$voiceId);
+        $voice = config('render.narration.voices.'.$voiceId);
 
-        return is_array($profile) ? $profile : [];
+        return is_array($voice) ? $voice : [];
     }
 }

@@ -153,17 +153,23 @@ final class RunFingerprint
             // per-story: the voice is a column, and the expected rate is looked
             // up from it.
             'voice_id' => $voiceId,
-            'expected_wpm' => NarrationPace::expectedWpm($voiceId),
+
+            // The locale profile, because it is half of the key the expected
+            // rate is looked up by. Brian reading en-US and Brian reading en-CN
+            // are two different measurements, so two stories that differ only
+            // here must not produce the same fingerprint.
+            'locale_profile' => $story->locale_profile,
+            'expected_wpm' => NarrationPace::expectedWpm($voiceId, $story->locale_profile),
 
             // Whether that expectation is a measurement or a fallback, and at
             // what speed it was taken. A profile that moved out from under the
             // configured speed makes `expected_wpm` a number about different
             // audio — the stale-profile case NarrationPace::violation() refuses
             // — and it must not be able to change without this changing.
-            'wpm_measured' => NarrationPace::isMeasured($voiceId),
-            'measured_at_speed' => NarrationPace::measuredAtSpeed($voiceId) === null
+            'wpm_measured' => NarrationPace::isMeasured($voiceId, $story->locale_profile),
+            'measured_at_speed' => NarrationPace::measuredAtSpeed($voiceId, $story->locale_profile) === null
                 ? null
-                : number_format((float) NarrationPace::measuredAtSpeed($voiceId), 2, '.', ''),
+                : number_format((float) NarrationPace::measuredAtSpeed($voiceId, $story->locale_profile), 2, '.', ''),
         ];
     }
 

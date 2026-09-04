@@ -19,11 +19,22 @@ final class SceneDraftSet
      *                                                        rule is that every paid call writes a cost row, and
      *                                                        a fallback that hid its first attempt would report
      *                                                        a saving it did not make.
+     * @param  string|null  $fallbackReason
+     *                                       Which quality axis the discarded attempt failed,
+     *                                       and by how much. Null when nothing was discarded.
+     *
+     *                                                        Carried because a gate that fires without saying
+     *                                                        why costs the diagnosis every time. Story 21 fell
+     *                                                        back on all seven acts, logged only "fell back",
+     *                                                        and the failing axis — 34.4% static against a 15%
+     *                                                        ceiling — had to be recovered by measuring the
+     *                                                        finished draft against all three thresholds.
      */
     public function __construct(
         public readonly array $scenes,
         public readonly ProviderUsage $usage,
         public readonly array $discardedAttempts = [],
+        public readonly ?string $fallbackReason = null,
     ) {}
 
     /**

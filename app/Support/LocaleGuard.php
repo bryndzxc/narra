@@ -7,14 +7,21 @@ use App\Exceptions\LocaleViolationException;
 /**
  * Checks generated prose against a locale profile's denylist.
  *
+ * There is more than one profile now — `en-US` and `en-CN` — and the guard did
+ * not have to change for the second one, which is the point of the lists being
+ * data. What DID have to change is the wording below: a term is not "wrong"
+ * absolutely, it is wrong for a setting. "Thanksgiving" fails a story set in
+ * China and is required in one set in Ohio.
+ *
  * Runs on every act the moment it comes back, before anything is written to the
  * database and long before an operator sees it at Gate 1. That placement is the
  * point: an act that leaked idiom should cost one re-run, not a review cycle.
  *
  * Two lists, because they fail differently.
  *
- *   `denylist` — unambiguous. "barangay", "ay naku", "colour". These fail the
- *   stage. There is no reading of a US-audience story where they are correct.
+ *   `denylist` — unambiguous for that profile. "barangay", "ay naku", "colour"
+ *   in either; "dollars" and "sheriff" in a story set in China. These fail the
+ *   stage, because there is no reading of that story where they are correct.
  *
  *   `warnlist` — locale-wrong but legitimately ambiguous. "mum" is a flower,
  *   "flat" is a tyre, "chips" are a side. Failing on these would make the guard
@@ -52,6 +59,29 @@ class LocaleGuard
     public function warnings(string $text, string $localeProfile): array
     {
         return $this->hits($text, $this->listFor($localeProfile, 'warnlist'));
+    }
+
+    /**
+     * Every profile that exists, as key => label, for an operator to pick from.
+     *
+     * Here rather than read straight out of config at the call site, because
+     * the alternative is a page that hardcodes its own list of settings. The
+     * moment a third profile is added, the config would have it and the picker
+     * would not — and the story would go on being generated for the wrong
+     * country, silently, since a profile nobody can select is indistinguishable
+     * from one that does not exist.
+     *
+     * @return array<string, string>
+     */
+    public function profiles(): array
+    {
+        $labels = [];
+
+        foreach ((array) config('locale.profiles', []) as $key => $profile) {
+            $labels[(string) $key] = (string) ($profile['label'] ?? $key);
+        }
+
+        return $labels;
     }
 
     /** The positive instruction injected into every generation call. */

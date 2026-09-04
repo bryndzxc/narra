@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Models\YoutubeMetadata;
 use App\Support\ChapterRules;
+use App\Support\PublishChecklist;
 
 /**
  * YouTube's rules, checked before the operator can approve Gate 4.
@@ -103,6 +104,30 @@ class ValidateYoutubeMetadata
             $warnings[] = 'No thumbnail still chosen. Flag one at Gate 2 or pick one here.';
         }
 
+        // A warning rather than a block, and the distinction is the same one
+        // the whole sheet runs on: the two blocking items are the ones with
+        // consequences outside this app. An upload with no custom thumbnail
+        // gets an auto-generated frame, which is bad for the channel and not a
+        // policy problem — and an operator who wants to make one by hand should
+        // not be stopped by a picker they chose not to use.
+        if (trim((string) $metadata->thumbnail_selected) === '') {
+            $warnings[] = $metadata->thumbnail_options === null || $metadata->thumbnail_options === []
+                ? 'No thumbnail composed. The button above builds candidates from stills this story '
+                    .'already owns — it generates nothing and costs nothing. Without one, YouTube '
+                    .'picks a frame out of the video for you.'
+                : 'Thumbnails are composed but none is picked, so nothing will be copied out beside '
+                    .'the video.';
+        } elseif ($metadata->selectedThumbnail() === null) {
+            // A selection pointing at a composition that no longer exists. This
+            // one is worth saying loudly: the sheet looks complete and the file
+            // it names is gone.
+            $warnings[] = sprintf(
+                'The selected thumbnail "%s" is not among the composed options — the thumbnails were '
+                .'re-composed and the key went with them. Pick one again.',
+                (string) $metadata->thumbnail_selected,
+            );
+        }
+
         $overlay = $metadata->thumbnail_text_options ?? [];
 
         if ($overlay === []) {
@@ -137,17 +162,21 @@ class ValidateYoutubeMetadata
             }
         }
 
-        // A checklist item ticked against a field that is empty.
+        // Checklist items ticked against a value the sheet cannot show.
         //
-        // This is checkable now and was not before: the item asked the operator
-        // to confirm a scheduled time in Eastern while the app had no way to
-        // hold one, so `target_publish_at` was null on every story and the tick
-        // meant nothing either way. A checklist asking about something that
-        // cannot exist is the same defect as a form with no producer, and the
-        // fix was to make the thing exist rather than to stop asking.
-        if (($state['scheduled_time_confirmed_et'] ?? false) && $metadata->story->target_publish_at === null) {
-            $warnings[] = 'You confirmed the scheduled publish time, but no time is recorded above. '
-                .'Either set it, or the confirmation is about something this app cannot show you.';
+        // This began as one hand-written check on the scheduled time, and the
+        // reasoning behind it was never specific to that item: an item about
+        // something that cannot exist is the same defect as a form with no
+        // producer, and the fix is to make the thing exist rather than to stop
+        // asking. It applies to every per-story item, and it was true of the
+        // pinned comment the whole time the check named only one field.
+        //
+        // PublishChecklist resolves each item to its value, so this asks one
+        // question of all of them rather than one question per item written out
+        // by hand. A hand-written list of which items are checkable is a second
+        // source of truth that only has to agree on the day it is written.
+        foreach (PublishChecklist::ticksWithNothingBehindThem($metadata->story, $metadata) as $problem) {
+            $warnings[] = $problem;
         }
 
         return ['blocking' => $blocking, 'warnings' => $warnings];

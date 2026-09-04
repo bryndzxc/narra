@@ -1,9 +1,15 @@
 @php
     /** @var \App\Models\Story $story */
     $gate = $story->awaitingGate();
+
+    // `active` is computed from `render_jobs`, and a row is only opened once a
+    // job STARTS — so a queue full of jobs nobody is running reads as inactive.
+    // That is exactly how a --max-time exit mid-batch looked: every row done,
+    // the footer saying "Nothing running", and 152 scenes waiting in Redis.
+    $working = $overall['active'] || $queue_depth > 0;
 @endphp
 
-<x-layouts.render :title="$story->title" :refresh="$overall['active']">
+<x-layouts.render :title="$story->title" :refresh="$working">
     <div class="row" style="margin-bottom:6px">
         <h1 style="margin:0">{{ $story->title }}</h1>
         <span class="badge {{ $overall['failed'] > 0 ? 'fail' : ($overall['active'] ? 'run' : 'ok') }}">
@@ -16,7 +22,22 @@
     <p class="muted mono">
         {{ $story->slug }} &middot; {{ $story->scenes()->count() }} scenes &middot;
         ${{ number_format((float) $story->total_cost_usd, 4) }} spent
+        @if ($story->evaluationSpend() > 0)
+            {{-- Kept out of the total on purpose: a style preview or a bake-off
+                 borrowed this cast to test the channel and is not part of this
+                 video. Shown anyway, because spend that is logged and nowhere
+                 on screen is the shape this project keeps mistaking for fine. --}}
+            &middot; <span class="muted">+ ${{ number_format($story->evaluationSpend(), 4) }} evaluation</span>
+        @endif
     </p>
+
+    {{-- A stage sitting at `queued` reads as "about to run". Whether that is
+         true depends entirely on something this page could not see until now.
+         Rows 4 and 5 of the false-success table are both this.
+
+         Passed in rather than recomputed, so the panel and the refresh decision
+         above are reading the same answer. --}}
+    <x-worker-health :queues="$workers" />
 
     {{-- The two things worth interrupting an operator for, above everything else. --}}
     @if ($stale)

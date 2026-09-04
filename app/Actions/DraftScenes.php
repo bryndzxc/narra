@@ -65,6 +65,7 @@ class DraftScenes
         private readonly SentenceSplitter $splitter,
         private readonly ImagePromptBuilder $prompts,
         private readonly RecordSceneCast $cast,
+        private readonly ReassignMotionPresets $motion,
     ) {}
 
     /**
@@ -99,6 +100,24 @@ class DraftScenes
             RenderStage::DraftScenes,
             fn (RenderJob $job): array => $this->draft($story, $rebuild, $progress, $onlyActs, $job),
         );
+    }
+
+    /**
+     * The static share of a distribution, as a phrase for the log.
+     *
+     * Written next to the re-cut rather than derived later, because the
+     * BEFORE figure is the only record of what the generator picked — the
+     * column has been overwritten by the time anyone reads the row.
+     *
+     * @param  array<string, int>  $distribution
+     */
+    private function staticShare(array $distribution, int $total): string
+    {
+        if ($total < 1) {
+            return 'n/a';
+        }
+
+        return sprintf('%.1f%%', 100 * (($distribution[MotionPreset::Static->value] ?? 0) / $total));
     }
 
     /**
@@ -188,14 +207,45 @@ class DraftScenes
                 $acts->count(),
                 $set->count(),
                 // Named, because a fallback that fired is a second billed call
-                // for the same act and reads in the ledger as a duplicate.
-                $set->discardedAttempts !== [] ? ' (first attempt discarded, fell back)' : '',
+                // for the same act and reads in the ledger as a duplicate — and
+                // named WITH ITS REASON, because "fell back" on seven acts out of
+                // seven told nobody which of the three axes had failed. That cost
+                // $0.16 of discarded calls and a diagnosis that had to measure the
+                // finished draft to recover something the check already knew.
+                $set->discardedAttempts !== []
+                    ? sprintf(' (fell back: %s)', $set->fallbackReason ?? 'reason not recorded')
+                    : '',
             ));
         }
 
         $total = $this->persist($story, $cast, $drafted, $rebuild, $onlyActs);
 
         $job->note(sprintf('%d scenes written across %d act(s).', $total, $acts->count()));
+
+        // The camera, assigned by code from the frame text rather than asked
+        // for per scene.
+        //
+        // ReassignMotionPresets existed, worked, and was reachable only from
+        // `scenes:recut` — so every story drafted through this Action kept
+        // whatever the generator picked. Measured across three stories the
+        // generator picks static 11.8%, 23.2% and 34.4% of the time against a
+        // 15% ceiling: not a bad model, an unreliable one, which is exactly
+        // the case for a mechanism instead of a request.
+        //
+        // Free by construction — it writes one column, and motion appears in
+        // neither needsImage() nor needsNarration(), so nothing paid for is
+        // invalidated. The generator is still asked, and its answer is still
+        // recorded as the `before` distribution: that is the only measurement
+        // of how good its picks were on any given story.
+        $motion = $this->motion->handle($story->refresh());
+
+        $job->note(sprintf(
+            'Camera re-cut: %d of %d scene(s) reassigned. static %s -> %s.',
+            $motion['changed'],
+            $total,
+            $this->staticShare($motion['before'], $total),
+            $this->staticShare($motion['after'], $total),
+        ));
 
         return ['scenes' => $total, 'acts' => $acts->count(), 'kept' => false];
     }

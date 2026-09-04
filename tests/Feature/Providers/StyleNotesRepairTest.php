@@ -9,7 +9,7 @@ use App\Models\Character;
 use App\Models\CostEntry;
 use App\Models\Story;
 use App\Services\Fake\FakeScriptWriter;
-use App\Support\StyleNotesGuard;
+use App\Support\CharacterTextGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -40,7 +40,7 @@ class StyleNotesRepairTest extends TestCase
 
         app(ExtractCharacters::class)->handle($story);
 
-        $guard = app(StyleNotesGuard::class);
+        $guard = app(CharacterTextGuard::class);
 
         foreach (Character::where('story_id', $story->id)->get() as $character) {
             $this->assertTrue(

@@ -33,8 +33,28 @@ namespace App\Enums;
  */
 enum OperatorAction: string
 {
+    /**
+     * Write the outline and then every act script, in order.
+     *
+     * Free of gate ceremony and not free of money: a six-act story is seven
+     * billed calls. It is a capability rather than a bare button because it was
+     * `story:write` and nothing else for the whole of Phase 2 — the one stage
+     * of the pipeline with no way into it except a terminal.
+     */
+    case WriteScript = 'write_script';
+
     /** Back to Gate 1 to edit the act outline. */
     case ReopenOutlineGate = 'reopen_outline_gate';
+
+    /**
+     * Extract the cast, then cut the act scripts into scenes.
+     *
+     * Fills Gate 2. Deliberately a separate capability from WriteScript rather
+     * than the tail of it: Gate 1 sits between them, and a single "write the
+     * story" action that ran through to scenes would cross a gate on the
+     * operator's behalf, which is the one thing this app does not do.
+     */
+    case DraftSceneList = 'draft_scene_list';
 
     /** Back to Gate 2 to edit scenes. */
     case ReopenScenesGate = 'reopen_scenes_gate';
@@ -49,20 +69,43 @@ enum OperatorAction: string
      */
     case RegenerateAssets = 'regenerate_assets';
 
+    /**
+     * Re-run word alignment, and only word alignment.
+     *
+     * Separate from RegenerateAssets because the two want opposite things from
+     * the same computation: `needsTranscription` and `needsNarration` overlap
+     * heavily, so "retry the failed alignments" through the asset path would
+     * have re-billed 69 narrations on the story this was written for. Free, and
+     * structurally incapable of billing — see AssetsTimings.
+     */
+    case AlignTimings = 'align_timings';
+
     /** Render, or re-render, the scene clips through to the final mux. */
     case DispatchRender = 'dispatch_render';
 
     /** Call off an in-flight batch. */
     case CancelRender = 'cancel_render';
 
+    /**
+     * Write the YouTube publish sheet.
+     *
+     * After the render, never alongside the script: chapters are derived from
+     * act timings and act timings are written by the mux.
+     */
+    case WriteMetadata = 'write_metadata';
+
     public function label(): string
     {
         return match ($this) {
+            self::WriteScript => 'Write the outline and act scripts',
             self::ReopenOutlineGate => 'Reopen Gate 1',
+            self::DraftSceneList => 'Extract the cast and draft the scenes',
             self::ReopenScenesGate => 'Reopen Gate 2',
             self::RegenerateAssets => 'Generate scene assets',
+            self::AlignTimings => 'Re-run word timings only',
             self::DispatchRender => 'Dispatch the render',
             self::CancelRender => 'Cancel the in-flight batch',
+            self::WriteMetadata => 'Write the publish sheet',
         };
     }
 
@@ -70,21 +113,47 @@ enum OperatorAction: string
     public function callers(): string
     {
         return match ($this) {
+            self::WriteScript => 'story:write, NewStory::create(), OutlineGate::write(), DispatchTextStage',
             self::ReopenOutlineGate => 'OutlineGate::reopen() and its blade',
+            self::DraftSceneList => 'story:scenes, ScenesGate::draftScenes(), DispatchTextStage',
             self::ReopenScenesGate => 'ScenesGate::reopen() and its blade',
             self::RegenerateAssets => 'assets:generate, ScenesGate::canGenerateAssets(), DispatchAssetGeneration',
-            self::DispatchRender => 'render:dispatch, PreviewGate::reject(), DispatchRenderPipeline',
-            self::CancelRender => 'render:cancel',
+            self::AlignTimings => 'assets:timings, ScenesGate::alignTimings()',
+            self::DispatchRender => 'render:dispatch, PreviewGate::dispatchRender(), '
+                .'PreviewGate::reject(), DispatchRenderPipeline',
+            self::CancelRender => 'render:cancel, PreviewGate::cancelRender(), CancelRenderBatch',
+            self::WriteMetadata => 'metadata:generate, MetadataGate::draft()',
         };
     }
 
     public function permittedAt(StoryStatus $status): bool
     {
         return match ($this) {
+            // The two statuses GenerateOutline itself accepts: `draft` is the
+            // first run and `outlined` is the operator asking for a different
+            // structure at Gate 1. Refused from `scripted` onward, because by
+            // then the acts carry scripts written against this outline and
+            // replacing it would orphan every one of them.
+            self::WriteScript => match ($status) {
+                StoryStatus::Draft,
+                StoryStatus::Outlined => true,
+                default => false,
+            },
+
             // Only from `scripted`. Walking further back than one step is a
             // walk, not a jump: scenes drafted against this outline exist, and
             // the operator returns through Gate 2 first.
             self::ReopenOutlineGate => $status === StoryStatus::Scripted,
+
+            // `scripted` is the first draft; `scenes_drafted` is a re-draft the
+            // operator asked for at Gate 2. The same pair DraftScenes accepts,
+            // and it stops at `scenes_approved` for the reason everything stops
+            // there — paid assets are attached to the scene list by then.
+            self::DraftSceneList => match ($status) {
+                StoryStatus::Scripted,
+                StoryStatus::ScenesDrafted => true,
+                default => false,
+            },
 
             self::ReopenScenesGate => $status->canReopenScenesGate(),
 
@@ -102,6 +171,14 @@ enum OperatorAction: string
                 default => false,
             },
 
+            // Exactly the RegenerateAssets set, and that is not laziness. This
+            // aligns audio that only exists after Gate 2, and it is excluded at
+            // `rendering` for the same reason: the subtitle stage reads these
+            // timings, so rewriting them under a running clip batch would burn
+            // one thing while the row named another. Free is not the same as
+            // harmless.
+            self::AlignTimings => self::RegenerateAssets->permittedAt($status),
+
             // `rendering` is permitted and is a no-op move: re-dispatching a
             // render that is already running is how a partially-failed clip
             // batch is resumed.
@@ -118,6 +195,15 @@ enum OperatorAction: string
             self::CancelRender => match ($status) {
                 StoryStatus::AssetsGenerating,
                 StoryStatus::Rendering => true,
+                default => false,
+            },
+
+            // After the render and not before it. Chapters are derived from act
+            // timings and act timings are written by the mux, so a sheet drafted
+            // earlier would carry timestamps for a video that does not exist.
+            self::WriteMetadata => match ($status) {
+                StoryStatus::Rendered,
+                StoryStatus::MetadataReady => true,
                 default => false,
             },
         };
@@ -139,12 +225,29 @@ enum OperatorAction: string
         }
 
         return match ($this) {
+            // Null at both statuses, and deliberately so. Dispatching is not
+            // writing: GenerateOutline moves `draft` -> `outlined` inside the
+            // job, at the moment an outline actually lands, and a dispatcher
+            // that moved the status first would leave a story reading
+            // `outlined` with no acts in it if the provider refused.
+            self::WriteScript => null,
+
             self::ReopenOutlineGate => StoryStatus::Outlined,
+
+            // Same reasoning. DraftScenes moves `scripted` -> `scenes_drafted`
+            // once scenes exist to be reviewed.
+            self::DraftSceneList => null,
+
             self::ReopenScenesGate => StoryStatus::ScenesDrafted,
 
             self::RegenerateAssets => $status === StoryStatus::AssetsGenerating
                 ? null
                 : StoryStatus::AssetsGenerating,
+
+            // Never moves anything. Alignment is a repair on assets that
+            // already exist, and a repair that changed the story's status would
+            // be reporting progress it did not make.
+            self::AlignTimings => null,
 
             self::DispatchRender => $status === StoryStatus::Rendering
                 ? null
@@ -157,6 +260,11 @@ enum OperatorAction: string
             self::CancelRender => $status === StoryStatus::Rendering
                 ? StoryStatus::AssetsReady
                 : null,
+
+            // `rendered -> metadata_ready` is Gate 3's crossing and stays Gate
+            // 3's. Drafting the sheet is not a substitute for watching the
+            // render, so writing it moves nothing.
+            self::WriteMetadata => null,
         };
     }
 
@@ -180,6 +288,22 @@ enum OperatorAction: string
         }
 
         return match ($this) {
+            // Refused from `scripted` onward, and the way back is a walk rather
+            // than a jump — the same walk ReopenOutlineGate describes, because
+            // it is the same walk.
+            self::WriteScript => match (true) {
+                $status === StoryStatus::Scripted => 'Gate 1 has been approved and every act carries a '
+                    .'script written against this outline. Reopen Gate 1 — that returns the story to '
+                    .'"outlined", where the outline and the scripts can be written again.',
+
+                default => sprintf(
+                    'the story is at "%s", well past the outline. Scenes, and probably paid assets, '
+                    .'were built on the scripts as they stand. Walk back one gate at a time: reopen '
+                    .'Gate 2 first, then Gate 1, and the script can be rewritten from there.',
+                    $status->value,
+                ),
+            },
+
             self::ReopenOutlineGate => match (true) {
                 $status->rank() <= StoryStatus::Outlined->rank() => 'Gate 1 has not been approved yet, '
                     .'so the outline is still editable and there is nothing to reopen.',
@@ -188,6 +312,19 @@ enum OperatorAction: string
                     'scenes have already been drafted against this outline (the story is at "%s"). Walk '
                     .'back one gate at a time: reopen Gate 2 first, which returns the story to '
                     .'scenes_drafted, then to scripted — and Gate 1 reopens from there.',
+                    $status->value,
+                ),
+            },
+
+            self::DraftSceneList => match (true) {
+                $status->rank() < StoryStatus::Scripted->rank() => 'Gate 1 has not been approved yet. '
+                    .'Scenes are cut from the act scripts, so the outline has to be settled first — '
+                    .'approve Gate 1, which moves the story to "scripted".',
+
+                default => sprintf(
+                    'Gate 2 has already been approved (the story is at "%s"), and paid assets are '
+                    .'attached to the scene list as it stands. Re-drafting would orphan them. Reopen '
+                    .'Gate 2 first, which returns the story to "scenes_drafted".',
                     $status->value,
                 ),
             },
@@ -205,12 +342,26 @@ enum OperatorAction: string
                     .'"generate first, review later" is not a recoverable mistake.',
             },
 
+            self::AlignTimings => match (true) {
+                $status === StoryStatus::Rendering => 'a clip batch is in flight, and the subtitle stage '
+                    .'reads these timings. Rewriting them now would burn one thing while the row named '
+                    .'another. Cancel the batch first — that lands on assets_ready.',
+
+                default => 'no scene has narration audio to align yet. Alignment is free, but it runs on '
+                    .'audio that only exists after Gate 2 is approved and the narration has been '
+                    .'generated. Approve Gate 2 and generate scene assets first.',
+            },
+
             self::DispatchRender => 'the assets are not ready. Every scene needs its still, its narration '
                 .'and its word timings before a clip can be encoded — run `php artisan assets:generate '
                 .'<story>` and let it reach assets_ready.',
 
             self::CancelRender => 'nothing is in flight. There is a batch to cancel only at '
                 .'assets_generating or rendering.',
+
+            self::WriteMetadata => 'there is no finished render. Chapters are derived from act timings '
+                .'and act timings are written by the mux, so a sheet written now would carry timestamps '
+                .'for a video that does not exist. Render first and approve Gate 3.',
         };
     }
 

@@ -39,6 +39,10 @@ class SceneAudio extends Model
         'timings_provider',
         'timings_simulated',
         'duration_ms',
+        // The true length, in the only unit that loses nothing. duration_ms is
+        // derived from these and must never be an input to frame arithmetic.
+        'samples',
+        'sample_rate',
         'padded_duration_ms',
         'frames',
         'offset_frames',

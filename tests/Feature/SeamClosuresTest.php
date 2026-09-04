@@ -11,6 +11,7 @@ use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Jobs\ConcatRenderJob;
+use App\Jobs\DeliverFinalVideoJob;
 use App\Jobs\GenerateSubtitlesJob;
 use App\Jobs\MuxFinalVideoJob;
 use App\Jobs\PurgeRenderScratchJob;
@@ -69,7 +70,7 @@ class SeamClosuresTest extends TestCase
 
     // -- 2. The purge nobody dispatched -------------------------------------
 
-    public function test_the_purge_is_the_last_link_of_the_render_chain(): void
+    public function test_the_purge_is_chained_behind_the_mux(): void
     {
         // CLAUDE.md: "Scratch is purged on successful render." The chain ended
         // at the mux, so ~700 MB of clips and padded PCM survived every render
@@ -93,9 +94,13 @@ class SeamClosuresTest extends TestCase
             ConcatRenderJob::class,
             GenerateSubtitlesJob::class,
             MuxFinalVideoJob::class,
-            // Last. A chain stops at the first failure, so this is reached only
-            // when the mux succeeded — which is the whole safety argument.
+            // A chain stops at the first failure, so this is reached only when
+            // the mux succeeded — which is the whole safety argument.
             PurgeRenderScratchJob::class,
+            // After the purge, not before: delivery is the only stage that
+            // touches a path this app does not control, and a failure ahead of
+            // the purge would strand scratch on a render that succeeded.
+            DeliverFinalVideoJob::class,
         ]);
     }
 
@@ -242,9 +247,14 @@ class SeamClosuresTest extends TestCase
             ->instance()
             ->validation();
 
+        // The message is generated from the checklist item now rather than
+        // hand-written for this one field, so it names the item and then says
+        // what is missing. Same guarantee, stated for every per-story item
+        // instead of only this one — see PublishChecklist.
         $this->assertNotEmpty(array_filter(
             $validation['warnings'],
-            fn (string $w): bool => str_contains($w, 'no time is recorded')
+            fn (string $w): bool => str_contains($w, 'No publish time is recorded on this story')
+                && str_contains($w, 'Scheduled publish time')
         ));
     }
 

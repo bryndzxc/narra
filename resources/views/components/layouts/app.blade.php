@@ -10,7 +10,8 @@
 <header class="top">
     <span class="brand">NARRA</span>
     <nav class="row" style="gap:14px">
-        <a href="{{ route('stories.index') }}" class="{{ request()->routeIs('stories.*') ? 'on' : '' }}">stories</a>
+        <a href="{{ route('stories.index') }}" class="{{ request()->routeIs('stories.*') && ! request()->routeIs('stories.create') ? 'on' : '' }}">stories</a>
+        <a href="{{ route('stories.create') }}" class="{{ request()->routeIs('stories.create') ? 'on' : '' }}">new</a>
         <a href="{{ route('renders.index') }}" class="{{ request()->routeIs('renders.*') ? 'on' : '' }}">renders</a>
     </nav>
     <span class="right sub">{{ $subtitle ?? 'four gates, and nothing publishes itself' }}</span>

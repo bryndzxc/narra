@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Enums\MotionPreset;
 use App\Services\Ffmpeg;
+use App\Support\AudioFrames;
 use App\Support\Directory;
 use InvalidArgumentException;
 
@@ -31,16 +32,30 @@ class RenderSceneClip
      * Off by one frame causes a visible stutter at every scene boundary, and
      * across 200 scenes a small drift becomes seconds of audio desync. Compute
      * it, never guess it.
+     *
+     * **This is the APPROXIMATE path and callers should prefer the exact one.**
+     * A duration in milliseconds has already lost the sub-millisecond remainder
+     * — 360002 samples at 24 kHz is 15.0000833 s and arrives here as 15000 —
+     * and where that lands exactly on a frame boundary the ceil() has no
+     * headroom left to absorb it, so the clip comes out one frame short of its
+     * own audio. Anything that can reach the audio file should compute from the
+     * sample count instead: `Scene::framesAt()` does, via AudioFrames.
+     *
+     * Kept because fixture stories carry a duration and no samples.
      */
     public static function framesFor(int $audioDurationMs, int $fps): int
     {
-        return (int) ceil($audioDurationMs / 1000 * $fps);
+        return AudioFrames::forMilliseconds($audioDurationMs, $fps);
     }
 
     /**
-     * @param  int  $audioDurationMs  The scene's RAW audio duration. The clip
-     *                                duration is derived from it, never stored
-     *                                alongside it.
+     * @param  int  $audioDurationMs  The scene's RAW audio duration. Reported,
+     *                                and used for the padding figure — but no
+     *                                longer the source of the frame count.
+     * @param  int|null  $frames  The exact frame count, computed from the audio's
+     *                            sample count. Null falls back to the millisecond
+     *                            derivation, which is correct only when the
+     *                            samples are genuinely unavailable.
      * @return array{
      *     output_path: string,
      *     audio_duration_ms: int,
@@ -57,6 +72,7 @@ class RenderSceneClip
         string $outputPath,
         int $audioDurationMs,
         MotionPreset $motion,
+        ?int $frames = null,
     ): array {
         if ($audioDurationMs <= 0) {
             throw new InvalidArgumentException("Scene duration must be positive, got {$audioDurationMs}ms.");
@@ -69,7 +85,11 @@ class RenderSceneClip
         $video = config('render.video');
         $fps = (int) $video['fps'];
 
-        $frames = self::framesFor($audioDurationMs, $fps);
+        // Given by the caller wherever the true sample count is known, which
+        // is every production path. Derived from milliseconds only for fixture
+        // stories, which carry a duration in JSON and nothing else — see
+        // framesFor(), and AudioFrames for why that is the lossy option.
+        $frames ??= self::framesFor($audioDurationMs, $fps);
         $filter = $this->filterGraph($motion, $frames);
 
         Directory::ensure($directory = dirname($outputPath));

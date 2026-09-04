@@ -108,4 +108,33 @@ class DispatchRefusedException extends RuntimeException
             $pending,
         ));
     }
+
+    /**
+     * The approved faces were drawn in a different look than the one that would
+     * be generated now.
+     *
+     * A refusal rather than a warning, and the arithmetic is why: every still a
+     * character appears in goes through the `edit` endpoint conditioned on that
+     * face, so a stale sheet does not produce one wrong image — it drags all
+     * 30-90 of that character's stills back toward a style the rest of the
+     * video is not in. On story 9 that is $6.51 of image spend on a video in
+     * two looks, and the operator cannot see it until the render.
+     *
+     * @param  array<int, string>  $names
+     */
+    public static function referencesInAnotherStyle(array $names, string $current): self
+    {
+        return new self(sprintf(
+            'Refusing to generate: %d character(s) have a reference sheet drawn in a different art '
+            ."style than the one configured now.\n\n  %s\n\nThe current style fingerprint is %s. "
+            .'Every still these characters appear in is conditioned on their reference face, so '
+            .'generating now would produce one video in two looks — and the stills would still be '
+            ."billed.\n\nRegenerate their sheets on the characters page first (that is a spend, and "
+            .'it is a small one next to the stills). If the mismatch is deliberate, pass '
+            .'--no-style-check, which gives up exactly this check and nothing else.',
+            count($names),
+            implode("\n  ", $names),
+            $current,
+        ));
+    }
 }

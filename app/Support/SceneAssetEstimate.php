@@ -32,6 +32,21 @@ final class SceneAssetEstimate
         public readonly int $transcriptionsPending,
         /** Characters of narration text across the pending narrations. */
         public readonly int $speechCharacters,
+        /**
+         * What the provider will actually BILL for those characters.
+         *
+         * Separate from the character count because they are not the same
+         * number and the difference is the vendor's, not ours: TTS bills in
+         * credits, and `eleven_multilingual_v2` on this account charges 0.5 of
+         * them per character. Story 21's narration was 42,017 characters and
+         * 21,193 billed units, and the estimate quoted the first while the
+         * ledger recorded the second.
+         *
+         * Both are shown on the sheet. Neither is redundant: the character
+         * count is what will be READ, and this is what will be CHARGED, and an
+         * operator watching an allowance needs the second one.
+         */
+        public readonly float $speechBillableUnits,
         /** Words across the pending transcriptions, for the audio-minutes projection. */
         public readonly int $transcriptionWords,
         public readonly float $usdPerImage,
@@ -93,6 +108,19 @@ final class SceneAssetEstimate
     public function usdNarration(): float
     {
         return round($this->speechCharacters / 1000 * $this->usdPerThousandSpeechCharacters, 4);
+    }
+
+    /**
+     * Whether the provider charges in something other than characters.
+     *
+     * Used to decide whether the sheet says both numbers or one. Saying
+     * "42,017 characters, 42,017 billable" would be noise; saying only
+     * "42,017 characters" on a run that bills 21,193 is the defect this
+     * replaces.
+     */
+    public function speechBillsInCharacters(): bool
+    {
+        return abs($this->speechBillableUnits - $this->speechCharacters) < 0.5;
     }
 
     /**
@@ -200,10 +228,17 @@ final class SceneAssetEstimate
 
         if ($this->narrationsPending > 0) {
             $lines[] = sprintf(
-                '%d narration%s, %s characters at $%s/1k — $%s (%s)',
+                '%d narration%s, %s characters%s at $%s/1k — $%s (%s)',
                 $this->narrationsPending,
                 $this->narrationsPending === 1 ? '' : 's',
                 number_format($this->speechCharacters),
+                // The billable figure, said out loud whenever it differs. An
+                // operator watching a monthly allowance is watching THIS
+                // number, and quoting only the character count reported a
+                // scarcity that was not there.
+                $this->speechBillsInCharacters()
+                    ? ''
+                    : sprintf(' (%s billable units)', number_format($this->speechBillableUnits)),
                 number_format($this->usdPerThousandSpeechCharacters, 4),
                 number_format($this->usdNarration(), 4),
                 $this->speechProvider,

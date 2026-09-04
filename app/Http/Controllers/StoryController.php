@@ -34,12 +34,23 @@ class StoryController extends Controller
 
     public function index(): View
     {
-        return view('stories.index', [
-            'stories' => Story::query()
-                ->withCount('scenes')
-                ->orderByDesc('updated_at')
-                ->paginate(25),
-        ]);
+        // The table moved into a Livewire component. It needs to poll — this
+        // page replaces three terminal windows that updated themselves — and it
+        // needs per-row queue health, which is a live reading rather than a
+        // column. Neither is something a static blade can do.
+        return view('stories.index');
+    }
+
+    /**
+     * The front door.
+     *
+     * There was no way to start a video from this app at all before this route:
+     * `story:write --premise` held the only copy of story creation, so the tool
+     * built so an operator would not need a terminal required one to begin.
+     */
+    public function create(): View
+    {
+        return view('stories.create');
     }
 
     /**
@@ -200,6 +211,38 @@ class StoryController extends Controller
             // Stills do not change under a fixed path, and a 200-scene page
             // would otherwise re-fetch every one of them on each render.
             'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
+    /**
+     * Serve one composed thumbnail candidate.
+     *
+     * The compositions live in the render workspace, which is not a public
+     * disk — same as the stills and the finished video. The key is matched
+     * against the stored options rather than used as a path: it arrives from
+     * the URL, and a key that could name a file would be a path the visitor
+     * chooses.
+     */
+    public function thumbnail(Story $story, string $key): StreamedResponse
+    {
+        $option = collect($story->youtubeMetadata?->thumbnail_options ?? [])
+            ->first(fn (array $o): bool => ($o['key'] ?? null) === $key);
+
+        abort_if($option === null, 404, 'No such thumbnail composition for this story.');
+
+        $path = (string) ($option['path'] ?? '');
+
+        abort_unless(is_readable($path), 404, 'That composition has not been written to disk.');
+
+        return response()->stream(function () use ($path): void {
+            readfile($path);
+        }, 200, [
+            'Content-Type' => 'image/jpeg',
+            'Content-Length' => (string) filesize($path),
+            // Deliberately NOT cached. Re-composing writes over the same four
+            // filenames, so a cached candidate would show the operator the
+            // previous run's picture next to the current run's reasoning.
+            'Cache-Control' => 'no-store',
         ]);
     }
 

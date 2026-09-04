@@ -278,12 +278,79 @@
             <label for="thumbtext">Overlay text options &mdash; one per line, 3&ndash;5 words each</label>
             <textarea id="thumbtext" wire:model.blur="thumbnailTextInput" rows="4" @disabled(! $this->editable())></textarea>
             <div class="muted small" style="margin-top:6px">
-                Text only. The app does not compose thumbnail images in this phase; it hands you the words
-                and the still.
+                Kept for the record and for a title that has to agree with the picture. The composed
+                thumbnails below carry no text &mdash; in this format the title is the hook, and words
+                burned into the image compete with it at the size anyone actually sees.
             </div>
         </div>
 
-        <label>Recommended still</label>
+        {{-- The compositions. Two stills the story already owns, cropped to
+             panels and butted together: no image is generated here and nothing
+             is billed, which is why this button has no confirm step in front of
+             it while the drafting button below does. --}}
+        <label>Composed thumbnails &mdash; 1280&times;720, from stills you already own</label>
+
+        @if ($this->thumbnailBlocker())
+            <div class="alert warn" style="margin-top:6px">
+                <strong>Thumbnails cannot be composed.</strong> {{ $this->thumbnailBlocker() }}
+            </div>
+        @else
+            <div class="actions" style="margin:6px 0 10px">
+                <button type="button" wire:click="composeThumbnails">
+                    {{ $this->thumbnailOptions() ? 'Re-compose thumbnails' : 'Compose thumbnails' }}
+                </button>
+                <span class="muted small">
+                    Free. Crops frames this story has already paid for &mdash; no image is generated.
+                </span>
+            </div>
+        @endif
+
+        @if ($this->thumbnailOptions())
+            <div class="row" style="align-items:flex-start">
+                @foreach ($this->thumbnailOptions() as $option)
+                    <label class="pickcard">
+                        <span class="head">
+                            <input type="radio" wire:model.live="thumbnailChoice" value="{{ $option['key'] }}"
+                                   @disabled(! $this->editable())>
+                            <span class="mono small muted">
+                                scenes {{ implode(' + ', array_column($option['panels'], 'sequence')) }}
+                                &middot; {{ number_format(($option['bytes'] ?? 0) / 1024) }} KB
+                            </span>
+                        </span>
+
+                        <img class="still pick" loading="lazy"
+                             src="{{ route('stories.thumbnail', ['story' => $story, 'key' => $option['key']]) }}"
+                             alt="thumbnail composition {{ $option['key'] }}">
+
+                        {{-- The ranking's reasoning, printed. This is a proxy for
+                             face size built from the cast and the frame text, not
+                             face detection, so a bad order has to be visibly a bad
+                             order rather than an unexplained one. Left and right
+                             are named: two bare "close" badges said nothing about
+                             which panel each described. --}}
+                        <span class="why">
+                            @foreach ($option['panels'] as $i => $panel)
+                                <span class="badge {{ $panel['shot'] === 'wide' ? 'warn' : '' }}">
+                                    {{ $i === 0 ? 'left' : 'right' }}: {{ $panel['shot'] }}
+                                </span>
+                            @endforeach
+                            @foreach ($option['reasons'] ?? [] as $reason)
+                                <span style="display:block; margin-top:4px">{{ $reason }}</span>
+                            @endforeach
+                        </span>
+                    </label>
+                @endforeach
+            </div>
+            <div class="muted small" style="margin-top:6px">
+                The pick is copied to the delivery folder as <span class="mono">&lt;slug&gt;.jpg</span>
+                when you save, beside the video. Ranked by how well each still is likely to read at
+                thumbnail size &mdash; who is recorded in the frame, and how the frame was written &mdash;
+                which is a proxy for face size and not face detection. You are looking at the actual
+                images; the ranking is not.
+            </div>
+        @endif
+
+        <label style="margin-top:16px">Recommended still</label>
         <div class="row">
             @forelse ($this->thumbnailChoices() as $choice)
                 <label style="text-transform:none; letter-spacing:0; text-align:center">
@@ -336,20 +403,43 @@
 
     <h2>Publish checklist</h2>
     <div class="panel checks">
-        @foreach (config('youtube.checklist') as $key => $item)
+        {{-- Each item states the value it is asking about, so the tick means
+             "I entered THIS" rather than "I did a thing". A box that only asks
+             is unfalsifiable, and it is how a video very nearly went out under
+             Gaming. Channel constants come from config/youtube.php; the
+             per-story ones from this sheet. --}}
+        @foreach ($this->checklistItems() as $item)
             <label>
-                <input type="checkbox" wire:model.live="checklist.{{ $key }}" @disabled(! $this->editable())>
+                <input type="checkbox" wire:model.live="checklist.{{ $item['key'] }}" @disabled(! $this->editable())>
                 <span>
                     {{ $item['label'] }}
-                    @if ($item['required'] ?? false) <span class="badge warn">required</span> @endif
+                    @if ($item['required']) <span class="badge warn">required</span> @endif
+
+                    @if ($item['answerable'] && $item['value'] !== null)
+                        <div class="mono" style="margin-top:2px">
+                            <span class="muted small">set to</span> <strong>{{ $item['value'] }}</strong>
+                        </div>
+                        @if ($item['detail'])
+                            <div class="muted small">{{ $item['detail'] }}</div>
+                        @endif
+                    @elseif (! $item['answerable'])
+                        {{-- Never blank. A blank beside a tick box reads as
+                             "nothing needed here", which is the absence-as-
+                             agreement mistake in miniature. --}}
+                        <div class="small" style="margin-top:2px">
+                            <span class="badge warn">nothing to enter</span>
+                            <span class="muted">{{ $item['detail'] }}</span>
+                        </div>
+                    @endif
                 </span>
             </label>
         @endforeach
 
         <div class="muted small" style="margin-top:8px">
-            Every one of these happens on YouTube, not here. The two marked required have consequences
-            outside this app: the disclosure is a platform obligation, and the kids setting silently
-            turns off comments and personalised ads if it is wrong.
+            Every one of these happens on YouTube, not here. The values are this channel's, from
+            <code>config/youtube.php</code> &mdash; change them there, not per upload. The two marked
+            required have consequences outside this app: the disclosure is a platform obligation, and
+            the kids setting silently turns off comments and personalised ads if it is wrong.
         </div>
     </div>
 
@@ -388,6 +478,9 @@
 
 TAGS ({{ $budget['used'] }}/{{ $budget['budget'] }} chars)
 {{ implode(', ', $budget['tags']) }}
+
+UPLOAD SETTINGS
+{{ \App\Support\PublishChecklist::uploadSettingsBlock($story, $this->metadata) }}
 
 PINNED COMMENT
 {{ $pinnedComment }}</pre>

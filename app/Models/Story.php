@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CostCategory;
 use App\Enums\Gate;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
@@ -37,6 +38,11 @@ class Story extends Model
         'title',
         'slug',
         'premise',
+        // Optional operator text naming the intended age range of the cast, read
+        // by the character extraction prompt. It exists so the age range is
+        // STATED where it varies — per story — rather than compensated for by
+        // the one art-style line that every story shares. See the migration.
+        'cast_age_profile',
         // The genre spine. Written by the outline generator, edited by the
         // operator at Gate 1, and read by every act-generation call after it.
         // See the migration that added them for why each one is load-bearing.
@@ -44,6 +50,13 @@ class Story extends Model
         'antagonist_justification',
         'withheld_information',
         'exposure_moment',
+        // The reversal half of the spine. The first four say how the narrator
+        // is wronged and where it comes out; these three say that they leave,
+        // that they are searched for, and what they say when they are found.
+        // Story 21 had none of them and paid its reversal off in one scene.
+        'departure',
+        'reversal_beats',
+        'refusal',
         'format',
         'locale_profile',
         'voice_id',
@@ -314,6 +327,26 @@ class Story extends Model
         if (! $this->canGenerateReferences()) {
             throw GateViolationException::referenceSpendLocked($this->status, $operation);
         }
+    }
+
+    /**
+     * Spend billed against this story that is not part of this video.
+     *
+     * The counterpart to `total_cost_usd` rather than a slice of it: evaluation
+     * rows are deliberately kept out of that column, so without this they would
+     * be on record and nowhere on screen — money spent, logged, and invisible,
+     * which is the shape this project has repeatedly found reads as "fine".
+     *
+     * It is money that was really spent; it just belongs to the channel rather
+     * than to the video whose cast a style preview or a bake-off borrowed.
+     * Shown beside the total wherever the total is shown, and only when it is
+     * non-zero, so an ordinary story says nothing extra.
+     */
+    public function evaluationSpend(): float
+    {
+        return (float) $this->costEntries()
+            ->where('category', CostCategory::Evaluation)
+            ->sum('usd_cost');
     }
 
     // -- Publishing ----------------------------------------------------------

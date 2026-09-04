@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\DispatchTextStage;
 use App\Actions\DraftScenes;
 use App\Actions\ExtractCharacters;
 use App\Actions\ValidateSceneDrafts;
 use App\Enums\CostCategory;
+use App\Enums\OperatorAction;
 use App\Models\Act;
 use App\Models\Story;
 use App\Support\ModelRoster;
@@ -28,6 +30,7 @@ class StoryScenes extends Command
         {--rebuild : Discard the existing cast and scenes and draft them again.}
         {--cast-only : Extract characters and stop, before any scene is drafted.}
         {--acts= : Comma-separated act sequences to re-draft, keeping every other act as it is. Implies the cast already exists.}
+        {--queue : Dispatch to the text queue instead of drafting here. What the Gate 2 button does.}
         {--yes : Skip the spend confirmation.}';
 
     protected $description = 'Extract the cast, then split the act scripts into scenes for Gate 2.';
@@ -56,8 +59,24 @@ class StoryScenes extends Command
         }
         $this->line('');
 
+        // The same predicate the Gate 2 button consults. DraftScenes has its
+        // own assertReady(), and that is a guard rather than an explanation —
+        // this is the sentence with a next action in it, and it is the same
+        // sentence the page shows.
+        $refusal = OperatorAction::DraftSceneList->refusal($story->status);
+
+        if ($refusal !== null) {
+            $this->error($refusal);
+
+            return self::FAILURE;
+        }
+
         if (! $this->confirmSpend($story)) {
             return self::FAILURE;
+        }
+
+        if ($this->option('queue')) {
+            return $this->queueInstead($story);
         }
 
         $startedAt = microtime(true);
@@ -233,5 +252,40 @@ class StoryScenes extends Command
     private function words(Story $story): int
     {
         return $story->acts()->get()->sum(fn (Act $act): int => str_word_count((string) $act->script));
+    }
+
+    /**
+     * Hand the same work to the `text` queue instead of doing it here.
+     *
+     * The synchronous default stays. This exists so the command can exercise
+     * the path the Gate 2 button takes — the seam between a command and its
+     * button is where this project's bugs live, and a flag that crosses it is
+     * cheaper than finding out from an operator.
+     */
+    private function queueInstead(Story $story): int
+    {
+        try {
+            $result = app(DispatchTextStage::class)->draftScenes(
+                story: $story,
+                rebuild: (bool) $this->option('rebuild'),
+                onlyActs: $this->actsOption(),
+                castOnly: (bool) $this->option('cast-only'),
+            );
+        } catch (Throwable $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        foreach ($result['notes'] as $note) {
+            $note['level'] === 'warn'
+                ? $this->warn($note['message'])
+                : $this->line('<info>OK</info> — '.$note['message']);
+        }
+
+        $this->newLine();
+        $this->info(sprintf('Queued on the "%s" queue. Watch it at /renders/%s.', $result['queue'], $story->slug));
+
+        return self::SUCCESS;
     }
 }

@@ -42,6 +42,11 @@ class RenderProgress
         $counts = self::stageCounts($story->id);
         $stages = self::stages($counts, self::spendByStage($story->id), $story->scenes()->count());
 
+        // Read once here rather than again inside the component, so the panel
+        // and the refresh decision below cannot disagree about what the queues
+        // are doing.
+        $workers = WorkerHealth::all();
+
         return [
             'story' => $story,
             'stages' => $stages,
@@ -50,8 +55,32 @@ class RenderProgress
             'failures' => self::failures($story->id),
             'stale' => self::staleJobs($story->id),
             'scene_grid' => self::sceneGrid($story->id),
+            'workers' => $workers,
+            'queue_depth' => self::totalDepth($workers),
             'generated_at' => Carbon::now(),
         ];
+    }
+
+    /**
+     * How many jobs are waiting across all three queues.
+     *
+     * This exists for the refresh decision, and it is not a detail. `active` is
+     * computed from `render_jobs`, and a row is only opened once a job STARTS —
+     * so when the assets worker exited at `--max-time` part way through story
+     * 21, every row was finished, `active` went false, and the page stopped
+     * refreshing itself and printed "Nothing running" with 152 scenes still in
+     * Redis. The page did not report a wrong number; it reported the right
+     * numbers and the wrong state, which is the whole pattern.
+     *
+     * Null depths count as nothing here on purpose: an unreadable queue is
+     * already SHOWN as unreadable by the panel, and inventing work in order to
+     * refresh forever would be the opposite mistake.
+     *
+     * @param  array<int, array{pending: ?int}>  $workers
+     */
+    private static function totalDepth(array $workers): int
+    {
+        return array_sum(array_map(fn (array $w): int => (int) ($w['pending'] ?? 0), $workers));
     }
 
     /**

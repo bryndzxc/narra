@@ -7,6 +7,7 @@ use App\Enums\AssetStatus;
 use App\Models\Character;
 use App\Models\CharacterReference;
 use App\Support\ImagePromptBuilder;
+use App\Support\StyleFingerprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -89,6 +90,13 @@ class GenerateCharacterSheet
             'batch' => $batch,
             'sequence' => $sequence,
             'prompt' => $prompt,
+            // The look this face is being drawn in, recorded at generation
+            // rather than inferred later. `ImagePromptBuilder` promised since
+            // Phase 2 that a retuned style would mark the sheets stale, and
+            // nothing wrote the value that claim needed — so every still a
+            // character appeared in could inherit a face from the old look with
+            // nothing anywhere saying so.
+            'style_fingerprint' => StyleFingerprint::current(),
             // From the generator that is about to run, never from config.
             // These two lines read `providers.reference_image_generator` and
             // `providers.elevenlabs.image_model` regardless of what was bound,

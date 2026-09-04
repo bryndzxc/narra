@@ -17,6 +17,12 @@ Route::get('/', fn () => redirect()->route('stories.index'));
  */
 Route::get('/stories', [StoryController::class, 'index'])->name('stories.index');
 
+/*
+ * The one entry point the app never had. Declared before the {story:slug}
+ * group, because "create" would otherwise be resolved as a slug and 404.
+ */
+Route::get('/stories/create', [StoryController::class, 'create'])->name('stories.create');
+
 Route::prefix('/stories/{story:slug}')->name('stories.')->group(function () {
     Route::get('/', [StoryController::class, 'show'])->name('show');
     Route::get('/outline', [StoryController::class, 'outline'])->name('outline');
@@ -51,6 +57,12 @@ Route::prefix('/stories/{story:slug}')->name('stories.')->group(function () {
     // to show and nothing else.
     Route::get('/video', [StoryController::class, 'video'])->name('video');
     Route::get('/scenes/{scene}/still', [StoryController::class, 'still'])->name('still');
+
+    /*
+     * A composed thumbnail candidate. Gate 4 picks one the way it picks a
+     * title, and picking a picture without seeing it is not picking.
+     */
+    Route::get('/thumbnails/{key}', [StoryController::class, 'thumbnail'])->name('thumbnail');
 });
 
 /*

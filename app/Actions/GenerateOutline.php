@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\ActPhase;
 use App\Enums\RenderStage;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
@@ -37,6 +38,40 @@ use RuntimeException;
  */
 class GenerateOutline
 {
+    /**
+     * Seven for a single narrative, and the seventh act is the reversal.
+     *
+     * It was six while the arc was escalation -> exposure -> end. Adding the
+     * departure, the search and the refusal needs somewhere for them to go, and
+     * taking that room out of the escalation instead would trade one missing
+     * phase for another. At seven the plan is escalation 1-4, departure 5,
+     * search 6, refusal 7 — see ActPhase::planFor().
+     */
+    public const DEFAULT_ACTS_SINGLE = 7;
+
+    /**
+     * Five for an anthology, which fights the genre: escalation cannot compound
+     * across five self-contained stories, and none of them has room for a
+     * departure and a search on top of its own escalation. Supported because
+     * the operator may choose it; not the default, and Gate 1 says so.
+     */
+    public const DEFAULT_ACTS_ANTHOLOGY = 5;
+
+    /**
+     * The act count a story gets when nobody names one.
+     *
+     * A method rather than a number written wherever it is needed. Gate 1's
+     * pre-spend estimate was a hand-written `6` beside this one's `6`, agreeing
+     * only for as long as nobody changed either — which is the shape this
+     * project has been bitten by more than once.
+     */
+    public static function defaultActCountFor(Story $story): int
+    {
+        return $story->format === StoryFormat::Anthology
+            ? self::DEFAULT_ACTS_ANTHOLOGY
+            : self::DEFAULT_ACTS_SINGLE;
+    }
+
     public function __construct(
         private readonly ScriptWriter $writer,
         private readonly LocaleGuard $locale,
@@ -44,22 +79,13 @@ class GenerateOutline
     ) {}
 
     /**
-     * @param  int|null  $actCount  Defaults per format.
-     *
-     * Six for a single narrative, which is the shape this genre needs: the
-     * humiliation compounds act to act, and six gives it room to escalate
-     * without any one act having to carry two turns of the screw.
-     *
-     * Five for an anthology, which fights the genre — escalation cannot
-     * compound across five self-contained stories, so each has a fifth of the
-     * runtime to build and pay off its own. Supported because the operator may
-     * choose it; not the default, and Gate 1 says so.
+     * @param  int|null  $actCount  Defaults per format. See the constants above.
      */
     public function handle(Story $story, ?int $actCount = null): OutlineDraft
     {
         $this->assertReady($story);
 
-        $actCount ??= $story->format === StoryFormat::Anthology ? 5 : 6;
+        $actCount ??= self::defaultActCountFor($story);
 
         // Wrapped in a render_jobs row even though this runs synchronously in
         // the console. Without one, an outline that failed left the progress
@@ -74,7 +100,14 @@ class GenerateOutline
 
     private function generate(Story $story, int $actCount, RenderJob $job): OutlineDraft
     {
-        $job->note(sprintf('Asking for %d acts on %s.', $actCount, $story->format->value));
+        $job->note(sprintf(
+            'Asking for %d acts on %s.%s',
+            $actCount,
+            $story->format->value,
+            $story->format === StoryFormat::Anthology
+                ? ''
+                : ' Departure in act '.ActPhase::departureActFor($actCount).'.',
+        ));
 
         $draft = $this->writer->outline($story, $actCount);
 
@@ -115,6 +148,12 @@ class GenerateOutline
                 Act::create([
                     'story_id' => $story->id,
                     'sequence' => $act->sequence,
+                    // Which of the four phases this act is. Persisted because
+                    // the act generator reads it: it decides whether the act
+                    // ends worse for the narrator or worse for the antagonist,
+                    // and a sequence number cannot say that. Null on an
+                    // anthology, where each act runs the whole arc itself.
+                    'phase' => $act->phase,
                     'title' => $act->title,
                     'summary' => $act->summary,
                     // What this act costs the narrator. Stored separately from
@@ -148,9 +187,13 @@ class GenerateOutline
         });
 
         $job->note(sprintf(
-            '%d acts written. Spine: %s',
+            '%d acts written. Spine: %s. Reversal: %s.',
             $draft->actCount(),
             trim($draft->narratorGrievance) !== '' ? 'recorded' : 'MISSING',
+            // Named separately from the rest of the spine because it is the
+            // half story 21 shipped without, and "the spine is recorded" was
+            // true of that story too.
+            trim($draft->departure) !== '' && trim($draft->refusal) !== '' ? 'recorded' : 'MISSING',
         ));
 
         return $draft;

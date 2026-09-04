@@ -31,7 +31,8 @@ class AssetsGenerate extends Command
         {--estimate : Print the cost breakdown and exit without queueing anything.}
         {--force : Skip the confirmation. For scripted re-runs only.}
         {--no-worker-check : Dispatch even if a worker on the assets queue booted before the current code or config. }
-        {--no-aligner-check : Dispatch even if whisperx cannot be imported by the configured interpreter.}';
+        {--no-aligner-check : Dispatch even if whisperx cannot be imported by the configured interpreter.}
+        {--no-style-check : Dispatch even if a character reference was drawn in a different art style.}';
 
     protected $description = 'Dispatch image, narration and word-timing generation for a story onto the assets queue.';
 
@@ -210,6 +211,7 @@ class AssetsGenerate extends Command
                 // second more than anyone.
                 checkWorkers: ! $this->option('no-worker-check'),
                 checkAligner: ! $this->option('no-aligner-check'),
+                checkStyle: ! $this->option('no-style-check'),
             );
         } catch (DispatchRefusedException $e) {
             $this->newLine();

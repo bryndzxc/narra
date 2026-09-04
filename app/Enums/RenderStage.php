@@ -16,6 +16,25 @@ enum RenderStage: string
     // Free — text only, before Gate 2.
     case Outline = 'outline';
     case ActScripts = 'act_scripts';
+
+    /*
+     * Reading the cast out of the finished scripts.
+     *
+     * A stage of its own rather than part of DraftScenes, although one job
+     * runs both. They fail separately and this one runs first, which is
+     * exactly what made its absence expensive: three dispatches of story 21
+     * died in extraction, before DraftScenes had opened its row, so nothing
+     * recorded a failure and the render page showed a story that had simply
+     * stopped after its act scripts. $0.35 of billed calls, three terminal
+     * failures, and the only surface an operator has said nothing at all.
+     *
+     * The job deliberately did not paper over this by opening a DraftScenes
+     * row on extraction's behalf — a row for a stage the Action thinks it is
+     * not recording is a worse lie than a missing one. The fix is the stage
+     * that was missing, not a borrowed row.
+     */
+    case ExtractCast = 'extract_cast';
+
     case DraftScenes = 'draft_scenes';
 
     // Paid. Nothing here may start before StoryStatus::ScenesApproved.
@@ -29,6 +48,17 @@ enum RenderStage: string
     case Subtitles = 'subtitles';
     case Mux = 'mux';
     case Purge = 'purge';
+
+    /*
+     * Copying the finished file somewhere a human will find it.
+     *
+     * A stage rather than a side effect of the mux, because it is the one part
+     * of the render that touches a path this app does not control — an external
+     * drive, a synced folder, a share that may not be mounted. That fails in
+     * ways the mux does not, and a failure with no row is a failure nobody
+     * sees.
+     */
+    case Deliver = 'deliver';
 
     // Text again, but only after the render — chapters need real timestamps.
     case Metadata = 'metadata';

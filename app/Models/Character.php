@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\StyleFingerprint;
 use Database\Factories\CharacterFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -114,5 +115,63 @@ class Character extends Model
     {
         return Storage::disk((string) config('characters.disk', 'characters'))
             ->get((string) $this->reference_image_path);
+    }
+
+    // -- Which look the approved face was drawn in ---------------------------
+
+    /** No sheet at all — nothing to be stale. */
+    public const STYLE_NONE = 'none';
+
+    /** Generated under the art style configured right now. */
+    public const STYLE_CURRENT = 'current';
+
+    /** Generated under a different one. Every still of this face inherits it. */
+    public const STYLE_STALE = 'stale';
+
+    /**
+     * Generated before the style was recorded at all.
+     *
+     * Reported as unknown and never as fine. The style string of the day was
+     * not stored and cannot be recovered, so stamping today's fingerprint on
+     * the row to silence the warning would be fabricating provenance — the
+     * exact move that let 117 scenes read as narrated at the right speed when
+     * nobody knew what speed they were read at.
+     */
+    public const STYLE_UNKNOWN = 'unknown';
+
+    /**
+     * Whether the approved reference face matches the configured art style.
+     *
+     * `ImagePromptBuilder` has claimed this existed since Phase 2 — "if the
+     * channel's look is retuned, the sheets are stale and the operator is told
+     * so rather than the mismatch being absorbed silently" — and nothing
+     * implemented it. This is that.
+     *
+     * It reads the SELECTED reference rather than the character row, because
+     * the fingerprint belongs to the image that was generated, and the
+     * character row only holds a path to it.
+     */
+    public function referenceStyleState(): string
+    {
+        if (! $this->hasUsableReference()) {
+            return self::STYLE_NONE;
+        }
+
+        $reference = $this->selectedReference()->latest('selected_at')->first()
+            // Fall back to matching the stored path. `images:bakeoff` and any
+            // hand-repaired row can set reference_image_path without a
+            // selected_at, and reporting those as "no sheet" would be a warning
+            // that hides itself on exactly the rows most likely to be odd.
+            ?? $this->references()->where('image_path', $this->reference_image_path)->latest('id')->first();
+
+        $fingerprint = $reference?->style_fingerprint;
+
+        if ($fingerprint === null || $fingerprint === '') {
+            return self::STYLE_UNKNOWN;
+        }
+
+        return $fingerprint === StyleFingerprint::current()
+            ? self::STYLE_CURRENT
+            : self::STYLE_STALE;
     }
 }

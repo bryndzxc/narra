@@ -3,13 +3,16 @@
 namespace Tests\Feature\Gates;
 
 use App\Enums\Gate;
+use App\Enums\OperatorAction;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Livewire\Gates\PreviewGate;
 use App\Models\Act;
 use App\Models\RenderJob;
+use App\Models\Scene;
 use App\Models\Story;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -54,14 +57,117 @@ class PreviewGateTest extends TestCase
         $this->assertTrue($story->fresh()->hasPassedGate(Gate::Preview));
     }
 
-    public function test_rejecting_sends_it_back_to_render_and_says_nothing_restarts_itself(): void
+    /**
+     * Rejecting queues the re-render itself.
+     *
+     * It used to move the story to `rendering` and then print
+     * `php artisan render:dispatch <slug>` — leaving it at a status that means
+     * "a clip batch is in flight" with no batch in flight, until somebody
+     * opened a terminal. A status describing work nobody started is the same
+     * defect as a form with no producer.
+     */
+    public function test_rejecting_queues_the_re_render_rather_than_naming_a_command(): void
     {
+        Bus::fake();
+
         $story = $this->renderedStory();
+        Scene::factory()->for($story)->create(['sequence' => 1]);
 
         $component = Livewire::test(PreviewGate::class, ['story' => $story])->call('reject');
 
         $this->assertSame(StoryStatus::Rendering, $story->fresh()->status);
-        $this->assertStringContainsString('render:dispatch', (string) $component->get('notice'));
+        Bus::assertBatchCount(1);
+
+        $notice = (string) $component->get('notice');
+
+        $this->assertStringContainsString('Sent back for a re-render', $notice);
+        $this->assertStringNotContainsString('artisan', $notice);
+    }
+
+    /**
+     * The half that matters more: when the dispatch cannot happen, the status
+     * must not move.
+     *
+     * The old implementation transitioned first and dispatched never, so every
+     * failure of this kind was invisible — the story read `rendering` and the
+     * operator had been told to go and type something. Now the transition is
+     * the dispatch's, so a refused dispatch leaves the story exactly where it
+     * was and says why.
+     */
+    public function test_a_rejection_that_cannot_dispatch_leaves_the_status_alone(): void
+    {
+        Bus::fake();
+
+        // No scenes: there is nothing to encode, so the pipeline refuses.
+        $story = $this->renderedStory();
+
+        $component = Livewire::test(PreviewGate::class, ['story' => $story])->call('reject');
+
+        $this->assertSame(StoryStatus::Rendered, $story->fresh()->status);
+        Bus::assertNothingBatched();
+
+        $this->assertNotNull($component->get('problem'));
+        $this->assertNull($component->get('notice'));
+    }
+
+    /**
+     * The drift the console audit found.
+     *
+     * OperatorAction::DispatchRender->callers() named this method as one of its
+     * consumers while the method checked the status by hand. Same answer that
+     * day, which is exactly why it could rot silently — so the assertion is on
+     * the JOIN between what the page offers and what the capability permits,
+     * not on either one alone.
+     */
+    public function test_the_gate_and_the_capability_agree_about_dispatching(): void
+    {
+        $story = $this->renderedStory();
+
+        $component = Livewire::test(PreviewGate::class, ['story' => $story]);
+
+        $this->assertSame(
+            OperatorAction::DispatchRender->permittedAt($story->status),
+            $component->instance()->canDispatchRender(),
+        );
+
+        $this->assertSame(
+            OperatorAction::DispatchRender->refusalReason($story->status),
+            $component->instance()->dispatchRefusal(),
+        );
+    }
+
+    /**
+     * The command this page used to print is now a button on it.
+     */
+    public function test_the_render_can_be_dispatched_from_the_gate(): void
+    {
+        Bus::fake();
+
+        $story = Story::factory()->status(StoryStatus::AssetsReady)->create(['slug' => 'gate-three']);
+        Act::factory()->for($story)->atSequence(1)->create();
+        Scene::factory()->for($story)->create(['sequence' => 1]);
+
+        Livewire::test(PreviewGate::class, ['story' => $story->refresh()])
+            ->call('dispatchRender')
+            ->assertHasNoErrors();
+
+        $this->assertSame(StoryStatus::Rendering, $story->fresh()->status);
+        Bus::assertBatchCount(1);
+    }
+
+    /**
+     * The cancel this app's own refusal text recommends, without a terminal.
+     */
+    public function test_an_in_flight_batch_can_be_cancelled_from_the_gate(): void
+    {
+        $story = Story::factory()->status(StoryStatus::Rendering)->create(['slug' => 'gate-three']);
+        Act::factory()->for($story)->atSequence(1)->create();
+
+        Livewire::test(PreviewGate::class, ['story' => $story])->call('cancelRender');
+
+        // The promise StoryStatus::reopenRefusalReason() makes to the operator:
+        // cancelling "lands on assets_ready, which can reopen".
+        $this->assertSame(StoryStatus::AssetsReady, $story->fresh()->status);
     }
 
     public function test_the_gate_reports_the_render_facts_the_operator_is_checking_against(): void

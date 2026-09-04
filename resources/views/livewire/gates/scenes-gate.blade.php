@@ -3,6 +3,62 @@
         <div class="alert ok">{{ $notice }}</div>
     @endif
 
+    @if ($problem)
+        <div class="alert err" style="white-space:pre-line">{{ $problem }}</div>
+    @endif
+
+    {{-- The scene draft. `story:scenes` held the only copy of this, so a story
+         that passed Gate 1 in the browser could only be cut into scenes from a
+         terminal — and this page showed an empty list until somebody did. --}}
+    @if ($this->canDraftScenes())
+        <div class="panel money">
+            <label>{{ $story->scenes()->exists() ? 'Draft the scenes again' : 'Extract the cast and draft the scenes' }}</label>
+
+            <div class="muted small" style="margin-top:4px; max-width:78ch">
+                The cast is extracted first and always: a character description is pasted verbatim into
+                every image prompt, so a scene drafted before the cast exists has to invent one — and an
+                invented description is a face that drifts across 150&ndash;250 stills. Text only. Nothing
+                here generates an image or a second of audio.
+            </div>
+
+            <x-worker-health :queues="[$this->textWorkers()]" :compact="true" />
+
+            @if ($confirmingDraft)
+                <div class="alert warn" style="margin-top:10px">
+                    @if ($story->scenes()->exists())
+                        <strong>This replaces the {{ $story->scenes()->count() }} scene(s) already
+                        drafted</strong>, including every edit made to them on this page. The act scripts
+                        are untouched.
+                    @else
+                        Billed calls against the script writer: one for the cast, then the acts are cut
+                        into scenes. One cost row each.
+                    @endif
+                    <div style="margin-top:10px">
+                        <button type="button" class="primary"
+                                wire:click="draftScenes({{ $story->scenes()->exists() ? 'true' : 'false' }})">
+                            {{ $story->scenes()->exists() ? 'Replace the scenes' : 'Queue the draft' }}
+                        </button>
+                        <button type="button" wire:click="cancelDraft">Back</button>
+                    </div>
+                </div>
+            @else
+                <div class="actions" style="margin-top:10px">
+                    <button type="button" class="primary" wire:click="askToDraft">
+                        {{ $story->scenes()->exists() ? 'Re-draft the scenes' : 'Draft the scenes' }}
+                    </button>
+                    <span class="muted small">Shows what it replaces first. Nothing is queued by this press.</span>
+                </div>
+            @endif
+        </div>
+    @elseif ($this->draftRefusal() && ! $story->scenes()->exists())
+        {{-- Only when there are no scenes. Once there are, the refusal is
+             answering a question nobody is asking, and a page full of
+             explanations for things you did not try to do is noise. --}}
+        <div class="alert warn">
+            <strong>The scenes cannot be drafted from here.</strong> {{ $this->draftRefusal() }}
+        </div>
+    @endif
+
     {{--
         Both refusals reach the operator as text on the page that fixes them.
         `approve()` and `generateAssets()` catch MissingCharacterReferenceException
@@ -312,6 +368,56 @@
                 </div>
             </div>
         @endif
+    @endif
+
+    {{--
+        The free path, next to the paid one, with the difference stated.
+
+        These two buttons look alike and differ by a month of TTS credits.
+        `needsTranscription` and `needsNarration` overlap heavily — narration
+        provenance moving stales both — so on the story this was written for,
+        "retry the 181 failed alignments" through the button above would also
+        have re-billed 69 narrations. There is no flag arrangement that makes
+        that safe to get wrong, which is why it is a separate button reaching a
+        separate dispatcher that can construct exactly one job class.
+    --}}
+    @if ($this->canAlignTimings() && $this->pendingTimings() > 0)
+        <div class="panel">
+            <label>Word timings only &mdash; free</label>
+
+            <div class="muted small" style="margin-top:4px; max-width:78ch">
+                {{ $this->pendingTimings() }} scene(s) have narration audio and no usable word timings.
+                Alignment runs locally through WhisperX: no vendor is contacted and nothing is billed.
+                @if ($this->narrationsTheAssetButtonWouldRebill() > 0)
+                    <br><br>
+                    <strong>&ldquo;Generate assets&rdquo; would also re-bill
+                    {{ $this->narrationsTheAssetButtonWouldRebill() }} narration(s).</strong>
+                    This button cannot: it reaches a dispatcher whose only reachable job class is the
+                    aligner, so that is a property of the code rather than a promise about it.
+                @endif
+            </div>
+
+            @if ($confirmingAlignment)
+                <div class="alert warn" style="margin-top:10px">
+                    {{ $this->pendingTimings() }} alignment job(s) on the
+                    <span class="mono">{{ config('render.queues.assets') }}</span> queue. Free, local, and
+                    slow &mdash; roughly seven seconds per scene once the model is warm.
+                    <div style="margin-top:10px">
+                        <button type="button" class="primary" wire:click="alignTimings">
+                            Queue {{ $this->pendingTimings() }} alignment(s)
+                        </button>
+                        <button type="button" wire:click="cancelAlignment">Back</button>
+                    </div>
+                </div>
+            @else
+                <div class="actions" style="margin-top:10px">
+                    <button type="button" wire:click="askToAlign">
+                        Re-run word timings only
+                    </button>
+                    <span class="muted small">Nothing here can bill TTS.</span>
+                </div>
+            @endif
+        </div>
     @endif
 
     {{--

@@ -7,6 +7,7 @@ use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Exceptions\GateViolationException;
 use App\Jobs\ConcatRenderJob;
+use App\Jobs\DeliverFinalVideoJob;
 use App\Jobs\GenerateSubtitlesJob;
 use App\Jobs\MuxFinalVideoJob;
 use App\Jobs\PurgeRenderScratchJob;
@@ -25,7 +26,7 @@ use Throwable;
  *          |
  *          +-- all succeeded --> ConcatRenderJob -> GenerateSubtitlesJob -> MuxFinalVideoJob
  *          |                                                                     |
- *          |                                                       PurgeRenderScratchJob
+ *          |                                        PurgeRenderScratchJob -> DeliverFinalVideoJob
  *          |
  *          +-- any failed ------> stop, story back to assets_ready, failures on the page
  *
@@ -38,9 +39,8 @@ use Throwable;
  * in one pass instead of one per re-run, but the chain does not start, because
  * concat with a missing clip is not a partial video — it is a wrong one.
  *
- * **The purge is the last link of the chain, and being in the chain is what
- * makes it safe.** `Bus::chain` stops at the first failure, so a mux that threw
- * never reaches it — and the Action refuses independently unless `final.mp4`
+ * **The purge's safety comes from being in the chain, not from being last.**
+ * `Bus::chain` stops at the first failure, so a mux that threw never reaches it — and the Action refuses independently unless `final.mp4`
  * exists AND its tail decodes, because existence is not success. Two
  * mechanisms, and neither is trusted alone: the chain decides whether the purge
  * is REACHED, the guard decides whether it PROCEEDS.
@@ -141,12 +141,20 @@ class DispatchRenderPipeline
                     new ConcatRenderJob($storyId),
                     new GenerateSubtitlesJob($storyId),
                     new MuxFinalVideoJob($storyId),
-                    // Last, and only reached if the mux succeeded — a chain
-                    // stops at the first failure. It refuses on its own account
-                    // too, unless final.mp4 decodes at its tail. A purge that
-                    // ran on a failed render would delete the clips the re-run
-                    // needs, which is the one way this stage can be expensive.
+                    // Only reached if the mux succeeded — a chain stops at the
+                    // first failure. It refuses on its own account too, unless
+                    // final.mp4 decodes at its tail. A purge that ran on a
+                    // failed render would delete the clips the re-run needs,
+                    // which is the one way this stage can be expensive.
                     new PurgeRenderScratchJob($storyId),
+
+                    // Last, and after the purge rather than before it. Both
+                    // orders work — the purge keeps final.mp4 — so the only
+                    // question is which failure is cheaper. Delivery is the one
+                    // stage that touches a path this app does not control, and
+                    // ahead of the purge a dismounted drive would strand
+                    // ~700 MB of scratch on a render that actually succeeded.
+                    new DeliverFinalVideoJob($storyId),
                 ])->onQueue(config('render.queues.render'))->dispatch();
             })
             ->finally(function (Batch $batch) use ($storyId): void {

@@ -34,6 +34,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *  2. The story's denormalised total is maintained from these rows, so
  *     stories.total_cost_usd and the sum of its entries cannot disagree.
  *
+ *     With one stated exception: `evaluation` rows are logged and excluded.
+ *     That column answers "what did this video cost", and a style preview or a
+ *     bake-off borrows a story's cast to test the channel — it is not part of
+ *     the video it is attached to. The exception is a method, not a habit, so
+ *     the reconciliation is still exact: the total equals the sum of the rows
+ *     where category->countsTowardVideoCost().
+ *
  * @property CostUnit $unit
  * @property CostCategory $category
  */
@@ -97,6 +104,17 @@ class CostEntry extends Model
         });
 
         static::created(function (CostEntry $entry): void {
+            // Evaluation spend is logged and then left out of the total, which
+            // is the only place in this file where a row does not add up. The
+            // column answers "what did this video cost"; a style preview or a
+            // bake-off borrowed this story's cast to test the channel and is
+            // not part of any video. It is still readable — every row is still
+            // here, and Story::evaluationSpend() sums exactly this set — so
+            // nothing is hidden, only attributed correctly.
+            if (! $entry->category->countsTowardVideoCost()) {
+                return;
+            }
+
             // increment() writes in SQL rather than reading, adding and saving,
             // so concurrent asset workers cannot lose each other's charges.
             $entry->story?->increment('total_cost_usd', (float) $entry->usd_cost);

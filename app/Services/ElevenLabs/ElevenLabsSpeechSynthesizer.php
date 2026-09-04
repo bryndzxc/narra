@@ -362,6 +362,31 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
      * trust what came back, not what was sent. It is also the only way to find
      * out whether stitched context is billed, which is why the header lands in
      * `detail` either way rather than being silently consumed.
+     *
+     * **The header is already the BILLABLE figure, not the text length**, and
+     * treating it as a character count applied the model's credit multiplier a
+     * second time. Measured on story 21, every row: 183 characters sent, 92 in
+     * the header, `credits` recorded as 46 and `usd_cost` as half what the
+     * estimate quoted for the same text.
+     *
+     * Two things followed from that one confusion, in opposite directions, and
+     * only one of them was ever noticed:
+     *
+     *   the ESTIMATE over-quoted the QUANTITY, summing raw `mb_strlen` and
+     *   calling it billable — 42,017 against a real 21,193;
+     *
+     *   the LEDGER under-recorded the USD, pricing 21,193 billable units as
+     *   though they were 10,596 — $2.12 against a true $4.24 at the plan rate.
+     *
+     * The quantity column was right the whole time: it is the header, and it
+     * reconciled to the vendor's own usage counter exactly, which is what made
+     * it possible to work out which side of each disagreement was wrong. See
+     * `AssetRateCard::usdPerThousandSpeechCharacters()`, which was correct and
+     * disagreeing with this method for two stories.
+     *
+     * Historic rows are NOT rewritten. `cost_entries` is write-once by
+     * construction and a ledger that edits itself is worth less than one that
+     * is wrong in a way you can date.
      */
     private function usage(
         string $text,
@@ -372,8 +397,14 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
         ?string $requestId,
     ): ProviderUsage {
         $sent = mb_strlen($text);
-        $billable = $charged ?? $sent;
-        $credits = $billable * $this->creditsPerCharacter($model);
+
+        // The vendor's number when there is one, ours when there is not — and
+        // ours is the one that needs the multiplier, because the header has
+        // already had it applied. Multiplying the header again is the bug this
+        // line replaces.
+        $credits = $charged !== null
+            ? (float) $charged
+            : $sent * $this->creditsPerCharacter($model);
 
         return new ProviderUsage(
             provider: 'elevenlabs',
@@ -382,7 +413,7 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
             // Characters, because that is the unit the vendor's own usage page
             // reports and the one the operator reconciles against. Credits are
             // a derived multiple and live in `detail`.
-            quantity: (float) $billable,
+            quantity: $credits,
             unit: CostUnit::Characters,
             usdCost: round($credits * (float) config('providers.elevenlabs.tts.pricing.usd_per_credit'), 6),
             detail: [
@@ -391,9 +422,11 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
                 // Null means the vendor sent no header on this call and the
                 // figure above is ours. Recorded rather than hidden, so a
                 // reconciliation against the usage page knows which it is
-                // looking at.
+                // looking at — and it is now also the flag for WHICH of the two
+                // routes above produced `credits`.
                 'characters_charged_header' => $charged,
                 'credits' => $credits,
+                'credits_from' => $charged !== null ? 'vendor header' : 'characters sent x multiplier',
                 'credits_per_character' => $this->creditsPerCharacter($model),
                 'stitched_context' => (bool) config('providers.elevenlabs.tts.stitch_context', false),
                 'duration_ms' => $durationMs,

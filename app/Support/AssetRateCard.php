@@ -77,6 +77,35 @@ class AssetRateCard
     }
 
     /**
+     * What the speech provider will actually bill for a body of text.
+     *
+     * Asked of the bound instance for the same reason the rate above is: TTS is
+     * billed in CREDITS and the multiplier is a property of the model, so a
+     * caller counting characters and quoting them as the bill is quoting the
+     * wrong number. `EstimateSceneAssets` did exactly that — it summed
+     * `mb_strlen` and called it billable, which over-quoted story 21's
+     * narration by exactly 2.000x across 270 scenes, reported the ElevenLabs
+     * allowance as having 6,948 credits left when it had 27,953, and shaped a
+     * session's spending decisions on a scarcity that was not there.
+     *
+     * The synthesizer has exposed `creditsFor()` since it was written. Nothing
+     * called it. Two computations of one quantity, which is the defect this
+     * codebase keeps finding at the bottom of its own list.
+     *
+     * A provider with no credit concept bills per character, so the fallback is
+     * the character count itself rather than a refusal — the number is then
+     * the same on both sides, which is the property that matters.
+     */
+    public function speechBillableUnitsFor(string $text): float
+    {
+        $speech = $this->speech();
+
+        return $speech instanceof ElevenLabsSpeechSynthesizer
+            ? $speech->creditsFor($text)
+            : (float) mb_strlen($text);
+    }
+
+    /**
      * USD per minute of audio transcribed.
      *
      * WhisperX is zero, and it reaches that zero by a different route from a

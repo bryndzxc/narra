@@ -54,6 +54,36 @@ class ImagePromptBuilder
     }
 
     /**
+     * The frame back out of an assembled prompt.
+     *
+     * The inverse of the first section of build(), and it lives here for that
+     * reason: the sections are joined by a blank line by this class, so the
+     * convention for taking them apart is this class's to state. A caller that
+     * split on a blank line itself would be a second copy of a rule only one
+     * place writes.
+     *
+     * The frame is the part that varies per scene and describes the shot — the
+     * only part of a stored prompt that says anything about how the picture is
+     * composed. Everything after it is the frozen cast text and the art style,
+     * identical across every scene of the story, so a search over the whole
+     * prompt answers the same for all of them.
+     */
+    public static function frameFrom(string $prompt): string
+    {
+        $prompt = trim(str_replace('
+', '
+', $prompt));
+
+        if ($prompt === '') {
+            return '';
+        }
+
+        return trim(explode('
+
+', $prompt, 2)[0]);
+    }
+
+    /**
      * The prompt for one character's reference portrait.
      *
      * Built from the same two frozen pieces every scene prompt uses — the

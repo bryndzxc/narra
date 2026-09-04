@@ -3,13 +3,15 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
 use App\Models\Character;
+use App\Models\RenderJob;
 use App\Models\Story;
+use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
 use App\Support\Providers\CharacterCast;
 use App\Support\Providers\CharacterProfile;
-use App\Support\StyleNotesGuard;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -37,7 +39,7 @@ class ExtractCharacters
         private readonly ScriptWriter $writer,
         private readonly LocaleGuard $locale,
         private readonly RecordProviderCost $costs,
-        private readonly StyleNotesGuard $styleNotes,
+        private readonly CharacterTextGuard $text,
     ) {}
 
     /**
@@ -47,7 +49,29 @@ class ExtractCharacters
     {
         $this->assertReady($story);
 
+        // Its own row, because this stage fails on its own and runs before
+        // the one that used to be the only thing recording. See
+        // RenderStage::ExtractCast: three dispatches died in here and the
+        // render page reported nothing, because DraftScenes had not opened
+        // its row yet and DraftSceneListJob::failed() had nothing to mark.
+        return RenderJob::record(
+            $story->id,
+            RenderStage::ExtractCast,
+            fn (RenderJob $job): array => $this->extract($story, $rebuild, $job),
+        );
+    }
+
+    /**
+     * @return array{cast: CharacterCast|null, characters: int, kept: bool}
+     */
+    private function extract(Story $story, bool $rebuild, RenderJob $job): array
+    {
         if (! $rebuild && $story->characters()->exists()) {
+            $job->note(sprintf(
+                'Kept the %d character(s) already on this story. Nothing was billed.',
+                $story->characters()->count(),
+            ));
+
             return [
                 'cast' => null,
                 'characters' => $story->characters()->count(),
@@ -67,7 +91,7 @@ class ExtractCharacters
             );
         }
 
-        $cast = $this->extractWithRepair($story, $scripts);
+        $cast = $this->extractWithRepair($story, $scripts, $job);
 
         $this->locale->assert(
             $cast->proseForInspection(),
@@ -106,7 +130,7 @@ class ExtractCharacters
     }
 
     /**
-     * Extract, and give it one chance to fix a style_notes it got wrong.
+     * Extract, and give it one chance to fix character text it got wrong.
      *
      * A retry rather than a refusal because the failure is narrow, mechanical
      * and the model can see it once it is named. The alternative is a stage
@@ -123,7 +147,7 @@ class ExtractCharacters
      *
      * @param  array<int, string>  $scripts
      */
-    private function extractWithRepair(Story $story, array $scripts): CharacterCast
+    private function extractWithRepair(Story $story, array $scripts, RenderJob $job): CharacterCast
     {
         $notes = [];
 
@@ -134,7 +158,18 @@ class ExtractCharacters
             // billed whatever the answer turns out to be.
             $this->costs->handle($story, $cast->usage);
 
-            $notes = $this->styleNoteProblems($cast);
+            $notes = $this->textProblems($cast);
+
+            // A line per billed attempt. Without it the row says only that
+            // the stage failed, and the thing an operator actually needs to
+            // know is that it failed TWICE and bought two calls doing it.
+            $job->note(sprintf(
+                'Attempt %d: %d character(s), $%s. %s',
+                $attempt,
+                count($cast->characters),
+                number_format($cast->usage->usdCost, 4),
+                $notes === [] ? 'Clean.' : count($notes).' problem(s) to repair.',
+            ));
 
             if ($notes === []) {
                 return $cast;
@@ -144,27 +179,48 @@ class ExtractCharacters
         // Out of attempts. Refused rather than saved, because the whole point
         // of this field is that it is applied unconditionally — a bad one is
         // not a cosmetic flaw, it is a prop in every frame that character is
-        // in. See StyleNotesGuard.
-        $this->styleNotes->assert($cast->characters, 'character extraction');
+        // in. See CharacterTextGuard.
+        $this->text->assert($cast->characters, 'character extraction');
 
         return $cast;
     }
 
     /**
+     * Both fields, not one.
+     *
+     * This checked `style_notes` alone for two phases while `description` had
+     * the identical defects sitting in production — two leads whose hair was
+     * "usually" pulled back, and a man whose description said he walks with a
+     * stiffness in one hip, each pasted into every frame they appear in. The
+     * guard was aimed at one field while the same bug lived in the field beside
+     * it, so it could not fire, and a check that cannot fire reads exactly like
+     * a check that passed.
+     *
      * @return array<int, string> Empty when the cast is clean.
      */
-    private function styleNoteProblems(CharacterCast $cast): array
+    private function textProblems(CharacterCast $cast): array
     {
         $problems = [];
 
         foreach ($cast->characters as $profile) {
-            $violations = $this->styleNotes->violations($profile->styleNotes);
+            $violations = $this->text->violations($profile->styleNotes);
 
             if ($violations !== []) {
                 $problems[] = sprintf(
                     '%s: style_notes "%s" — %s',
                     $profile->name,
                     $profile->styleNotes,
+                    implode('; ', $violations),
+                );
+            }
+
+            $violations = $this->text->descriptionViolations($profile->description);
+
+            if ($violations !== []) {
+                $problems[] = sprintf(
+                    '%s: description "%s" — %s',
+                    $profile->name,
+                    $profile->description,
                     implode('; ', $violations),
                 );
             }

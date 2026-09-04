@@ -2,15 +2,24 @@
 
 namespace App\Livewire\Gates;
 
+use App\Actions\DispatchTextStage;
+use App\Actions\GenerateActScripts;
+use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
 use App\Enums\Gate;
 use App\Enums\OperatorAction;
 use App\Enums\StoryStatus;
+use App\Exceptions\DispatchRefusedException;
+use App\Exceptions\GateViolationException;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\LocaleGuard;
+use App\Support\ModelRoster;
+use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Throwable;
 
 /**
  * Gate 1 — the operator writes or edits the premise and approves the act
@@ -29,12 +38,30 @@ class OutlineGate extends Component
     public string $premise = '';
 
     /**
+     * The intended age range of the cast, editable here for the same reason
+     * the spine is: this is the last point at which it is free.
+     *
+     * It is read once, by the character extraction that runs when the scene
+     * draft is dispatched from Gate 2 — after this gate is crossed. So the
+     * window to state it is Gate 1, and getting it wrong is recoverable only
+     * by reopening this gate and re-extracting, which rewrites every
+     * description the scene prompts were built from.
+     */
+    public string $castAgeProfile = '';
+
+    /**
      * The genre spine, editable here.
      *
      * Gate 1 is the only place these can be fixed cheaply. Every act-generation
      * call reads them off the story, so a vague grievance or a cartoon
      * antagonist here produces 5,500-8,000 words that inherit the problem, and
      * the cost of finding out is the whole pipeline.
+     *
+     * The last three are the reversal half, added after story 21 was watched
+     * back: it escalated to the last act and gave the narrator one scene of
+     * power. They are edited here for the same reason as the first four, and
+     * one more — the departure act and every search act are written against
+     * them, so a departure that gets announced here is announced in the script.
      *
      * @var array<string, string>
      */
@@ -43,17 +70,26 @@ class OutlineGate extends Component
         'antagonist_justification' => '',
         'withheld_information' => '',
         'exposure_moment' => '',
+        'departure' => '',
+        'reversal_beats' => '',
+        'refusal' => '',
     ];
 
-    /** @var array<int, array{id: int, sequence: int, title: string, summary: string, escalation_beat: string, is_rehook_written: bool}> */
+    /** @var array<int, array{id: int, sequence: int, phase: ?string, phase_label: string, beat_label: string, title: string, summary: string, escalation_beat: string, is_rehook_written: bool}> */
     public array $acts = [];
 
     public ?string $saved = null;
+
+    public ?string $problem = null;
+
+    /** Whether the operator has seen the bill for the writing and pressed once. */
+    public bool $confirmingWrite = false;
 
     public function mount(Story $story): void
     {
         $this->story = $story;
         $this->premise = (string) $story->premise;
+        $this->castAgeProfile = (string) $story->cast_age_profile;
 
         foreach (array_keys($this->spine) as $field) {
             $this->spine[$field] = (string) $story->{$field};
@@ -95,6 +131,44 @@ class OutlineGate extends Component
     }
 
     /**
+     * The setting this story is being generated for, by its label.
+     *
+     * Read-only, because it is chosen once at creation and everything on
+     * this page was already written against it. Shown because there is now
+     * more than one, and an outline that reads slightly wrong is a different
+     * problem depending on which world it was asked for.
+     */
+    #[Computed]
+    public function localeLabel(): string
+    {
+        $profile = (string) $this->story->locale_profile;
+
+        return app(LocaleGuard::class)->profiles()[$profile] ?? $profile;
+    }
+
+    /**
+     * Locale terms in the act scripts that are wrong for the setting but not
+     * wrong enough to have failed the stage.
+     *
+     * This existed for two phases and only `story:write` ever printed it, so
+     * the one place the warnings could be acted on was a terminal — on an app
+     * built so an operator would not need one. It matters more now: a second
+     * setting means a second warn list, and the en-CN one is mostly imperial
+     * units, which is exactly the leak a model trained on American prose
+     * produces without noticing.
+     *
+     * Warnings, never a block. The deny list already refused everything that
+     * has no reading; these all have one, and judging them is the operator's.
+     *
+     * @return array<int, array{act: int, term: string, context: string}>
+     */
+    #[Computed]
+    public function localeWarnings(): array
+    {
+        return app(GenerateActScripts::class)->localeWarnings($this->story);
+    }
+
+    /**
      * The genre check.
      *
      * An aggrieved-narrator melodrama fails in ways that look fine in the
@@ -115,10 +189,14 @@ class OutlineGate extends Component
 
         $this->validate([
             'premise' => ['required', 'string', 'min:20'],
+            'castAgeProfile' => ['nullable', 'string', 'max:500'],
             'spine.narrator_grievance' => ['nullable', 'string', 'max:2000'],
             'spine.antagonist_justification' => ['nullable', 'string', 'max:2000'],
             'spine.withheld_information' => ['nullable', 'string', 'max:2000'],
             'spine.exposure_moment' => ['nullable', 'string', 'max:2000'],
+            'spine.departure' => ['nullable', 'string', 'max:2000'],
+            'spine.reversal_beats' => ['nullable', 'string', 'max:2000'],
+            'spine.refusal' => ['nullable', 'string', 'max:2000'],
             'acts.*.title' => ['required', 'string', 'max:100'],
             'acts.*.summary' => ['nullable', 'string', 'max:2000'],
             'acts.*.escalation_beat' => ['nullable', 'string', 'max:1000'],
@@ -126,7 +204,14 @@ class OutlineGate extends Component
             'acts.*.title.max' => 'An act title doubles as a YouTube chapter title; keep it under 100 characters.',
         ]);
 
-        $this->story->update(['premise' => $this->premise] + $this->spine);
+        $this->story->update([
+            'premise' => $this->premise,
+            // Empty stays null rather than becoming an empty string. The
+            // extraction prompt tests this field for emptiness to decide
+            // whether to state an age range at all, and "" and null must not
+            // be two different kinds of nothing.
+            'cast_age_profile' => trim($this->castAgeProfile) ?: null,
+        ] + $this->spine);
 
         foreach ($this->acts as $act) {
             Act::query()->whereKey($act['id'])->update([
@@ -145,7 +230,11 @@ class OutlineGate extends Component
 
         $this->saved = 'Outline saved.';
         $this->story->refresh();
-        unset($this->spineReview, $this->actsMissingRehooks);
+
+        // One list, in one place. This was two named properties, and the Gate 2
+        // page has already been bitten by exactly that: three call sites
+        // unsetting their own hand-written lists, which had drifted apart.
+        $this->resetComputed();
     }
 
     public function approve(): void
@@ -154,8 +243,10 @@ class OutlineGate extends Component
 
         $this->story->approveGate(Gate::Outline);
         $this->story->refresh();
+        $this->resetComputed();
 
-        $this->saved = 'Gate 1 approved. Act scripts can be generated from this outline.';
+        $this->saved = 'Gate 1 approved. The scenes are cut next, from the Gate 2 page — a separate '
+            .'press, because that is where the money line is.';
     }
 
     /**
@@ -163,6 +254,166 @@ class OutlineGate extends Component
      * written against this outline do not disappear, and regenerating them
      * costs money from Phase 2.
      */
+    // -- Writing the outline and the act scripts -----------------------------
+
+    /**
+     * The queue the writing runs on, beside the button that dispatches to it.
+     *
+     * `text` spent two phases in config, in the setup docs and in the NSSM
+     * instructions receiving nothing at all — an operator following those
+     * instructions ran a worker that could never get a job. It now carries the
+     * stage that starts every video, and an absent worker on it is a warning
+     * rather than a refusal, so "queued" and "queued into nothing" would
+     * otherwise read identically.
+     *
+     * @return array{queue: string, role: string, state: string, live: int, stale: int, oldest_boot: ?string, headline: string}
+     */
+    #[Computed]
+    public function workers(): array
+    {
+        return WorkerHealth::forQueue((string) config('render.queues.text'));
+    }
+
+    #[Computed]
+    public function canWrite(): bool
+    {
+        return OperatorAction::WriteScript->permittedAt($this->story->status);
+    }
+
+    /** Rendered on the page, never swallowed. */
+    #[Computed]
+    public function writeRefusal(): ?string
+    {
+        return OperatorAction::WriteScript->refusalReason($this->story->status);
+    }
+
+    /**
+     * Acts with no script yet.
+     *
+     * This is what makes the button a resume rather than a rewrite. Act scripts
+     * are six sequential Opus calls and a run that dies on act 4 has already
+     * billed three — re-running must write the missing acts and keep the ones
+     * that landed, or a partial failure costs the whole story again.
+     *
+     * @return array<int, int>
+     */
+    #[Computed]
+    public function unwrittenActs(): array
+    {
+        return $this->story->acts()
+            ->orderBy('sequence')
+            ->get()
+            ->filter(fn (Act $act): bool => trim((string) $act->script) === '')
+            ->pluck('sequence')
+            ->all();
+    }
+
+    /**
+     * What the next press spends, and on what.
+     *
+     * @return array{calls: int, outline: bool, acts: int, roster: array<int, string>}
+     */
+    #[Computed]
+    public function writeEstimate(): array
+    {
+        $total = $this->story->acts()->count();
+        $outline = $total === 0;
+        // From the Action rather than typed again here. This was a literal 6
+        // beside the Action's literal 6, agreeing only for as long as nobody
+        // changed either — and the reversal phase changed one of them to 7.
+        $acts = $outline ? GenerateOutline::defaultActCountFor($this->story) : count($this->unwrittenActs());
+
+        return [
+            'calls' => ($outline ? 1 : 0) + $acts,
+            'outline' => $outline,
+            'acts' => $acts,
+            'roster' => app(ModelRoster::class)->lines(ModelRoster::SCRIPT_OPERATIONS),
+        ];
+    }
+
+    public function askToWrite(): void
+    {
+        $this->problem = null;
+        $this->confirmingWrite = true;
+    }
+
+    public function cancelWrite(): void
+    {
+        $this->confirmingWrite = false;
+    }
+
+    /**
+     * Queue the outline and the act scripts.
+     *
+     * The same Action the command reaches, so the capability predicate and the
+     * worker check are one implementation. Only the unwritten acts are named,
+     * which makes this idempotent in the way that matters: pressing it twice
+     * after a complete run queues nothing to bill.
+     */
+    public function write(): void
+    {
+        abort_unless($this->canWrite(), 403, (string) OperatorAction::WriteScript->refusal($this->story->status));
+
+        $this->confirmingWrite = false;
+        $this->problem = null;
+
+        $missing = $this->unwrittenActs();
+
+        try {
+            $result = app(DispatchTextStage::class)->writeScript(
+                story: $this->story,
+                // A partial resume names its acts. A first run names none,
+                // because the outline has to be written before there are any.
+                actsOnly: $this->story->acts()->count() === 0 ? [] : $missing,
+            );
+        } catch (DispatchRefusedException|GateViolationException $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->resetComputed();
+
+        $warnings = array_column(
+            array_filter($result['notes'], fn (array $n): bool => $n['level'] !== 'ok'),
+            'message',
+        );
+
+        $this->saved = sprintf(
+            'Queued on the "%s" queue. %s Each act is written knowing the ones before it, so they run '
+            .'in order — the page shows them as the rows land.',
+            $result['queue'],
+            $this->story->acts()->count() === 0
+                ? 'The outline first, then every act.'
+                : sprintf('%d act(s) with no script; everything already written is kept.', count($missing)),
+        );
+
+        if ($warnings !== []) {
+            $this->problem = implode(' ', $warnings);
+        }
+    }
+
+    private function resetComputed(): void
+    {
+        unset(
+            $this->editable,
+            $this->canApprove,
+            $this->actsMissingRehooks,
+            $this->spineReview,
+            $this->canReopen,
+            $this->reopenRefusal,
+            $this->workers,
+            $this->canWrite,
+            $this->writeRefusal,
+            $this->unwrittenActs,
+            $this->writeEstimate,
+        );
+    }
+
     #[Computed]
     public function canReopen(): bool
     {
@@ -191,6 +442,7 @@ class OutlineGate extends Component
 
         $this->story->transitionTo(StoryStatus::Outlined);
         $this->story->refresh();
+        $this->resetComputed();
 
         $this->saved = 'Gate 1 reopened. Scripts already written against the old outline are still there.';
     }
@@ -205,6 +457,15 @@ class OutlineGate extends Component
         $this->acts = $this->story->acts()->get()->map(fn (Act $act): array => [
             'id' => $act->id,
             'sequence' => $act->sequence,
+            // Read-only on this page. The phase is the act structure, not an
+            // act's content: moving one act into another phase without moving
+            // the ones around it produces an outline with two departures or
+            // none, and the fix for a wrong structure is to re-generate the
+            // outline rather than to edit a dropdown.
+            'phase' => $act->phase?->value,
+            'phase_label' => $act->phase?->label() ?? '',
+            'beat_label' => $act->phase?->beatLabel()
+                ?? 'Escalation beat — what this act costs the narrator',
             'title' => (string) $act->title,
             'summary' => (string) $act->summary,
             'escalation_beat' => (string) $act->escalation_beat,

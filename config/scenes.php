@@ -81,14 +81,107 @@ return [
     | it here re-renders every prompt consistently rather than leaving half a
     | video in the old style.
     |
+    | Preview a candidate before adopting it — `style:preview <story>
+    | --style-file=...` renders four fixed frames against it and never writes it
+    | back. Adopting one has a consequence the preview cannot show: every
+    | character reference sheet already on disk was drawn in the PREVIOUS look,
+    | and each of those faces conditions every still its character appears in.
+    | The sheets are fingerprinted (see StyleFingerprint), so a retune marks
+    | them stale and asset dispatch refuses until they are regenerated. That
+    | refusal is the feature, not an obstacle: without it a retune produces one
+    | video in two looks and bills for all of it.
+    |
     */
 
     'art_style' => env('SCENE_ART_STYLE', implode(' ', [
-        'Digital painting in a warm, grounded American realist style.',
+        // "Grounded and realistic in proportion" was the phrase that made this
+        // channel's output realistic-looking anime: a cel-shaded medium being
+        // asked for photographic proportion. The medium is the point — this
+        // niche runs on idealised character art — so the line now names the
+        // look rather than apologising for it. The anti-chibi constraint at the
+        // bottom is what keeps "idealised" from becoming "exaggerated"; the two
+        // are different axes and only one of them was ever wanted.
+        'Anime-style illustration in a polished modern television-anime look, drawn with idealised character art rather than photographic realism.',
+        // Kept verbatim from the painted style that preceded this one. The
+        // medium changed; the palette discipline is what makes this channel
+        // look like one channel, and it had no reason to move with it.
         'Soft directional light, muted earth palette with one warm accent.',
-        'Painterly brushwork, visible texture, slight film grain.',
-        'Cinematic 16:9 composition with shallow depth of field.',
-        'Restrained and unsentimental. No gloss, no gradients, no neon.',
+        'Clean confident linework, flat cel shading with limited gradients, hand-painted background art.',
+        // Idealised beauty as the default, and the reason it is a style line
+        // rather than something each description asks for: it is a property of
+        // the MEDIUM, not of any one character. Written per character it would
+        // drift across 150-250 prompts and would also have to be repeated for
+        // every antagonist, which is exactly where a generator starts editorialising.
+        //
+        // "Everyone, antagonists included" is load-bearing rather than
+        // decorative. A generator given a character who is in the wrong will
+        // draw them plain, heavy or unkempt to say so, and this genre depends
+        // on the opposite: the brother-in-law who is taking the house is more
+        // threatening for being handsome, and a story that telegraphs its
+        // villain through their face has given away its own reveal.
+        //
+        // Note what is NOT named here. No real person, no actor, no existing
+        // character — the treatment is described so the look is reproducible
+        // from the words, and so a retune is an edit to a sentence rather than
+        // a dependency on whatever a model happens to know about a name.
+        'Every named character is drawn to the medium\'s ideal of beauty: large expressive eyes with clear catchlights, clean symmetrical features, smooth even skin, a refined jawline, and glossy hair rendered in individual strands with highlights.',
+        'Men are tall and sharp-featured, well-groomed, with a confident upright bearing. Women have delicate features, expressive eyes and deliberately styled hair.',
+        'This applies to antagonists exactly as it does to leads. Nobody is drawn plain, coarse or unflattering to signal that they are in the wrong.',
+        // The cost of the line above, paid for immediately.
+        //
+        // Idealised faces converge — that is what idealisation IS, a pull
+        // toward one ideal — so the thing that told three women apart at
+        // distance is now doing more work with less help. Hair was already the
+        // primary identifier (see characterSystemPrompt()); this says so in the
+        // style too, because the style is the half of the prompt that cannot
+        // drift.
+        'Because idealised faces converge, hair carries the identification: each character\'s hair silhouette — its shape, length, parting and volume — must stay unmistakably their own and must separate them from everyone else in the frame at a distance where no facial detail is legible.',
+        // The line that does the most work, and the hardest one to get right.
+        //
+        // The first version said adults are drawn at their TRUE age, "never
+        // softened toward youth". That was written against a real failure — an
+        // anime style draws everyone young unless told otherwise — and it
+        // over-corrected, because it answered an anime problem with a
+        // photographic rule. Anime convention already renders adults younger
+        // than a photograph does; instructing it to draw a stated age exactly
+        // means instructing it to draw the only thing it has for "old", which
+        // is photoreal ageing texture. In the preview it read as intended for
+        // the woman in her forties and turned a woman written as late sixties
+        // into an eighty-five-year-old with drawn-on wrinkles and liver spots.
+        //
+        // So the baseline moves down about a decade and the RANGE does not
+        // move at all. That distinction is the whole line. A uniform shift
+        // keeps every gap intact — sixty still reads clearly older than
+        // thirty-five — while a compression toward young would put the picture
+        // in contradiction with narration that names ages and relationships,
+        // and a picture that argues with the narrator is worse than one drawn
+        // slightly wrong.
+        //
+        // Where age is allowed to live is stated too, because "younger" with no
+        // mechanism just means "less of everything": hair colour, hairline,
+        // face shape, neck and shoulder line, build. Those survive a wide shot.
+        // Wrinkles do not, which is the same argument the character extraction
+        // prompt makes about silhouette over texture — see characterSystemPrompt().
+        //
+        // This line compensates; it does not cast. A story whose plot turns on
+        // a dead mother, memory care and an uncle with a cane is asking an
+        // anime style to carry a cast it renders worst, and no wording here
+        // fixes that. `stories.cast_age_profile` is where that is said upstream.
+        'Apparent age follows anime convention rather than photography: adults read roughly a decade younger than their stated age — a character of forty reads as late twenties, a character of thirty as early twenties.',
+        'That shift is uniform across the cast and never a compression: relative age must stay unmistakable and must agree with the narration, so someone written as sixty still reads clearly older than someone written as thirty-five.',
+        'Age is carried by hair colour, hairline, face shape, neck and shoulder line and build — never by wrinkles, creases, liver spots, sagging or any other photoreal ageing texture.',
+        // Idealisation is a second, different way for age to be flattened, and
+        // it arrives from the opposite direction to the one the lines above
+        // were written against. Drawing everyone beautiful must not mean
+        // drawing everyone young: the ideal is age-appropriate, not uniform.
+        'Idealisation does not erase age. An older character is drawn as a striking, well-kept older person — the ideal for their decade — never as a young one.',
+        'Cinematic 16:9 composition with clear foreground, midground and background staging.',
+        // "No sparkle" now sits four lines from "clear catchlights" and "hair
+        // rendered with highlights", which is close enough for a generator to
+        // resolve the pair by dropping both. The negative is narrowed to the
+        // effects it always meant — overlays — so it cannot be read as
+        // suppressing the character art the line above requires.
+        'Restrained and unsentimental in tone and staging. No chibi or super-deformed proportions, no exaggerated anatomy, no speed lines, no glitter or sparkle overlays, no bloom or lens flare. Eye catchlights and hair highlights are character art, not effects, and stay.',
     ])),
 
     /*
@@ -103,6 +196,11 @@ return [
     'constraints' => env('SCENE_CONSTRAINTS', implode(' ', [
         'No text, letters, numbers, captions, watermarks or signatures anywhere in the image.',
         'No modern brand logos. No collage, no split panels, no borders.',
+        // The style asks for idealised faces, which is the instruction most
+        // likely to pull a generator toward a face it already knows. Said as a
+        // constraint rather than trusted to the style: the look has to be
+        // reproducible from the description, not borrowed from a likeness.
+        'No real person\'s likeness and no existing fictional character: no actor, model, celebrity or recognisable character design.',
         'One continuous scene, one moment.',
     ])),
 

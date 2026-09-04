@@ -4,7 +4,9 @@ namespace App\Livewire\Gates;
 
 use App\Actions\ApproveScenesGate;
 use App\Actions\DispatchAssetGeneration;
+use App\Actions\DispatchTextStage;
 use App\Actions\EstimateSceneAssets;
+use App\Actions\PreflightAssetDispatch;
 use App\Actions\ReorderScenes;
 use App\Actions\ValidateCharacterSheets;
 use App\Actions\ValidateSceneDrafts;
@@ -14,21 +16,25 @@ use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\SceneStatus;
 use App\Enums\StoryStatus;
+use App\Exceptions\DispatchRefusedException;
+use App\Exceptions\GateViolationException;
 use App\Exceptions\MissingCharacterReferenceException;
 use App\Livewire\Concerns\PaginatesWithProjectTheme;
 use App\Models\Character;
 use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
+use App\Support\CharacterTextGuard;
 use App\Support\SceneAssetEstimate;
 use App\Support\SceneChangeSet;
-use App\Support\StyleNotesGuard;
+use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Throwable;
 
 /**
  * Gate 2 — the last free moment.
@@ -80,6 +86,20 @@ class ScenesGate extends Component
      * to fix them.
      */
     public bool $confirmingGeneration = false;
+
+    /**
+     * The two presses this page grew, and one shared problem line.
+     *
+     * `notice` stays what it was — the thing that went right. A refusal is not
+     * a notice: the Gate 2 page has already had a panel vanish rather than
+     * explain itself, and a refused dispatch reported in the same green box as
+     * a successful one would be the same mistake wearing a different colour.
+     */
+    public bool $confirmingDraft = false;
+
+    public bool $confirmingAlignment = false;
+
+    public ?string $problem = null;
 
     public function mount(Story $story): void
     {
@@ -298,29 +318,85 @@ class ScenesGate extends Component
             $warnings[] = "{$missingPrompt} scene(s) have no image prompt.";
         }
 
-        // Stored style_notes, checked here as well as refused at extraction.
-        // A story drafted before that guard existed has the defect baked into
-        // every prompt its character appears in, and throwing at extraction
-        // cannot reach data that is already on disk. This is the last screen
-        // before those prompts are bought.
-        $guard = app(StyleNotesGuard::class);
+        // Stored character text, checked here as well as refused at extraction.
+        // A story drafted before a guard existed has the defect baked into every
+        // prompt its character appears in, and throwing at extraction cannot
+        // reach data that is already on disk. This is the last screen before
+        // those prompts are bought.
+        //
+        // Both fields, because for two phases this checked one of them while the
+        // other carried the same defects in production.
+        $guard = app(CharacterTextGuard::class);
 
         foreach ($this->story->characters()->withCount('scenes')->get() as $character) {
-            $violations = $guard->violations($character->style_notes);
+            foreach ([
+                ['style_notes', $character->style_notes, $guard->violations($character->style_notes)],
+                ['description', $character->description, $guard->descriptionViolations($character->description)],
+            ] as [$field, $value, $violations]) {
+                if ($violations === []) {
+                    continue;
+                }
 
-            if ($violations === []) {
+                $warnings[] = sprintf(
+                    '%s has a %s that will apply to all %d of their scenes (%s): "%s". It is pasted '
+                    .'unchanged into every prompt they appear in, so a prop in it is a prop in every '
+                    .'frame and a gait in it is a stride in every frame. Re-extract the cast and '
+                    .'re-draft to clear it — both free.',
+                    $character->name,
+                    $field,
+                    $character->scenes_count,
+                    implode('; ', $violations),
+                    trim((string) $value),
+                );
+            }
+
+            // Advisories, which are a different thing from the above and are
+            // deliberately not refused anywhere. Headwear is real clothing and
+            // a script can legitimately call for it — but it replaces the hair
+            // silhouette the whole cast is told apart by, so it is put in front
+            // of the operator rather than decided for them. A soft rule that is
+            // only written in a prompt is a rule with no reader.
+            foreach ([
+                ['style_notes', $character->style_notes],
+                ['description', $character->description],
+            ] as [$field, $value]) {
+                foreach ($guard->advisories($value) as $advisory) {
+                    $warnings[] = sprintf(
+                        '%s has %s in their %s, applied to all %d of their scenes: "%s". Keep it if '
+                        .'the script needs it; otherwise a re-extraction will drop it.',
+                        $character->name,
+                        $advisory,
+                        $field,
+                        $character->scenes_count,
+                        trim((string) $value),
+                    );
+                }
+            }
+        }
+
+        // The reference sheets, and whether they were drawn in the style this
+        // story would now be generated in. See Character::referenceStyleState().
+        foreach ($this->story->characters()->get() as $character) {
+            $state = $character->referenceStyleState();
+
+            if ($state === Character::STYLE_CURRENT || $state === Character::STYLE_NONE) {
                 continue;
             }
 
-            $warnings[] = sprintf(
-                '%s has style_notes that will apply to all %d of their scenes (%s): "%s". '
-                .'style_notes is pasted unchanged into every prompt they appear in, so a prop in it '
-                .'is a prop in every frame. Re-extract the cast and re-draft to clear it — both free.',
-                $character->name,
-                $character->scenes_count,
-                implode('; ', $violations),
-                trim((string) $character->style_notes),
-            );
+            $warnings[] = $state === Character::STYLE_STALE
+                ? sprintf(
+                    '%s\'s reference sheet was generated under a different art style than the one '
+                    .'configured now. Every still they appear in is conditioned on that face, so the '
+                    .'story would come back in two looks. Regenerate their sheet on the characters '
+                    .'page before generating assets.',
+                    $character->name,
+                )
+                : sprintf(
+                    '%s\'s reference sheet predates style tracking, so the app cannot say which look '
+                    .'it was drawn in. Unknown is not the same as fine — check it on the characters '
+                    .'page, and regenerate if it does not match the current style.',
+                    $character->name,
+                );
         }
 
         return $warnings;
@@ -442,6 +518,213 @@ class ScenesGate extends Component
             : 'Gate 2 approved. Nothing changed, so nothing is regenerated and nothing is billed.';
     }
 
+    // -- Drafting the scenes (free of gates, not free of money) --------------
+
+    /**
+     * The queue the scene draft runs on.
+     *
+     * @return array{queue: string, role: string, state: string, live: int, stale: int, oldest_boot: ?string, headline: string}
+     */
+    #[Computed]
+    public function textWorkers(): array
+    {
+        return WorkerHealth::forQueue((string) config('render.queues.text'));
+    }
+
+    #[Computed]
+    public function canDraftScenes(): bool
+    {
+        return OperatorAction::DraftSceneList->permittedAt($this->story->status);
+    }
+
+    /** Rendered on the page, never swallowed. */
+    #[Computed]
+    public function draftRefusal(): ?string
+    {
+        return OperatorAction::DraftSceneList->refusalReason($this->story->status);
+    }
+
+    public function askToDraft(): void
+    {
+        $this->problem = null;
+        $this->confirmingDraft = true;
+    }
+
+    public function cancelDraft(): void
+    {
+        $this->confirmingDraft = false;
+    }
+
+    /**
+     * Queue the cast extraction and the scene draft.
+     *
+     * `story:scenes` held the only copy of this, so a story that had passed
+     * Gate 1 in the browser could only be cut into scenes from a terminal — and
+     * the Gate 2 page it fills showed an empty list until somebody did.
+     *
+     * A re-draft is a rebuild and says so in the confirmation. By the time
+     * anyone presses this twice the scenes carry operator edits, and that is a
+     * thing to be told rather than to discover.
+     */
+    public function draftScenes(bool $rebuild = false): void
+    {
+        abort_unless(
+            $this->canDraftScenes(),
+            403,
+            (string) OperatorAction::DraftSceneList->refusal($this->story->status),
+        );
+
+        $this->confirmingDraft = false;
+        $this->problem = null;
+
+        try {
+            $result = app(DispatchTextStage::class)->draftScenes($this->story, rebuild: $rebuild);
+        } catch (DispatchRefusedException|GateViolationException $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->resetComputed();
+
+        $warnings = array_column(
+            array_filter($result['notes'], fn (array $n): bool => $n['level'] !== 'ok'),
+            'message',
+        );
+
+        $this->notice = sprintf(
+            'Queued on the "%s" queue: the cast first, then the acts are cut into scenes. Cast first '
+            .'because a character description is pasted verbatim into every image prompt, and a scene '
+            .'drafted before the cast exists has to invent one. This page is safe to leave.',
+            $result['queue'],
+        );
+
+        if ($warnings !== []) {
+            $this->problem = implode(' ', $warnings);
+        }
+    }
+
+    // -- Word timings, and only word timings ---------------------------------
+
+    /**
+     * Scenes with audio and no usable timings.
+     *
+     * Computed the way DispatchAssetGeneration::dispatchTimings() computes it,
+     * so the number on the button is the number dispatched.
+     */
+    #[Computed]
+    public function pendingTimings(): int
+    {
+        return $this->changes()->needsTranscription
+            ->filter(fn (Scene $scene): bool => $scene->sceneAudio->contains(
+                fn ($audio): bool => $audio->audio_path !== null
+            ))
+            ->count();
+    }
+
+    #[Computed]
+    public function canAlignTimings(): bool
+    {
+        return OperatorAction::AlignTimings->permittedAt($this->story->status);
+    }
+
+    #[Computed]
+    public function alignRefusal(): ?string
+    {
+        return OperatorAction::AlignTimings->refusalReason($this->story->status);
+    }
+
+    /**
+     * What "Generate assets" would ALSO do, stated before the operator picks.
+     *
+     * Not a footnote. `needsTranscription` and `needsNarration` overlap heavily
+     * — narration provenance moving stales both — so on the story this was
+     * written for, retrying 181 failed alignments through the asset button
+     * would have re-billed 69 narrations. The two buttons look alike and differ
+     * by a month of TTS credits.
+     */
+    #[Computed]
+    public function narrationsTheAssetButtonWouldRebill(): int
+    {
+        return $this->changes()->needsNarration->count();
+    }
+
+    public function askToAlign(): void
+    {
+        $this->problem = null;
+        $this->confirmingAlignment = true;
+    }
+
+    public function cancelAlignment(): void
+    {
+        $this->confirmingAlignment = false;
+    }
+
+    /**
+     * Re-run alignment. Free, and structurally incapable of billing.
+     *
+     * This does NOT go through DispatchAssetGeneration::handle(). It calls the
+     * timings-only dispatcher, which can construct exactly one job class — so
+     * "this will not bill TTS" is a property of what the code can reach rather
+     * than an assertion that it did not, which is the distinction this project
+     * keeps paying to learn.
+     */
+    public function alignTimings(): void
+    {
+        abort_unless(
+            $this->canAlignTimings(),
+            403,
+            (string) OperatorAction::AlignTimings->refusal($this->story->status),
+        );
+
+        $this->confirmingAlignment = false;
+        $this->problem = null;
+
+        $pending = $this->pendingTimings();
+
+        try {
+            // The same preflight the paid path runs. The free stage is exactly
+            // the one that failed 181 times in a row, one job at a time, with
+            // nothing having asked first whether the interpreter could import
+            // the module.
+            $notes = app(PreflightAssetDispatch::class)->handle($this->story);
+            $batchId = DispatchAssetGeneration::dispatchTimings($this->story->id);
+        } catch (DispatchRefusedException $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->resetComputed();
+
+        $this->notice = $batchId === null
+            ? 'Nothing to align — every scene with audio already has usable word timings. Nothing was '
+                .'queued and nothing was billed.'
+            : sprintf(
+                '%d alignment job(s) queued on the "%s" queue. Local and free: no TTS call is reachable '
+                .'from this button.',
+                $pending,
+                config('render.queues.assets'),
+            );
+
+        $warnings = array_column(
+            array_filter($notes, fn (array $n): bool => $n['level'] !== 'ok'),
+            'message',
+        );
+
+        if ($warnings !== []) {
+            $this->problem = implode(' ', $warnings);
+        }
+    }
+
     public function askToGenerate(): void
     {
         $this->confirmingGeneration = true;
@@ -510,6 +793,13 @@ class ScenesGate extends Component
             $this->costPreview,
             $this->assetEstimate,
             $this->failedScenes,
+            $this->textWorkers,
+            $this->canDraftScenes,
+            $this->draftRefusal,
+            $this->pendingTimings,
+            $this->canAlignTimings,
+            $this->alignRefusal,
+            $this->narrationsTheAssetButtonWouldRebill,
             $this->canGenerateAssets,
             $this->canReopen,
             $this->editable,

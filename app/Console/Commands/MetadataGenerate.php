@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Actions\GenerateMetadata;
 use App\Contracts\MetadataWriter;
 use App\Enums\MetadataStatus;
+use App\Enums\OperatorAction;
 use App\Jobs\GenerateMetadataJob;
 use App\Models\CostEntry;
 use App\Models\Story;
@@ -54,6 +55,15 @@ class MetadataGenerate extends Command
             ['story_id' => $story->id],
             ['status' => MetadataStatus::Pending]
         );
+
+        // The same predicate the Gate 4 button consults.
+        $refusal = OperatorAction::WriteMetadata->refusal($story->status);
+
+        if ($refusal !== null) {
+            $this->error($refusal);
+
+            return self::FAILURE;
+        }
 
         $chapters = $metadata->chapters();
 

@@ -14,6 +14,7 @@ use App\Models\Scene;
 use App\Models\SceneAudio;
 use App\Models\Story;
 use App\Services\Ffmpeg;
+use App\Support\AudioFrames;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use RuntimeException;
@@ -278,6 +279,27 @@ class RenderStageJobTest extends TestCase
                     'width' => $this->stillDimensions[0],
                     'height' => $this->stillDimensions[1],
                 ], 'format' => []];
+            }
+
+            /**
+             * Audio consistent with the frame count this fake was built for.
+             *
+             * Not decoration. Frames are now derived from the sample count, so
+             * a fake that reported a real file's samples while claiming a
+             * different frame count would make every clip look stale and every
+             * idempotency assertion fail — which is exactly what it did.
+             */
+            public function sampleCount(string $file, ?bool $deep = null): int
+            {
+                return $this->frames * AudioFrames::samplesPerFrame(
+                    (int) config('render.audio.sample_rate'),
+                    (int) config('render.video.fps'),
+                );
+            }
+
+            public function sampleRate(string $file): int
+            {
+                return (int) config('render.audio.sample_rate');
             }
 
             public function run(array $arguments, int $timeout, ?callable $onOutput = null): string

@@ -197,6 +197,15 @@ class ClaudeMetadataWriter implements MetadataWriter
             "- The antagonist's own justification: ".$this->orNone($story->antagonist_justification),
             '- What the narrator knows and the antagonist does not: '.$this->orNone($story->withheld_information),
             '- How it is exposed, in front of witnesses: '.$this->orNone($story->exposure_moment),
+            // The reversal, which is what the title is usually built on in this
+            // niche. The reference channel frames its videos on the gap rather
+            // than the grievance — "never expecting to see me and our son 5
+            // years later" is a departure and a refusal, not an exposure — so a
+            // brief that stopped at the exposure could only ever produce half
+            // the available hooks.
+            '- How and when the narrator leaves: '.$this->orNone($story->departure),
+            '- What it costs the antagonist to find them: '.$this->orNone($story->reversal_beats),
+            '- What the narrator says when found, and what it answers: '.$this->orNone($story->refusal),
             '',
             'ACTS, in order. These are the YouTube chapters.',
         ];

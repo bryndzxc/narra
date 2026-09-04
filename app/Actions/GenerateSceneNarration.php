@@ -13,6 +13,7 @@ use App\Services\Ffmpeg;
 use App\Support\NarrationPace;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
@@ -96,12 +97,19 @@ class GenerateSceneNarration
 
         $path = $this->store($scene, $speech->bytes, $speech->mimeType);
 
-        // Probed, not declared. See the class docblock — this is the number the
-        // frame count is derived from and the one PadSceneAudio will check the
-        // real file against.
-        $probed = $this->ffmpeg->durationMs($this->disk()->path($path));
+        // Probed, not declared. See the class docblock.
+        $absolute = $this->disk()->path($path);
+        $probed = $this->ffmpeg->durationMs($absolute);
 
-        $this->record($scene, $track, $path, $probed, $voiceId);
+        // The two numbers the frame count is actually derived from. Milliseconds
+        // are lossy by an amount that matters — 360002 samples at 24 kHz is
+        // 15.0000833 s and stores as 15000, which is exactly 450 frames when
+        // the audio needs 451 — so the sample count is recorded and the
+        // duration is kept only for pace, estimates and display.
+        $samples = $this->ffmpeg->sampleCount($absolute, deep: true);
+        $sampleRate = $this->ffmpeg->sampleRate($absolute);
+
+        $this->record($scene, $track, $path, $probed, $voiceId, $samples, $sampleRate);
 
         // The check that did not exist, and whose absence let a 22% error
         // survive sixty-nine paid scenes.
@@ -172,18 +180,53 @@ class GenerateSceneNarration
             $words += str_word_count(trim((string) $row->narration_text));
         }
 
-        $violation = NarrationPace::violation($voiceId, $words, (int) $narrated->sum('duration_ms'));
+        // The locale profile is half the key. Without it this compares en-CN
+        // audio against an en-US measurement, which is what cancelled story
+        // 21's 270-scene batch at scene 2.
+        $violation = NarrationPace::violation(
+            $voiceId,
+            $scene->story?->locale_profile,
+            $words,
+            (int) $narrated->sum('duration_ms'),
+        );
 
         if ($violation === null) {
             return;
         }
 
-        throw new NarrationPaceException(sprintf(
+        $message = sprintf(
             'Scene %d, measured across the %d scenes narrated so far: %s',
             $scene->sequence,
             $narrated->count(),
             $violation,
-        ));
+        );
+
+        // Detected either way. What the drift PROVES is what differs.
+        //
+        // On a measured pair it proves something is wrong, and the run stops at
+        // a cost of one scene. On an unmeasured pair it proves only that the
+        // sizing assumption was a guess — the audio is unaffected and it is the
+        // runtime estimate that moves — and cancelling a 270-scene batch over
+        // an estimate borrowed from a different script is the trade story 21
+        // made and should not have.
+        //
+        // Logged rather than swallowed. A check that fired and was overruled
+        // must leave a record, or afterwards "the guard did not stop it" and
+        // "the guard could not stop it" read identically.
+        if (! NarrationPace::isEnforceable($voiceId, $scene->story?->locale_profile)) {
+            Log::warning('narration pace advisory — detected, not enforced: this voice has no measured pace for this locale', [
+                'story_id' => $scene->story_id,
+                'scene' => $scene->sequence,
+                'voice_id' => $voiceId,
+                'locale_profile' => $scene->story?->locale_profile,
+                'scenes_measured' => $narrated->count(),
+                'detail' => $message,
+            ]);
+
+            return;
+        }
+
+        throw new NarrationPaceException($message);
     }
 
     /**
@@ -246,8 +289,15 @@ class GenerateSceneNarration
      * null. Those accumulate across the whole story and are recomputed
      * wholesale at concat, never patched per scene.
      */
-    private function record(Scene $scene, AudioTrack $track, string $path, int $durationMs, string $voiceId): void
-    {
+    private function record(
+        Scene $scene,
+        AudioTrack $track,
+        string $path,
+        int $durationMs,
+        string $voiceId,
+        int $samples,
+        int $sampleRate,
+    ): void {
         SceneAudio::query()->updateOrCreate(
             ['scene_id' => $scene->id, 'audio_track_id' => $track->id],
             [
@@ -264,6 +314,8 @@ class GenerateSceneNarration
                 'narration_speed' => NarrationPace::configuredSpeed(),
                 'narration_simulated' => $this->speech->isSimulated(),
                 'duration_ms' => $durationMs,
+                'samples' => $samples,
+                'sample_rate' => $sampleRate,
                 // A regenerated scene's timings describe audio that no longer
                 // exists. Cleared here so TranscribeSceneTimings sees work to
                 // do rather than a stale transcript that happens to be present.

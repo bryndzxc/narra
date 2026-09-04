@@ -11,11 +11,17 @@ namespace App\Support\Providers;
  * silently" possible — a re-run produces a new draft the caller can compare
  * against, not a mutation that has already happened.
  *
- * The four spine fields are not metadata about the outline. They ARE the
+ * The seven spine fields are not metadata about the outline. They ARE the
  * outline, in the sense that matters: an aggrieved-narrator melodrama with a
  * vague grievance or a cartoon antagonist is not a weaker version of the genre,
  * it is a different one that nobody in this niche watches. They are required
  * from the generator and surfaced at Gate 1.
+ *
+ * Four of them describe the wrong and where it comes out. The other three —
+ * departure, reversalBeats, refusal — describe the half of the arc story 21
+ * did not have, where the narrator leaves, is searched for, and refuses. That
+ * half is what the niche pays off on, and a spine without it produces a video
+ * that escalates for forty minutes and hands the narrator one scene of power.
  */
 final class OutlineDraft
 {
@@ -26,6 +32,14 @@ final class OutlineDraft
      *                                           were entitled to it. The engine of the format.
      * @param  string  $withheldInformation  What the narrator knows and the antagonist does not.
      * @param  string  $exposureMoment  Where it comes out, and in front of whom.
+     * @param  string  $departure  How and when the narrator goes, and whether they
+     *                             announce it. Not announcing is what makes the search
+     *                             possible, so the announcement is the detail Gate 1 checks.
+     * @param  string  $reversalBeats  What the antagonist does to find them and what each
+     *                                 attempt costs her. The humiliation beats running the
+     *                                 other way, and escalating the same.
+     * @param  string  $refusal  What the narrator says when finally found, and which earlier
+     *                           moment it answers. The private payoff, opposite the public one.
      */
     public function __construct(
         public readonly string $title,
@@ -35,6 +49,9 @@ final class OutlineDraft
         public readonly string $antagonistJustification = '',
         public readonly string $withheldInformation = '',
         public readonly string $exposureMoment = '',
+        public readonly string $departure = '',
+        public readonly string $reversalBeats = '',
+        public readonly string $refusal = '',
         /**
          * What was asked for, carried alongside what came back.
          *
@@ -71,6 +88,9 @@ final class OutlineDraft
             'antagonist_justification' => $this->antagonistJustification,
             'withheld_information' => $this->withheldInformation,
             'exposure_moment' => $this->exposureMoment,
+            'departure' => $this->departure,
+            'reversal_beats' => $this->reversalBeats,
+            'refusal' => $this->refusal,
         ];
     }
 

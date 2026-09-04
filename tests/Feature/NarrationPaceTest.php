@@ -42,6 +42,15 @@ class NarrationPaceTest extends TestCase
 
     private const BRIAN = 'nPczCjzI2devNBz1zQrb';
 
+    /** The locale profile Brian is measured on in these tests. */
+    private const LOCALE = 'en-US';
+
+    /** A locale he is not. Story 21's, and the reason the key gained a second half. */
+    private const UNMEASURED_LOCALE = 'en-CN';
+
+    /** A pair pinned to story 9's real rate, for the sample-size tests. */
+    private const MEASURED_AT_197 = 'en-197';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,9 +61,87 @@ class NarrationPaceTest extends TestCase
         config()->set('render.narration.pace_tolerance', 0.12);
         config()->set('render.narration.pace_min_words', 50);
         config()->set('render.narration.voices', [
-            self::BRIAN => ['name' => 'Brian', 'words_per_minute' => 172, 'measured_at_speed' => 0.9],
+            self::BRIAN => [
+                'name' => 'Brian',
+                'locales' => [
+                    // Measured for ONE locale on purpose. The pair is the key,
+                    // and every test below that passes a different locale is
+                    // asserting that an unmeasured pair is not judged.
+                    self::LOCALE => ['words_per_minute' => 172, 'measured_at_speed' => 0.9],
+                    // Story 9's real figure, at the speed it was read, so the
+                    // sample-size tests are run against a rate that existed
+                    // rather than one invented to make them pass.
+                    self::MEASURED_AT_197 => ['words_per_minute' => 197, 'measured_at_speed' => 1.0],
+                ],
+            ],
         ]);
         config()->set('providers.elevenlabs.tts.voice_settings.speed', 0.9);
+    }
+
+    // -- Detection and enforcement are separate questions --------------------
+
+    /**
+     * Story 21, reduced. Brian is measured — on en-US, at 197 wpm across 186
+     * real scenes — and that figure says nothing about how he reads en-CN.
+     *
+     * The old lookup was keyed on the voice alone, so it answered "measured,
+     * 197" to a question about different prose, the guard was as certain as if
+     * it knew, and a 270-scene batch died at scene 2.
+     */
+    public function test_a_voice_measured_on_one_locale_is_not_measured_on_another(): void
+    {
+        $this->assertTrue(NarrationPace::isMeasured(self::BRIAN, self::LOCALE));
+        $this->assertFalse(NarrationPace::isMeasured(self::BRIAN, self::UNMEASURED_LOCALE));
+
+        // And the borrowed figure does not leak across as the expectation.
+        $this->assertSame(172, NarrationPace::expectedWpm(self::BRIAN, self::LOCALE));
+        $this->assertSame(160, NarrationPace::expectedWpm(self::BRIAN, self::UNMEASURED_LOCALE));
+    }
+
+    /**
+     * The correction to the first attempt at this fix, which is worth keeping
+     * as a test because it was nearly shipped.
+     *
+     * Making the guard SILENT on an unmeasured pair looks reasonable and
+     * removes the story 9 coverage entirely: that run had no voice profile at
+     * all, and the expected figure it was judged against was the fallback
+     * constant its script had been sized to. Detection must not depend on
+     * whether the narrator has been profiled.
+     */
+    public function test_an_unmeasured_pair_is_still_measured_and_still_reported(): void
+    {
+        $violation = NarrationPace::violation(self::BRIAN, self::UNMEASURED_LOCALE, 56, 17787);
+
+        $this->assertNotNull($violation, 'an unmeasured pair must still be detected');
+        $this->assertStringContainsString('no measured profile', $violation);
+        $this->assertStringContainsString(self::UNMEASURED_LOCALE, $violation);
+    }
+
+    /** But it is not grounds for destroying the run. */
+    public function test_only_a_measured_pair_is_grounds_for_stopping_the_run(): void
+    {
+        $this->assertTrue(NarrationPace::isEnforceable(self::BRIAN, self::LOCALE));
+        $this->assertFalse(NarrationPace::isEnforceable(self::BRIAN, self::UNMEASURED_LOCALE));
+        $this->assertFalse(NarrationPace::isEnforceable(null, self::LOCALE));
+    }
+
+    /**
+     * And the absence is stated at the point of spending, not left to be
+     * inferred from a guard that stayed quiet.
+     */
+    public function test_an_unmeasured_pair_says_so_in_words(): void
+    {
+        $this->assertNull(NarrationPace::unmeasured(self::BRIAN, self::LOCALE));
+
+        $said = NarrationPace::unmeasured(self::BRIAN, self::UNMEASURED_LOCALE);
+
+        $this->assertNotNull($said);
+        $this->assertStringContainsString('Brian', $said);
+        $this->assertStringContainsString(self::UNMEASURED_LOCALE, $said);
+        // Names the locale it IS measured on, so the operator can see the
+        // figure exists and why it is not being borrowed.
+        $this->assertStringContainsString(self::LOCALE, $said);
+        $this->assertStringContainsString('narration:measure', $said);
     }
 
     // -- The guard fires on the real failure ---------------------------------
@@ -65,7 +152,7 @@ class NarrationPaceTest extends TestCase
         // script writer sized at 160 wpm (21,000 ms) came back from ElevenLabs
         // at 17,787 ms — 189 wpm, 18% fast. This is the call that should have
         // stopped the run, and did not.
-        $violation = NarrationPace::violation(null, words: 56, durationMs: 17787);
+        $violation = NarrationPace::violation(null, self::LOCALE, words: 56, durationMs: 17787);
 
         $this->assertNotNull($violation, 'the drift that cost 69 scenes went undetected');
         $this->assertStringContainsString('+18%', $violation);
@@ -79,7 +166,7 @@ class NarrationPaceTest extends TestCase
         // 56 words take ~19.5 s. Against a profile that knows that, this is fine.
         $ms = (int) round(56 / 172 * 60000);
 
-        $this->assertNull(NarrationPace::violation(self::BRIAN, 56, $ms));
+        $this->assertNull(NarrationPace::violation(self::BRIAN, self::LOCALE, 56, $ms));
     }
 
     public function test_a_measured_voice_is_judged_against_its_own_rate_not_the_global_one(): void
@@ -89,8 +176,8 @@ class NarrationPaceTest extends TestCase
         // measured 172 — inside tolerance, a normal scene — and 18% off the
         // global fallback of 160, which is a stopped run. Same audio, two
         // verdicts, and only one of them is about anything real.
-        $this->assertNull(NarrationPace::violation(self::BRIAN, 56, 17787));
-        $this->assertNotNull(NarrationPace::violation('some-unmeasured-voice', 56, 17787));
+        $this->assertNull(NarrationPace::violation(self::BRIAN, self::LOCALE, 56, 17787));
+        $this->assertNotNull(NarrationPace::violation('some-unmeasured-voice', self::LOCALE, 56, 17787));
     }
 
     public function test_it_says_which_number_is_an_assumption(): void
@@ -98,15 +185,15 @@ class NarrationPaceTest extends TestCase
         // "measured 172 for Brian" and "assumed 160 because nobody has measured
         // this voice" are very different claims and the operator has to be able
         // to tell them apart.
-        $this->assertTrue(NarrationPace::isMeasured(self::BRIAN));
-        $this->assertFalse(NarrationPace::isMeasured('unknown-voice'));
-        $this->assertSame(172, NarrationPace::expectedWpm(self::BRIAN));
-        $this->assertSame(160, NarrationPace::expectedWpm('unknown-voice'));
-        $this->assertSame(160, NarrationPace::expectedWpm(null));
+        $this->assertTrue(NarrationPace::isMeasured(self::BRIAN, self::LOCALE));
+        $this->assertFalse(NarrationPace::isMeasured('unknown-voice', self::LOCALE));
+        $this->assertSame(172, NarrationPace::expectedWpm(self::BRIAN, self::LOCALE));
+        $this->assertSame(160, NarrationPace::expectedWpm('unknown-voice', self::LOCALE));
+        $this->assertSame(160, NarrationPace::expectedWpm(null, self::LOCALE));
 
         $this->assertStringContainsString(
             'no measured profile',
-            (string) NarrationPace::violation('unknown-voice', 56, 17787),
+            (string) NarrationPace::violation('unknown-voice', self::LOCALE, 56, 17787),
         );
     }
 
@@ -119,7 +206,7 @@ class NarrationPaceTest extends TestCase
         // dominates a sample this small, and an alarm that fires on noise is an
         // alarm that gets ignored, which is worse than no alarm.
         $this->assertFalse(NarrationPace::isReliableSample(13));
-        $this->assertNull(NarrationPace::violation(null, 13, 3437));
+        $this->assertNull(NarrationPace::violation(null, self::LOCALE, 13, 3437));
     }
 
     public function test_drift_inside_the_tolerance_passes(): void
@@ -128,7 +215,7 @@ class NarrationPaceTest extends TestCase
         // mis-sized script.
         $ms = (int) round(60 / (172 * 1.08) * 60000);
 
-        $this->assertNull(NarrationPace::violation(self::BRIAN, 60, $ms));
+        $this->assertNull(NarrationPace::violation(self::BRIAN, self::LOCALE, 60, $ms));
     }
 
     public function test_reading_too_slowl_y_is_caught_as_well(): void
@@ -138,7 +225,7 @@ class NarrationPaceTest extends TestCase
         // sign would be the "check the axis it is already strong on" mistake.
         $ms = (int) round(60 / (172 * 0.75) * 60000);
 
-        $violation = NarrationPace::violation(self::BRIAN, 60, $ms);
+        $violation = NarrationPace::violation(self::BRIAN, self::LOCALE, 60, $ms);
 
         $this->assertNotNull($violation);
         $this->assertStringContainsString('-25%', $violation);
@@ -176,7 +263,7 @@ class NarrationPaceTest extends TestCase
         }
 
         // Together they are a normal story, and the guard stays quiet.
-        $this->assertNull(NarrationPace::violation(self::BRIAN, $words, $ms), 'a healthy run was cancelled');
+        $this->assertNull(NarrationPace::violation(self::BRIAN, self::LOCALE, $words, $ms), 'a healthy run was cancelled');
 
         // And the contrast that makes the point: judged ALONE — which is what a
         // per-scene check does — scene 4 is a violation. Same audio, same
@@ -184,7 +271,7 @@ class NarrationPaceTest extends TestCase
         config()->set('render.narration.pace_min_words', 25);
 
         $this->assertNotNull(
-            NarrationPace::violation(self::BRIAN, 37, (int) round(37 / ($expected * 1.23) * 60000)),
+            NarrationPace::violation(self::BRIAN, self::LOCALE, 37, (int) round(37 / ($expected * 1.23) * 60000)),
             'scene 4 alone should read as a violation — that is why the check is cumulative',
         );
     }
@@ -201,7 +288,7 @@ class NarrationPaceTest extends TestCase
             $ms += (int) round($w / (172 * 1.22) * 60000);
         }
 
-        $this->assertNotNull(NarrationPace::violation(self::BRIAN, $words, $ms));
+        $this->assertNotNull(NarrationPace::violation(self::BRIAN, self::LOCALE, $words, $ms));
     }
 
     public function test_it_waits_for_enough_narration_before_judging(): void
@@ -211,7 +298,104 @@ class NarrationPaceTest extends TestCase
         // cost sixty-nine scenes still stops the run on the first one.
         $this->assertFalse(NarrationPace::isReliableSample(49));
         $this->assertTrue(NarrationPace::isReliableSample(56));
-        $this->assertNull(NarrationPace::violation(self::BRIAN, 20, 3000));
+        $this->assertNull(NarrationPace::violation(self::BRIAN, self::LOCALE, 20, 3000));
+    }
+
+    // -- The sample size, which is what actually cancelled the batch ---------
+
+    public function test_story_twenty_ones_cancellation_reproduced_and_the_key_was_not_the_cause(): void
+    {
+        // The most useful test in this file, because it retires an explanation
+        // that was believed for a session.
+        //
+        // Story 21's batch died at scene 2: 73 words, running average ~225 wpm,
+        // judged against Brian's en-US figure of 197. The diagnosis was that
+        // the KEY was wrong — a measurement of one kind of prose answering a
+        // question about another — and the locale dimension was added.
+        //
+        // The full measurement is now in: en-CN is 199.49 wpm across 270
+        // scenes, 1.26% from en-US. So the key was measuring almost nothing,
+        // and the proof is below — with en-CN recorded at its own true rate,
+        // the SAME two scenes still cancel the batch at a 50-word threshold.
+        //
+        // What was actually wrong is the sample. At 73 words the running
+        // average's own noise, measured on both finished stories, is ±12.6%
+        // against a 12% tolerance: the guard was measuring where the sentence
+        // breaks happened to fall, not how fast anybody read.
+        config()->set('render.narration.voices', [
+            self::BRIAN => [
+                'name' => 'Brian',
+                'locales' => [
+                    'en-US' => ['words_per_minute' => 197, 'measured_at_speed' => 1.0],
+                    'en-CN' => ['words_per_minute' => 199, 'measured_at_speed' => 1.0],
+                ],
+            ],
+        ]);
+        config()->set('providers.elevenlabs.tts.voice_settings.speed', 1.0);
+
+        // Scenes 1 and 2 of story 21, as they really read.
+        $words = 73;
+        $ms = (int) round($words / 225 * 60000);
+
+        config()->set('render.narration.pace_min_words', 50);
+
+        $this->assertNotNull(
+            NarrationPace::violation(self::BRIAN, 'en-CN', $words, $ms),
+            'the old threshold cancels the batch even with the locale key correct — '
+            .'which is the point: the key was never what fired',
+        );
+
+        config()->set('render.narration.pace_min_words', 1000);
+
+        $this->assertNull(
+            NarrationPace::violation(self::BRIAN, 'en-CN', $words, $ms),
+            'two scenes is not a sample',
+        );
+    }
+
+    public function test_the_shipped_threshold_survives_the_noise_both_real_stories_carry(): void
+    {
+        // The measurement the default is sized from. Running-average deviation
+        // from each story's own final rate, at 1,000 cumulative words:
+        //
+        //     story  9 : +2.3%   (reached at scene 30 of 186)
+        //     story 21 : +1.9%   (reached at scene 34 of 270)
+        //
+        // A fifth of the tolerance, so a healthy run has room; and reached with
+        // 85% of a 270-scene batch unspent, so a sick one is still caught early.
+        // The profile is at speed 1.0, so the synthesizer has to be too — a
+        // stale-speed profile is refused before the drift is even looked at,
+        // and that refusal is correct and would mask what this asserts.
+        config()->set('providers.elevenlabs.tts.voice_settings.speed', 1.0);
+
+        $expected = 197;
+
+        foreach ([0.023, -0.023, 0.019, -0.019] as $noise) {
+            $words = 1000;
+            $ms = (int) round($words / ($expected * (1 + $noise)) * 60000);
+
+            $this->assertNull(
+                NarrationPace::violation(self::BRIAN, self::MEASURED_AT_197, $words, $ms),
+                sprintf('a healthy run drifting %+.1f%% was cancelled', $noise * 100),
+            );
+        }
+    }
+
+    public function test_the_shipped_threshold_still_catches_the_drift_it_exists_for(): void
+    {
+        // The other half, and the one that matters: a bigger window must not
+        // blunt the guard. Story 9's real defect was a script sized at 160 wpm
+        // read at 197 — +23%, an order of magnitude past the noise floor at
+        // this sample size.
+        config()->set('providers.elevenlabs.tts.voice_settings.speed', 1.0);
+
+        $words = 1000;
+        $ms = (int) round($words / (197 * 1.23) * 60000);
+
+        $violation = NarrationPace::violation(self::BRIAN, self::MEASURED_AT_197, $words, $ms);
+
+        $this->assertNotNull($violation);
+        $this->assertStringContainsString('+23%', $violation);
     }
 
     // -- A stale profile is worse than none ----------------------------------
@@ -224,14 +408,14 @@ class NarrationPaceTest extends TestCase
         // built on it passes while being wrong.
         config()->set('providers.elevenlabs.tts.voice_settings.speed', 1.0);
 
-        $this->assertFalse(NarrationPace::profileMatchesConfiguredSpeed(self::BRIAN));
+        $this->assertFalse(NarrationPace::profileMatchesConfiguredSpeed(self::BRIAN, self::LOCALE));
 
         // Note the shape: at 189 wpm against Brian's 172 the DRIFT is only 10%,
         // inside tolerance. So without this rule the run would sail through on a
         // comparison that no longer describes the audio being made — passing
         // while meaningless, which is the version of this bug that never gets
         // noticed. It has to fire on the staleness itself, not on the drift.
-        $violation = NarrationPace::violation(self::BRIAN, 56, 17787);
+        $violation = NarrationPace::violation(self::BRIAN, self::LOCALE, 56, 17787);
 
         $this->assertNotNull($violation, 'a stale profile passed silently');
         $this->assertStringContainsString('taken at speed 0.90', $violation);

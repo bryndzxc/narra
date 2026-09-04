@@ -1,0 +1,119 @@
+<?php
+
+namespace App\Actions;
+
+use App\Enums\StoryFormat;
+use App\Models\Story;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
+
+/**
+ * A premise, and the row it becomes.
+ *
+ * Extracted from `story:write`, which held the only copy of this for the whole
+ * of Phase 2 — so the only way to start a video was a terminal, and the app
+ * that exists to keep an operator out of one had no front door.
+ *
+ * Nothing here is a default with an opinion. `voice_id` in particular comes
+ * from config and is allowed to be null: `narrator-us-01` lived in this code
+ * path for a phase and is a string the FAKE synthesizer invented to have
+ * something to record. It is not a voice on any vendor, and every story written
+ * before it was removed carried it. Null is the honest answer and
+ * GenerateSceneNarration refuses to synthesize without one.
+ */
+class CreateStory
+{
+    public function handle(
+        string $premise,
+        ?string $title = null,
+        StoryFormat $format = StoryFormat::Single,
+        ?int $targetMin = null,
+        ?int $targetMax = null,
+        ?string $castAgeProfile = null,
+        ?string $localeProfile = null,
+    ): Story {
+        $premise = trim($premise);
+
+        if ($premise === '') {
+            throw new InvalidArgumentException(
+                'A story needs a premise. It is the operator\'s editorial input and there is no default '
+                .'for it — the app does not invent what the video is about.'
+            );
+        }
+
+        $title = trim((string) $title) ?: Str::limit($premise, 60, '');
+
+        // The runtime band is NOT defaulted here. `stories.target_duration_min`
+        // and `_max` carry column defaults of 30 and 40, and a second copy of
+        // those numbers in PHP is exactly the drift CLAUDE.md warns about with
+        // the words-per-minute constant — one target, one place. Omitting the
+        // keys lets the column answer, and `refresh()` reads back what it said.
+        $band = array_filter(
+            ['target_duration_min' => $targetMin, 'target_duration_max' => $targetMax],
+            fn (?int $v): bool => $v !== null,
+        );
+
+        if ($targetMin !== null && $targetMax !== null && $targetMin > $targetMax) {
+            throw new InvalidArgumentException(sprintf(
+                'The target runtime floor (%d min) is above the ceiling (%d min).',
+                $targetMin,
+                $targetMax,
+            ));
+        }
+
+        // Refreshed, not just created. `status` and `total_cost_usd` are
+        // deliberately absent from $fillable — they are a state machine and a
+        // derived total, not attributes to assign — so they come from the
+        // column defaults and are not on the in-memory model until it is read
+        // back.
+        $story = Story::create([
+            'title' => $title,
+            'slug' => Story::slugFor($title, (string) random_int(1000, 9999)),
+            'premise' => $premise,
+            // Null when the operator did not state one, and null means exactly
+            // nothing downstream: the extractor reads ages out of the script as
+            // it always has. There is no default age range, because inventing
+            // one would be the app making a casting decision.
+            'cast_age_profile' => trim((string) $castAgeProfile) ?: null,
+            'format' => $format,
+            // The setting, chosen once. Everything after this is generated
+            // against it — the outline this method's caller dispatches
+            // immediately, then the acts, then the cast — so there is no
+            // point in the pipeline where changing it leaves the story
+            // consistent. Null falls back to the configured default rather
+            // than failing, because a caller that does not care should get
+            // the house setting.
+            'locale_profile' => $this->localeProfile($localeProfile),
+            'voice_id' => config('providers.default_voice_id'),
+        ] + $band);
+
+        return $story->refresh();
+    }
+
+    /**
+     * Validated against config rather than trusted.
+     *
+     * LocaleGuard throws on an unknown profile, but it throws at
+     * generation time — after the story exists and the outline call has
+     * been queued. Refusing here costs nothing and refuses the row.
+     */
+    private function localeProfile(?string $requested): string
+    {
+        $requested = trim((string) $requested);
+
+        if ($requested === '') {
+            return (string) config('locale.default');
+        }
+
+        if (! array_key_exists($requested, (array) config('locale.profiles', []))) {
+            throw new InvalidArgumentException(sprintf(
+                'Unknown locale profile "%s". Profiles are data, in config/locale.php; the ones '
+                    .'that exist are: %s.',
+                $requested,
+                implode(', ', array_keys((array) config('locale.profiles', []))),
+            ));
+        }
+
+        return $requested;
+    }
+}

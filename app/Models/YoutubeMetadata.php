@@ -49,6 +49,11 @@ class YoutubeMetadata extends Model
         'description',
         'tags',
         'thumbnail_text_options',
+        // The composed split-panel candidates, and which one was picked. A
+        // composition is a PAIR of stills, so it could not live in
+        // `thumbnail_scene_id` without that column meaning two things.
+        'thumbnail_options',
+        'thumbnail_selected',
         'thumbnail_scene_id',
         'pinned_comment',
         'checklist_state',
@@ -65,6 +70,7 @@ class YoutubeMetadata extends Model
             'title_options' => 'array',
             'tags' => 'array',
             'thumbnail_text_options' => 'array',
+            'thumbnail_options' => 'array',
             'checklist_state' => 'array',
             'tags_char_count' => 'integer',
             'stale_at' => 'datetime',
@@ -86,6 +92,32 @@ class YoutubeMetadata extends Model
     public function story(): BelongsTo
     {
         return $this->belongsTo(Story::class);
+    }
+
+    /**
+     * The composed thumbnail the operator picked, or null.
+     *
+     * Read off the stored options rather than held in a second column: the
+     * options carry the path, the score and the reasoning, and a duplicated
+     * path is one more thing that can point somewhere the file is not.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function selectedThumbnail(): ?array
+    {
+        $selected = trim((string) $this->thumbnail_selected);
+
+        if ($selected === '') {
+            return null;
+        }
+
+        foreach ((array) ($this->thumbnail_options ?? []) as $option) {
+            if (($option['key'] ?? null) === $selected) {
+                return $option;
+            }
+        }
+
+        return null;
     }
 
     /** @return BelongsTo<Scene, $this> */

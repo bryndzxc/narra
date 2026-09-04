@@ -1,10 +1,24 @@
 @php
-    $anyActive = $rows->contains(fn (array $row): bool => $row['running'] > 0);
+    $workers = \App\Support\WorkerHealth::all();
+
+    // A running job is not the only kind of work in flight. Jobs waiting in a
+    // queue are work too, and they are the kind `render_jobs` cannot see —
+    // rows are opened by the job, so an unstarted scene has no row. Without
+    // this the page stops refreshing the moment the last worker exits, which
+    // is the moment it most needs to keep looking.
+    $anyActive = $rows->contains(fn (array $row): bool => $row['running'] > 0)
+        || collect($workers)->sum(fn (array $w): int => (int) ($w['pending'] ?? 0)) > 0;
 @endphp
 
 <x-layouts.render :title="'Renders'" :refresh="$anyActive">
     <h1>Renders</h1>
     <p class="muted">Every story with queue activity, most recently touched first.</p>
+
+    {{-- The workers, on the page that watches them. This page replaced
+         Horizon's dashboard, and the one thing Horizon showed that this did not
+         was whether anything was listening at all — so a batch queued into a
+         dead queue looked exactly like a batch that had not started yet. --}}
+    <x-worker-health :queues="$workers" />
 
     @if ($rows->isEmpty())
         <div class="panel">

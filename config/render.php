@@ -119,49 +119,109 @@ return [
 
         /*
         |----------------------------------------------------------------------
-        | Measured pace, per voice
+        | Measured pace, per voice AND per locale profile
         |----------------------------------------------------------------------
         |
-        | Reading rate is a property of A VOICE AT A SPEED, not of narration in
-        | the abstract, and keeping it as one global constant guaranteed that
-        | casting a second narrator would reopen the same hole. Brian at 0.9 is
-        | not Brian at 1.0 and is not some other voice at either.
+        | Reading rate is a property of A VOICE, AT A SPEED, READING A PARTICULAR
+        | KIND OF PROSE. Keeping it as one global constant guaranteed that
+        | casting a second narrator would reopen the hole; keeping it per-voice
+        | guaranteed the same thing for a second SETTING, and that is exactly
+        | what happened.
         |
-        | `measured_at_speed` is part of the record rather than decoration: the
+        | Story 21 is the instance. Same narrator, same speed, different locale
+        | profile: Brian read story 9's en-US script at 197.0 wpm across 186
+        | scenes, and story 21's en-CN script at ~225 wpm. The pace guard fired
+        | on scene 2 and cancelled a 270-scene batch, comparing en-CN audio
+        | against a number measured on en-US prose.
+        |
+        | The guard was not wrong to notice. It was wrong to be certain: the
+        | docblock under `measured_at_speed` already says a stale expectation is
+        | worse than no expectation, because a check built on one can PASS while
+        | being meaningless. That argument was written about speed and it is
+        | exactly as true of prose, so the key gained a second dimension rather
+        | than the tolerance gaining slack.
+        |
+        | `measured_at_speed` is part of each record rather than decoration: the
         | figure is only true at that speed, so if ELEVENLABS_SPEED moves and
-        | this does not, the number is stale and the pace check will say so.
+        | this does not, the number is stale and the pace check says so.
         |
-        | How to add one: run `php artisan narration:bakeoff <story>`, which
-        | reads one scene at several speeds and prints the wpm of each. Put the
-        | winner here.
+        | AN ABSENT PAIR IS NOT AN ERROR AND IS NOT A ZERO. It means this
+        | narrator has never been measured on this kind of script, so the guard
+        | cannot judge and says so at dispatch instead of pretending. The run
+        | that establishes the number is the one that fills the gap: when it
+        | finishes, `php artisan narration:measure <story>` prints the block to
+        | paste here. Nothing writes it automatically — a measured figure that
+        | appeared on its own is a number nobody checked.
         */
         'voices' => [
 
-            // Brian — deep, resonant, comforting. eleven_multilingual_v2.
-            //
-            // 197 wpm at speed 1.0, and this is now a real measurement rather
-            // than an extrapolation. The previous figure came from ONE scene
-            // (story 9, scene 125: 68 words in 24.0 s at 0.9) with the 1.0 rate
-            // projected from it. This one is the whole of story 9's finished
-            // narration: 5,830 words across 186 scenes in 1,775,676 ms of audio.
-            //
-            //     raw    : 5830 / (1775676/60000)  = 197.0 wpm
-            //     padded : 5830 / (53358/30/60)    = 196.7 wpm
-            //
-            // 197 rather than 196.7 because the pace guard compares against RAW
-            // scene durations — `NarrationPace::measure()` divides by
-            // `duration_ms`, not by the padded frame count. The 0.2% between them
-            // is the per-scene rounding that padding adds and it is nowhere near
-            // the tolerance; using the padded figure here would just make the
-            // guard compare two subtly different things.
-            //
-            // The single-scene estimate said 188. It was 5% low, which is the
-            // argument for measuring pace over a whole story: a scene's rate
-            // swings 23% between neighbours on sentence length alone.
+            // Brian - deep, resonant, comforting. eleven_multilingual_v2.
             'nPczCjzI2devNBz1zQrb' => [
                 'name' => 'Brian',
-                'words_per_minute' => (int) env('NARRATION_WPM_BRIAN', 197),
-                'measured_at_speed' => 1.0,
+
+                'locales' => [
+
+                    // 197 wpm at speed 1.0, and a real measurement rather than
+                    // an extrapolation: the whole of story 9's finished
+                    // narration, 5,830 words across 186 scenes in 1,775,676 ms.
+                    //
+                    //     raw    : 5830 / (1775676/60000)  = 197.0 wpm
+                    //     padded : 5830 / (53358/30/60)    = 196.7 wpm
+                    //
+                    // 197 rather than 196.7 because the guard compares against
+                    // RAW scene durations - `measure()` divides by duration_ms,
+                    // not by the padded frame count. The 0.2% between them is
+                    // per-scene padding rounding, nowhere near the tolerance,
+                    // and using the padded figure would make the guard compare
+                    // two subtly different things.
+                    //
+                    // An earlier single-scene estimate said 188 - 5% low, which
+                    // is the argument for measuring across a whole story: a
+                    // scene's rate swings 23% between neighbours on sentence
+                    // length alone.
+                    'en-US' => [
+                        'words_per_minute' => (int) env('NARRATION_WPM_BRIAN_EN_US', 197),
+                        'measured_at_speed' => 1.0,
+                        'measured_on' => 'story 9 - 5,830 words across 186 scenes',
+                    ],
+
+                    // Measured, now that story 21's narration is finished:
+                    // 8,085 words across 270 scenes in 2,431,745 ms = 199.49.
+                    //
+                    //     en-US : 197.00 wpm  (186 scenes)
+                    //     en-CN : 199.49 wpm  (270 scenes)
+                    //     difference: 1.26%
+                    //
+                    // Worth reading twice, because it retires the reason this
+                    // key was added. The locale dimension was introduced when
+                    // two en-CN scenes read 219 and 230 and the guard cancelled
+                    // a batch; the full measurement says the two settings are
+                    // 1.26% apart, which is a fifth of the pace tolerance and
+                    // an order of magnitude inside the sampling noise the
+                    // threshold above documents. **The key was not what was
+                    // wrong. `pace_min_words` was.**
+                    //
+                    // The key stays anyway, and the reasoning is worth keeping
+                    // with it: it is not costing anything to be finer than the
+                    // effect, because an unmeasured pair still DETECTS and only
+                    // declines to ENFORCE, which self-heals after one story.
+                    // Collapsing it back to per-voice would make a third
+                    // setting enforceable on day one against a figure measured
+                    // on prose it has never seen — which is the mistake this
+                    // key was created to stop, and one data point of agreement
+                    // is not evidence that prose kind never matters.
+                    //
+                    // IF A THIRD LOCALE ALSO LANDS WITHIN ~2%, collapse it.
+                    // Two agreeing measurements is a coincidence; three is a
+                    // finding, and at that point the key is carrying cost for
+                    // nothing.
+                    'en-CN' => [
+                        'words_per_minute' => (int) env('NARRATION_WPM_BRIAN_EN_CN', 199),
+                        'measured_at_speed' => 1.0,
+                        'measured_on' => 'story 21 - 8,085 words across 270 scenes',
+                    ],
+
+                ],
             ],
         ],
 
@@ -192,7 +252,43 @@ return [
         | have stopped the run on the first one.
         */
         'pace_tolerance' => (float) env('NARRATION_PACE_TOLERANCE', 0.12),
-        'pace_min_words' => (int) env('NARRATION_PACE_MIN_WORDS', 50),
+
+        /*
+        | The sample the running average needs before it means anything, and
+        | 50 was wrong by a factor of twenty.
+        |
+        | THIS is what cancelled story 21's batch, not the locale key. Measured
+        | over both finished stories, the running average's own worst deviation
+        | from that story's FINAL rate — its noise, on a perfectly healthy run:
+        |
+        |     cumulative words     story 9        story 21
+        |     ----------------     --------       ---------
+        |         50               +9.9%          +12.6%   <- fired at scene 2
+        |        400               +8.8%           +6.9%
+        |        800               +3.9%           +3.5%
+        |       1000               +2.3%           +1.9%
+        |       1500               +1.0%           +1.8%
+        |
+        | At 50 words the instrument's own noise is +12.6% against a 12%
+        | tolerance. The guard was not measuring the narrator; it was measuring
+        | where the sentence breaks happened to fall in the first two scenes.
+        | Correcting the locale key would not have helped — with en-CN recorded
+        | at its true 199 wpm, scene 2's running average of ~225 is still +12.6%
+        | and the batch is still cancelled.
+        |
+        | 1,000 is the knee of the curve: noise drops to ~2%, a fifth of the
+        | tolerance, and 800 -> 1000 halves it while 1000 -> 1500 does almost
+        | nothing. It is reached at scene 30 of story 9 and scene 34 of story
+        | 21, so a systematic drift is still caught with 85% of a 270-scene run
+        | unspent — and story 9's real defect, a script sized at 160 read at
+        | 197, is +23% and nowhere near the noise floor at that point.
+        |
+        | The trade is stated plainly because it is a real one: the guard now
+        | costs ~30 scenes of narration before it can fire, where it used to
+        | cost two. Two was not early, it was wrong — it fired on healthy runs,
+        | which is the failure mode that gets a guard switched off.
+        */
+        'pace_min_words' => (int) env('NARRATION_PACE_MIN_WORDS', 1000),
     ],
 
     'audio' => [
@@ -268,6 +364,65 @@ return [
     | NSSM service registration that replaces Supervisor.
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | Delivery
+    |--------------------------------------------------------------------------
+    |
+    | Where the finished MP4 is put so a human can find it.
+    |
+    | The render workspace is not that place and was never meant to be. It sits
+    | under `storage/app/renders/<slug>/` next to the scratch, it is named
+    | `final.mp4` for every story so twenty of them are twenty identically-named
+    | files in twenty directories, and neither of those is a property you want
+    | in the one artifact you actually open, upload and keep.
+    |
+    | So on a successful render the file is COPIED here as `<slug>.mp4`.
+    |
+    | Copied, not moved, and that is not timidity — a move breaks three things
+    | that all read the workspace copy:
+    |
+    |   1. Gate 3's player. `stories.video` streams
+    |      `RenderWorkspace::path('final.mp4')`, so a moved file is a 404 on the
+    |      gate whose entire job is watching the render.
+    |   2. The purge guard, which refuses to delete scratch unless `final.mp4`
+    |      exists AND its tail decodes. Move the file and the guard fires
+    |      correctly on a render that actually succeeded, and ~700 MB of scratch
+    |      survives every time.
+    |   3. Re-render idempotency, which verifies an existing encode rather than
+    |      redoing it.
+    |
+    | The delivered copy is therefore yours: rename it, move it, delete it. The
+    | workspace copy is the app's record and stays where the app expects it.
+    |
+    | Empty means no delivery, which is the default. Nothing about the render
+    | changes when it is unset; the stage reports that it is off and succeeds.
+    |
+    */
+
+    'delivery' => [
+
+        /*
+        | An absolute path OUTSIDE the project. A relative path is refused
+        | rather than resolved, because "relative to what" has three plausible
+        | answers here — the project root, the storage root, and the worker's
+        | working directory — and picking one silently would put the file
+        | somewhere the operator has to hunt for.
+        */
+        'path' => env('RENDER_DELIVERY_PATH'),
+
+        /*
+        | Create the directory if it is not there. On by default: an operator
+        | pointing at a folder they have not made yet is the ordinary case, and
+        | failing the last stage of a forty-minute render over `mkdir` is not a
+        | useful safety property.
+        |
+        | The typo case it does NOT protect against — a wrong drive letter — is
+        | caught separately, by refusing when the parent does not exist.
+        */
+        'create' => (bool) env('RENDER_DELIVERY_CREATE', true),
+    ],
 
     'queues' => [
         'render' => env('RENDER_QUEUE', 'render'),

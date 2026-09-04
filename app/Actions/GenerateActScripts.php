@@ -88,6 +88,15 @@ class GenerateActScripts
             sequence: $act->sequence,
             title: (string) $act->title,
             summary: (string) $act->summary,
+            // Both of these were dropped here, and the prompt has been asking
+            // for them the whole time. `actPrompt()` prints "COSTS: %s" for
+            // every act and "What this act must cost the narrator: %s" for the
+            // one being written; with the beat left at its default both lines
+            // rendered empty, so the field required at outline, checked at
+            // Gate 1 and surfaced on the page never reached the generator that
+            // needed it. The phase is new and would have gone the same way.
+            escalationBeat: (string) $act->escalation_beat,
+            phase: $act->phase,
         ))->all();
 
         $targetWords = $this->targetWordsPerAct($story, $acts->count());

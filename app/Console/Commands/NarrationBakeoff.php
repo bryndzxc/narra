@@ -35,9 +35,9 @@ use Throwable;
  *
  * On the ledger: these are evaluation spend, not the cost of a video. They are
  * still written, because "every paid API call writes a row" has no exceptions —
- * but they carry a `bakeoff_` operation name so a per-video total can exclude
- * them in one predicate. And they are written to a bakeoff directory, never to
- * the scene's real audio path: a probe must not become the narration.
+ * but they are written as CostCategory::Evaluation, which keeps them out of the
+ * story's total. And they go to a bakeoff directory, never to the scene's real
+ * audio path: a probe must not become the narration.
  */
 class NarrationBakeoff extends Command
 {
@@ -229,13 +229,21 @@ class NarrationBakeoff extends Command
         return $speeds;
     }
 
-    /** Rename the operation so evaluation spend is filterable in one predicate. */
+    /**
+     * Re-file the call as evaluation spend.
+     *
+     * This was CostCategory::Asset — the strictest gate in the ledger — on a
+     * command whose own docblock three screens up calls the takes EVALUATION
+     * spend. A probe of one scene at three speeds is not the 150-250 stills and
+     * per-scene TTS that Gate 2 exists to hold back, and it was never part of
+     * what the video cost.
+     */
     private function tag(ProviderUsage $usage, float $speed): ProviderUsage
     {
         return new ProviderUsage(
             provider: $usage->provider,
             operation: 'bakeoff_narration',
-            category: CostCategory::Asset,
+            category: CostCategory::Evaluation,
             quantity: $usage->quantity,
             unit: $usage->unit,
             usdCost: $usage->usdCost,

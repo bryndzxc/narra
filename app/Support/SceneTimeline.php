@@ -46,7 +46,7 @@ final class SceneTimeline
 
     public function samplesPerFrame(): int
     {
-        return intdiv($this->sampleRate, $this->fps);
+        return AudioFrames::samplesPerFrame($this->sampleRate, $this->fps);
     }
 
     /**

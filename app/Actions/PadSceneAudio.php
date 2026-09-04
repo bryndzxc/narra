@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Exceptions\FfmpegException;
 use App\Services\Ffmpeg;
+use App\Support\AudioFrames;
 use App\Support\Directory;
 use InvalidArgumentException;
 
@@ -25,20 +26,14 @@ class PadSceneAudio
     /**
      * Samples occupied by one video frame.
      *
-     * Whole numbers only. If the sample rate does not divide by the frame rate,
-     * a frame is a fractional number of samples and nothing downstream can be
-     * exact — so this refuses rather than rounding quietly.
+     * Kept as a name callers already use; the arithmetic lives in AudioFrames
+     * so there is one copy of it. There were three — here, in SceneTimeline and
+     * inline in the guard below — and three copies of an expression is three
+     * chances for one of them to be corrected alone.
      */
     public static function samplesPerFrame(int $sampleRate, int $fps): int
     {
-        if ($fps <= 0 || $sampleRate <= 0 || $sampleRate % $fps !== 0) {
-            throw new InvalidArgumentException(
-                "Sample rate {$sampleRate} does not divide evenly by {$fps} fps, so a video "
-                .'frame is not a whole number of samples. Exact A/V duration is impossible.'
-            );
-        }
-
-        return intdiv($sampleRate, $fps);
+        return AudioFrames::samplesPerFrame($sampleRate, $fps);
     }
 
     /**
@@ -65,7 +60,7 @@ class PadSceneAudio
         $audio = config('render.audio');
         $rate = (int) $audio['sample_rate'];
 
-        $target = $frames * self::samplesPerFrame($rate, (int) config('render.video.fps'));
+        $target = $frames * AudioFrames::samplesPerFrame($rate, (int) config('render.video.fps'));
 
         // Decoded, explicitly, not the container's declared length. This number
         // decides how much silence is appended and guards against apad,atrim
@@ -89,7 +84,12 @@ class PadSceneAudio
         // compares like with like. Without this a 48 kHz source would report
         // more samples than a 44.1 kHz target can hold and fail as "longer than
         // its frame count allows" while being nothing of the kind.
-        $sourceAtRenderRate = (int) round($source * $rate / $sourceRate);
+        //
+        // Shared with AudioFrames::forSamples() rather than written out again.
+        // The number that decides how many frames to allocate and the number
+        // that decides whether padding would become a trim must be the same
+        // number — two copies of one expression is how they come to disagree.
+        $sourceAtRenderRate = AudioFrames::atRenderRate($source, $sourceRate, $rate);
 
         // apad,atrim would silently CUT a scene whose audio runs past its frame
         // count, clipping the tail of the last word. That must never happen —

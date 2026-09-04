@@ -10,8 +10,10 @@ use App\Models\Scene;
 use App\Models\Story;
 use App\Services\Ffmpeg;
 use App\Support\RenderWorkspace;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * One scene's Ken Burns clip. The fan-out stage.
@@ -37,9 +39,16 @@ class RenderSceneClipJob extends RenderStageJob
         }
 
         $output = $workspace->clipPath($scene);
-        $expected = $scene->framesAt();
-
         $ffmpeg = app(Ffmpeg::class);
+
+        // Fill in the true length for any row written before the sample columns
+        // existed, once, at the only point that already has both the file and a
+        // probe to hand. Without it framesAt() falls back to milliseconds and a
+        // scene whose duration lands on a frame boundary comes out one frame
+        // short of its own audio — story 21 scene 201, four samples over.
+        $this->backfillSampleCount($ffmpeg, $workspace, $scene);
+
+        $expected = $scene->framesAt();
 
         // Idempotent, exactly as the CLI is: a clip that already holds the right
         // number of frames is not re-encoded. Re-running a completed stage must
@@ -58,6 +67,11 @@ class RenderSceneClipJob extends RenderStageJob
             outputPath: $output,
             audioDurationMs: $scene->duration_ms,
             motion: $scene->motion_preset,
+            // Exact, from the sample count. Passing the duration and letting the
+            // renderer re-derive would reintroduce the rounding this job just
+            // avoided, and the two would disagree by one frame on about one
+            // scene in a hundred.
+            frames: $expected,
         );
 
         // Decoded, not declared. A scene clip is seconds long so the decode is
@@ -84,6 +98,71 @@ class RenderSceneClipJob extends RenderStageJob
             $scene->motion_preset->value,
             $result['elapsed_seconds']
         )];
+    }
+
+    /**
+     * Record the audio's true length on a row that predates the sample columns.
+     *
+     * A one-off per scene, and deliberately lazy rather than a migration or a
+     * backfill command: this is the only place in the pipeline that already
+     * holds both the audio file and an ffprobe, so filling it here costs one
+     * probe on a row that has never been probed and nothing at all afterwards.
+     *
+     * Never fatal. This is an optimisation of accuracy, not a precondition:
+     * a file ffprobe cannot count samples in — a fixture stub, a format it
+     * does not decode — leaves the columns null and framesAt() falls back to
+     * milliseconds, which is exactly the behaviour that existed before these
+     * columns. And the fallback is not unguarded: PadSceneAudio refuses at
+     * concat if a frame count cannot hold its audio, which is the check that
+     * found this bug in the first place.
+     *
+     * Logged rather than swallowed, at debug, because on fixture stories this
+     * is the normal case and a warning per scene would be noise.
+     */
+    private function backfillSampleCount(Ffmpeg $ffmpeg, RenderWorkspace $workspace, Scene $scene): void
+    {
+        $audio = $scene->sceneAudio->first();
+
+        if ($audio === null || $audio->audio_path === null) {
+            return;
+        }
+
+        if ($audio->samples !== null && $audio->sample_rate !== null) {
+            return;
+        }
+
+        $path = $workspace->sourcePath((string) $audio->audio_path);
+
+        if (! is_readable($path)) {
+            return;
+        }
+
+        try {
+            $samples = $ffmpeg->sampleCount($path, deep: true);
+            $sampleRate = $ffmpeg->sampleRate($path);
+        } catch (Throwable $e) {
+            Log::debug('could not read a sample count; frames fall back to milliseconds for this scene', [
+                'scene' => $scene->sequence,
+                'path' => $audio->audio_path,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        // A non-positive reading is not a length. Storing one would make
+        // framesAt() throw instead of falling back, turning a probe that
+        // could not answer into a failed render.
+        if ($samples <= 0 || $sampleRate <= 0) {
+            return;
+        }
+
+        $audio->forceFill([
+            'samples' => $samples,
+            'sample_rate' => $sampleRate,
+        ])->save();
+
+        $scene->load('sceneAudio');
     }
 
     /**

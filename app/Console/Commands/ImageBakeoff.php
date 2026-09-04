@@ -40,8 +40,9 @@ use Throwable;
  *
  * On the ledger: these rows are evaluation spend, not the cost of a video. They
  * are still written, because "every paid API call writes a row" has no
- * exceptions — but they carry `bakeoff_` operation names so a per-video total
- * can exclude them in one predicate. Attributing a model bake-off to the story
+ * exceptions — but they are written as CostCategory::Evaluation, which is what
+ * keeps them out of the story's total. The `bakeoff_` operation name says which
+ * probe; the category is what does the excluding. Attributing a model bake-off to the story
  * whose prompts it borrowed would overstate what that video cost to make.
  */
 class ImageBakeoff extends Command
@@ -135,7 +136,7 @@ class ImageBakeoff extends Command
 
         $this->line('');
         $this->line(sprintf('  %d images at $%.4f = $%.4f', $total, $rate, $total * $rate));
-        $this->warn('  Evaluation spend. It writes cost rows tagged bakeoff_* so a per-video total can exclude it.');
+        $this->warn('  Evaluation spend: logged in full, and deliberately not part of this story total.');
         $this->line('');
 
         if ($this->option('dry-run')) {
@@ -288,13 +289,21 @@ class ImageBakeoff extends Command
         };
     }
 
-    /** Rename the operation so evaluation spend is filterable in one predicate. */
+    /**
+     * Re-file the call as evaluation spend.
+     *
+     * The operation name says WHICH evaluation; the category is what keeps it
+     * out of the story total and out of the way of Gate 2. This used to be
+     * CostCategory::Reference, borrowed because there was nothing else to
+     * borrow, which meant a bake-off both inflated the video it was attached
+     * to and could only run on a story past scenes_drafted.
+     */
     private function tag(ProviderUsage $usage, string $operation): ProviderUsage
     {
         return new ProviderUsage(
             provider: $usage->provider,
             operation: $operation,
-            category: CostCategory::Reference,
+            category: CostCategory::Evaluation,
             quantity: $usage->quantity,
             unit: $usage->unit,
             usdCost: $usage->usdCost,

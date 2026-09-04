@@ -105,6 +105,55 @@ cannot drift. If they ever must diverge, move the word band, not the runtime.
    length. Each act opens with a line engineered to carry the viewer forward.
    `acts.is_rehook_written` tracks it; Gate 1 review surfaces it.
 
+3a. **The arc has five movements and the reversal is a PHASE, not a scene.**
+   This is the largest single correction the genre contract has taken, and it
+   came from watching story 21 back rather than from any check failing. That
+   story ran escalation → escalation → exposure → end, and the narrator held
+   power for exactly one scene out of two hundred and seventy. Every structural
+   check passed on it: seven acts, a beat each, a self-justifying antagonist, an
+   exposure with eighty witnesses in it. It was still the wrong video.
+
+   What the niche actually pays off on is:
+
+   ```
+   escalation → the narrator LEAVES → the antagonist SEARCHES →
+   the narrator REFUSES → end
+   ```
+
+   The reference channel frames its own videos on the gap rather than on the
+   grievance — *"never expecting to see me and our son 5 years later"* is a
+   departure and a refusal, and no exposure at all. Three spine columns carry it:
+
+   - **`departure`** — how and when the narrator goes, and whether they announce
+     it. **They must not**, and this is the detail with the least margin in the
+     whole spine: an announced departure cannot be searched for, so it does not
+     weaken the reversal, it deletes it. Gate 1 flags one, with a negation window
+     in front of every marker so that "leaves without telling them" is not read
+     as the failure it is the opposite of.
+   - **`reversal_beats`** — what the antagonist does to find them and what each
+     attempt costs HER. The humiliation beats running the other way and
+     escalating the same. Gate 1 flags a search that costs her nothing named, and
+     one that reads as a single attempt rather than a phase.
+   - **`refusal`** — what the narrator says when finally found, and which earlier
+     moment it answers. `exposure_moment` is the public payoff; this is the
+     private one, and it is the thing viewers wait forty minutes for. It only
+     lands as an inversion, so the check is overlap: the refusal has to reuse the
+     specific language of the grievance, the justification or an escalation beat.
+     Gate 1 reports WHICH moment it matched, because "it answers something" is
+     worth less than "it answers act 3".
+
+   **The act count moved from six to seven for this**, and the acts are laid out
+   across the phases by `ActPhase::planFor()`: escalation 1–4, departure 5, search
+   6, refusal 7. Taking the room out of the escalation instead would have traded
+   one missing phase for another. The departure is clamped to leave at least two
+   acts behind it — a search with nowhere to run and a refusal in the same act as
+   the leaving is the compressed ending the whole structure exists to replace.
+
+   **Story 9 and story 21 are not regenerated.** Their outlines predate the phase
+   and Gate 1 says exactly that, once, as a warning naming what is missing —
+   rather than as three "missing field" problems on a shipped video. An outline
+   somebody has started fixing by hand gets the ordinary per-field checks back.
+
 4. **Narration is generated per scene, never as one 40-minute file.** One giant TTS
    call means one bad sentence forces a full re-bill. Per-scene audio is
    re-generatable in isolation and concatenated at mux time.
@@ -130,6 +179,34 @@ Both are supported and it is an operator choice per video, stored on
 
 A US-audience channel operated from the Philippines. This affects real technical
 decisions, so it lives in the spec rather than in someone's head.
+
+**Audience and setting are different things, and only one of them is fixed.**
+The audience is American and the narrator is American in every profile. Where
+the story is SET is a per-story choice, `stories.locale_profile`, picked on the
+new-story form and fixed from then on because the outline, the acts and the cast
+are all generated against it. Two profiles exist and neither replaces the other
+— they are meant to be run against comparable premises and compared:
+
+- **`en-US`** — American setting, below.
+- **`en-CN`** — Chinese setting, American English narration. The
+  translated-Chinese-web-novel register a large part of this niche runs on:
+  elders and in-laws with real authority over adult children, dowry and bride
+  price, face and losing face, filial duty, the eldest son, the family banquet.
+  Dialogue formal and direct — accusations stated outright rather than implied.
+  Yuan, metric units. It also suits the anime style better than American
+  suburbia does.
+
+Adding it needed no code in `LocaleGuard`, which is what the profiles being data
+was for. What it did need was a producer: `locale_profile` had no input anywhere,
+so a second profile would have been a column value no story could hold.
+
+**The two leaks are not the same leak, and only one moves with the setting.**
+Filipino idiom is a leak because of where the OPERATOR sits; a British spelling
+is a leak because of who the NARRATOR is. Neither changes when the story moves
+to China, so both lists are shared by every profile rather than copied into each
+— copies drift, and a newer profile that quietly caught less than the older one
+would look identical from outside. The setting-specific half is the only part
+that differs, and for `en-US` it turned out to be empty.
 
 **Script generation**
 - Stories must read as American. US settings, US names, US school system
@@ -203,9 +280,59 @@ package in one stage keeps the operator flow simple.
 
 **Thumbnail text**
 - 3–5 short overlay phrases, 3–5 words each. Must be readable at small size.
-- The app does not generate thumbnail images in this phase. It outputs the text
-  and the recommended still (operator flags a scene as `thumbnail_candidate` at
-  Gate 2).
+- Kept for the record and so a title and a picture can be checked against each
+  other. The composed thumbnails carry **no text**: in this format the title is
+  the hook, and words burned into the image compete with it at the size anyone
+  actually sees.
+
+**Thumbnail composition** — was out of scope, is not any more.
+
+The app handed over overlay text and a recommended still and composed nothing,
+so every video meant opening an image editor. That is the shape this file keeps
+naming from the other side: the sheet describing the work rather than doing it.
+
+- **The format is the channel's**: two stills side by side, cropped to portrait
+  panels, faces prominent, no text overlay. 1280×720, under 2 MB — YouTube's
+  numbers, and both asserted from the written file rather than from the
+  arguments that produced it.
+- **It composes from stills already owned and NEVER generates one.** That is the
+  constraint the feature is built around rather than a saving: a 270-scene story
+  has already paid for every frame it could want, and buying another one to crop
+  in half would be spending money to avoid making a choice. There is no provider
+  here, no contract and no fake, because there is no network call to fake — and
+  a test asserts a composition run writes no `cost_entries` row.
+- **3–4 candidates, picked at Gate 4 the way a title is.** The pick is copied to
+  `RENDER_DELIVERY_PATH` as `<slug>.jpg`, beside `<slug>.mp4`. One folder, one
+  name, both files an upload needs.
+- **The ranking is a proxy for face size and says so.** Nothing in this stack can
+  find a face in a JPEG — FFmpeg cannot, GD cannot, and buying a service that can
+  would break the one rule the feature has. So `ThumbnailFraming` reasons from
+  the two things the app knows exactly: who is recorded in the frame
+  (`scene_character`), and how the frame was written (the frame sentence at the
+  top of `image_prompt`, which is the text that PRODUCED the picture). A wide
+  establishing shot makes a poor thumbnail regardless of how good the frame is,
+  and story 21 has exactly that flagged as a candidate — scene 82, a chair in an
+  empty room, nominated by the same model that wrote the scene.
+  **It ranks; it does not decide.** The reasons are printed beside each
+  composition and the operator is looking at the actual image, so a bad ranking
+  is visibly a bad ranking rather than an unexplained order. Same split as every
+  guard here: the check detects, the operator judges.
+- **The pairing is the editorial part, and the reversal phase is what made it
+  possible.** Two panels from the same character in the same act is one still cut
+  in half. The pair score prefers the two ENDS of the arc — an escalation-phase
+  still on the left, a search or refusal still on the right — which is how this
+  niche's thumbnails actually read, and `acts.phase` is what can answer it. On a
+  story outlined before the phase existed it falls back to opposite ends of the
+  scene list, which is the same idea with less to go on. Earlier scene left,
+  later right: a before-and-after reads the way the language does.
+- **Widening is said out loud.** If the flagged pool cannot fill the
+  compositions the search widens to every still, and the page says it widened.
+  A silent widening would make the Gate 2 flags look respected when they were not.
+- The size cap is walked, not assumed. `quality_ladder` steps the MJPEG quality
+  down until the file fits and fails loudly if the last rung is still over. At
+  1280×720 the first rung measures ~120 KB and the ladder will never be walked —
+  but "will never" is a sentence this project has been wrong about before, and a
+  limit nothing enforces is a limit in name only.
 
 **Publish checklist** — rendered as a checklist at Gate 4, not prose:
 - Altered or synthetic content disclosure toggled
@@ -224,6 +351,7 @@ title_options (json, 5 strings), title_selected,
 description (longtext),
 tags (json), tags_char_count (int),
 thumbnail_text_options (json),
+thumbnail_options (json), thumbnail_selected,
 thumbnail_scene_id (nullable fk),
 pinned_comment (text),
 checklist_state (json),
@@ -281,6 +409,16 @@ If `libass` is missing the whole subtitle approach collapses — fix that first.
 the headroom is deliberate. Scratch is purged on successful render — and purge must
 refuse to run unless `final.mp4` exists *and* decodes, since existence alone is not
 success. Keep the final MP4, the `.ass`, and the scene manifest.
+
+**The deliverable is also copied out.** `RENDER_DELIVERY_PATH` names a folder
+outside the project and the finished file lands there as `<slug>.mp4` — one
+findable file per story, rather than twenty files all called `final.mp4` in
+twenty scratch directories. The chosen thumbnail lands beside it as `<slug>.jpg`
+under the same rules: every refusal about a path this app does not control lives
+in `App\Support\DeliveryFolder`, once, because two hand-maintained copies of one
+guard is how they come to disagree. Budget for the second copy: it is ~530 MB per story
+and it is deliberate. A move would break Gate 3's player, the purge guard and
+re-render idempotency, all three of which read the workspace copy.
 
 **Server:** rendering is CPU-bound and this format is long. Never run renders on the
 process serving HTTP.
@@ -448,7 +586,11 @@ Written for Phase 1, but Phase 0 code should not contradict it.
 
 **stories**
 ```
-id, title, premise, format (enum: single, anthology),
+id, title, premise, cast_age_profile (nullable),
+narrator_grievance, antagonist_justification,
+withheld_information, exposure_moment,
+departure, reversal_beats, refusal,
+format (enum: single, anthology),
 locale_profile (default 'en-US'), voice_id,
 target_duration_min (default 30), target_duration_max (default 40),
 status, target_publish_at (UTC, nullable),
@@ -467,11 +609,24 @@ Gate 4 sits on `metadata_ready` → `published`.
 
 **acts**
 ```
-id, story_id, sequence (int), title, summary,
+id, story_id, sequence (int),
+phase (escalation | departure | search | refusal, nullable),
+title, summary, escalation_beat,
 script (longtext), is_rehook_written (bool),
 start_ms (int, nullable — filled after render), duration_ms (int, nullable)
 ```
 `title` doubles as the YouTube chapter title — write it to work as both.
+
+`phase` is persisted rather than derived from `sequence`, because the act SCRIPT
+generator branches on it. The previous prompt could only ask "is this the last
+act" and answered every other act with "end worse off than it started" — right
+for act 2, and the exact opposite of what act 6 of seven needs, where the ground
+is being lost by the antagonist. Null on an anthology, where each act is a
+self-contained story running the whole arc itself.
+
+`escalation_beat` is what the act costs **and to whom**: the narrator before the
+departure, the antagonist after it. One column, two directions, and `phase` is
+what says which.
 
 **characters**
 ```
@@ -604,6 +759,32 @@ than pooled.
   re-encodes on ingest regardless, so a PCM master buys no audible quality while
   doubling upload size (~570 MB vs ~275 MB per video). Keep the codec behind a config
   flag in case a PCM master is ever wanted.
+- **`duration_ms` is a lossy intermediate and must never be an input to frame
+  or sample arithmetic.** It is the honest RAW AUDIO duration and the pace
+  guard, the estimates and the operator pages all read it — but a millisecond
+  cannot represent where the audio actually ends. Story 21 scene 201:
+  ElevenLabs returns `pcm_24000` against a 44.1 kHz render, 360002 samples at
+  24 kHz is 15.0000833 s, `duration_ms` stores 15000, and
+  `ceil(15000/1000*30)` is exactly 450 frames — 661,500 samples, against audio
+  needing 661,504. Four samples over, so `apad` became `atrim` and
+  `PadSceneAudio` refused. **The guard was right; the frame count was wrong**,
+  and the ceil() guarantee the whole pipeline rests on had been broken three
+  steps upstream.
+  Intermittent by construction, which is what makes it dangerous: ceil()
+  normally leaves up to a frame of headroom and absorbs the loss. It only bites
+  when `duration_ms * fps / 1000` lands exactly on an integer, which at 30 fps
+  means a duration that is a multiple of 100 ms — about one scene in a hundred.
+  Story 21 had one in 270. **Story 9 had none in 186 and shipped on luck rather
+  than on correctness**, which is the part worth remembering: a defect this
+  shape passes most runs.
+  Compute frames from the sample count and the render rate, in integers:
+  `App\Support\AudioFrames`. It also owns the source-to-render rate conversion
+  and `samplesPerFrame`, because both had been written out separately in
+  `PadSceneAudio`, `SceneTimeline` and the guard — three copies of one
+  expression, which is three chances for one of them to be corrected alone.
+  The millisecond path survives as `forMilliseconds()`, named rather than
+  implied, for fixture stories that carry a duration and no samples.
+
 - **Comparisons must happen in one resolution.** ASS is centisecond-resolution and
   cannot represent every frame boundary — `105365/30 = 351216.667 cs`. Comparing a
   centisecond timeline against a millisecond-rounded duration is a category error that
@@ -697,6 +878,15 @@ MuxAndSubtitle            → gate 3
 PurgeRenderScratch                   [chained after the mux, so a failed render
                                       never reaches it — scratch is what a
                                       re-run reuses]
+DeliverFinalVideo                    [copies final.mp4 to RENDER_DELIVERY_PATH
+                                      as <slug>.mp4. Last, and AFTER the purge:
+                                      it is the only stage touching a path the
+                                      app does not control, and a failure ahead
+                                      of the purge would strand ~700 MB of
+                                      scratch on a render that succeeded.
+                                      Copy, never move — Gate 3's player, the
+                                      purge guard and re-render idempotency all
+                                      read the workspace copy]
 GenerateMetadata                     [needs act timestamps from the render;
                                       runs on the `text` queue]
                           → gate 4
@@ -736,9 +926,115 @@ GenerateMetadata                     [needs act timestamps from the render;
   of bug on every platform.
 - Image prompts and story titles reach the filesystem — treat every one as hostile
   input. Sanitize to a slug for filenames; never pass raw user text as a path.
+- **The art style is one config constant and nothing else may mention a medium.**
+  `scenes.art_style` is appended to every prompt by `ImagePromptBuilder`, and the
+  script writer is explicitly told not to describe the style, medium, palette or
+  rendering. Retuning the channel's look is therefore an edit to one value —
+  audited and confirmed. Preview a candidate before adopting it with
+  `style:preview <story> --style-file=…`, which overrides the constant for one
+  process and never writes it back.
+- **Idealised beauty is a property of the medium, so it is a style line.**
+  This niche runs on the bishounen/bishoujo treatment, not on photoreal
+  proportions in a cel-shaded medium — large expressive eyes with catchlights,
+  clean symmetrical features, refined jawlines, glossy strand-rendered hair.
+  Antagonists included, and that clause is load-bearing: a generator handed a
+  character who is in the wrong will draw them plain or unkempt to say so, and a
+  story that telegraphs its villain through their face has given away its own
+  reveal. Never named through a real or fictional person — the treatment is
+  described, so the look is reproducible from the words and a retune is an edit
+  to a sentence.
+  It has a price, paid in the same block: idealised faces converge, so hair
+  carries MORE of the identification than before, not less. The trio frame in
+  `style:preview` is what that is checked against.
+- **The style constant describes how age is DRAWN; the story says who is in it.**
+  Anime convention renders adults noticeably younger than a photograph does, so
+  the first version of the age line — "adults are drawn at their true age,
+  never softened toward youth" — answered an anime problem with a photographic
+  rule, and the only thing the generator has for "old" is photoreal ageing
+  texture. A woman written as late sixties came back at eighty-five with the
+  wrinkles and liver spots drawn on. The line now shifts the baseline down about
+  a decade and explicitly refuses to compress the range: relative age must stay
+  legible and must agree with the narration, because a picture that argues with
+  the narrator is worse than one drawn slightly young.
+  The rest is casting, not rendering, and one string shared by every story
+  cannot carry it. `stories.cast_age_profile` is optional operator text read by
+  the extraction prompt — the one place a character's age is decided and frozen.
+  It steers only ages the script leaves unstated; where the script states one,
+  the script wins.
+- **Retuning the style invalidates every reference sheet, and the app says so.**
+  A sheet conditions every still its character appears in, so a face drawn in
+  the old look pulls 30-90 stills back toward it. `character_references`
+  carries a `style_fingerprint` written at generation; a mismatch is a REFUSAL
+  at asset dispatch and a NULL is a warning that says "unknown", never "fine".
+  See `StyleFingerprint` and `Character::referenceStyleState()`.
+- **A per-character description outranks the style constant, so rules about a
+  person live in the extraction prompt and in `CharacterTextGuard`.** The cast
+  block is assembled AHEAD of the style block and is scoped to one name, and
+  that ordering decided two arguments the style lost: `scenes.art_style` said
+  "never by wrinkles, creases, liver spots, sagging" through two style previews
+  and "deeply lined round face, soft sagging jawline" beat it both times. The
+  rule now sits upstream — banned in the prompt and refused by the guard — which
+  is the same "a guard must be upstream of the thing it distrusts" that
+  `PreflightAssetDispatch` exists for. Hair length and clothing are per-character
+  for the same reason and are not house style.
+- **Build is no longer an identity or age axis.** Measured, not assumed: a
+  character written "broad and thick through the chest" rendered lean, and one
+  written "small and frail with rounded stooped shoulders" rendered upright —
+  both under the current style, and again with an explicit style clause saying
+  stated build is preserved exactly. The clause changed nothing. Idealised
+  character art reshapes bodies toward one frame, and the style's own "men are
+  tall and sharp-featured" line argues against a stated build directly. That
+  line stays — attractiveness is the point of the current look — so build is
+  what gives way: the extraction prompt now says DO NOT DESCRIBE BUILD, HEIGHT
+  OR FRAME, and age asks for hairline, hair colour and face shape only. Words
+  spent on build are worse than absent, because they read as coverage that is
+  not there.
+  The cost is measured too and is worth knowing: with build gone, a
+  forty-year-old lead reads early twenties rather than late twenties, and two
+  women thirty years apart in middle age are no longer cleanly orderable. The
+  extremes still order correctly, which is what the prompt's group check asks
+  for. If middle-age ordering ever matters to a plot, the fix is casting — see
+  `stories.cast_age_profile` — not another rendering clause.
+
+- **Two style fixtures, kept deliberately.** `style-preview-fixture` (story 18)
+  holds the pre-retune cast and `style-preview-fixture-2` (story 20) the cast
+  extracted after the hair, headwear, ageing-texture and build changes. Neither
+  is a video and neither is ever re-extracted: they are the measuring stick, and
+  a measuring stick that moves measures nothing. Point `style:preview` at both
+  when changing the look — the pair is what separates "the style changed" from
+  "the descriptions changed", which is a distinction two previews in a row
+  could not make.
+- **Character descriptions are written as silhouette, not texture.** In an anime
+  style at mid-shot and wide-shot distance, "faint smile lines at the corners of
+  her eyes" renders as nothing — so a cast built out of surface detail is
+  identifiable in close-up and anonymous everywhere else. Hair SHAPE must differ
+  across the cast rather than only colour and length, and age must live in
+  hairline, face shape and build rather than in wrinkles. Enforced by prompt in
+  `characterSystemPrompt()` and by `CharacterTextGuard` on both text fields.
 - FFmpeg *filter-graph* path escaping is separate from argument escaping and is
   platform-specific. It lives in exactly one method, `escapeFilterPath()`. See
   "Windows constraints".
+- **Evaluating the channel is not the cost of a video.** `CostCategory::Evaluation`
+  covers `style:preview`, `images:bakeoff` and `narration:bakeoff`: real spend on
+  real files, logged in full, ungated, and the one category kept out of
+  `stories.total_cost_usd`. Before it existed all three borrowed a category whose
+  gate they then had to work around — a style preview wants the earliest story
+  that HAS a cast, and `reference` unlocks two statuses later, so a run generated
+  an image, billed for it, and threw a gate violation while writing the row.
+  Three docblocks promised a per-video total could exclude this spend "in one
+  predicate" and supplied none; `countsTowardVideoCost()` is the predicate.
+  Kept visible beside every total by `Story::evaluationSpend()` — logged and
+  nowhere on screen is the same defect one level up.
+- **The operator console has one stylesheet, and one rule for editing it: no
+  refusal, warning or advisory may get quieter.** This project has been saved
+  repeatedly by a message being loud, and a restyle is the easiest place in the
+  world to lose that — nothing fails, no test goes red, and the page simply
+  becomes calmer than the truth. Alerts carry an accent edge, a stronger tint
+  and a shadow, and they are deliberately louder than the panels around them.
+  Consecutive alerts of the same kind CLUSTER rather than being toned down:
+  Gate 2 on a 168-scene story emits fourteen `style_notes` advisories in a row,
+  and the fix for a column of identical amber boxes is to close the gaps, never
+  to quieten any of them.
 - Money is `decimal(10,4)`, never float.
 - Durations in the DB are integer milliseconds. Convert at the edges only.
 - Migrations are never edited after being run. New change, new migration.
@@ -783,6 +1079,129 @@ Closed since:
 - `ScenesGate::assetGenerationRefusal()` — computed, rendered nowhere. The panel
   simply vanished when generation was unavailable, so the page said nothing
   where it should have said why.
+- **The reference-sheet staleness check `ImagePromptBuilder` claimed to have.**
+  Its docblock promised since Phase 2 that "if the channel's look is retuned,
+  the sheets are stale and the operator is told so rather than the mismatch
+  being absorbed silently". Nothing implemented it: no column, no comparison, no
+  surface. Found with a live instance — story 9's 38 sheets are painted realism
+  and the configured style is now anime. A documented guard is worse than a
+  missing one, because it is read as covered.
+- **`.panel.money` was written by three blades and defined by nothing.** The
+  first instance of this defect found in the STYLESHEET rather than in PHP, and
+  the audit had never looked there. Three surfaces write `class="panel money"` —
+  the outline write button, the Gate 2 asset dispatch and the new-story estimate
+  — and all three are the screen where an operator authorises spending. The rule
+  did not exist, so all three rendered as an ordinary panel: the money screens
+  looked exactly like the screen above them. Identical in shape to `.alert.err`,
+  which had spent a phase rendering every refusal in the default border colour
+  for the same reason. **A class the markup asks for and the stylesheet does not
+  answer fails silently and looks deliberate**, which is worse than a missing
+  method — a missing method throws. Found during the console restyle by
+  extracting every class combination the views use and diffing it against the
+  rules that exist; that diff is worth re-running when a phase ends.
+
+- **`StyleNotesGuard` checked one of the two fields it needed to.** `description`
+  carried the identical defects in production the whole time: two leads whose
+  hair was "usually" pulled back, and a man whose description said he *walks*
+  with a stiffness in one hip — a gait, asking for him mid-stride in the frames
+  where he is sitting down. The guard could not fire on the field beside the one
+  it watched, and a check that cannot fire is indistinguishable from one that
+  passed. Now `CharacterTextGuard`, over both fields.
+- **The guard's object list did not contain the object that was in the data.**
+  "…suspenders, and a wooden cane" named no carrying verb the guard knew and no
+  listed noun, so it passed, and that man held a cane in all thirty-odd of his
+  scenes. The list was also matched with `str_contains`, which forced hacks like
+  `'mic '` and `'pen '` that then failed at a line end. Whole-word matching now,
+  which is what makes it safe to list `stick` next to "lipstick".
+- **The console audit — every stage that could only be started from a
+  terminal.** Not a dead mechanism this time but a missing caller, which is the
+  same seam from the other side. `story:write`, `story:scenes`,
+  `render:dispatch`, `render:cancel` and `assets:timings` had no button, and
+  story creation had no UI entry point at all — so the app built so an operator
+  would not need a terminal required one to begin, and required one again at
+  four more points. Each now has a button on the page its decision belongs to,
+  reaching the same Action through the same `OperatorAction` predicate.
+- **Cast extraction had no `render_jobs` row, so a failed cast was invisible.**
+  `DraftSceneListJob::failed()` looked for a `draft_scenes` row to mark failed;
+  `DraftScenes` opens that row itself and never got that far, because the job
+  dies in `ExtractCharacters`, which runs first and recorded nothing. Three
+  dispatches of story 21 died there and the operator's only surface said the
+  story had stopped after its act scripts. `RenderStage::ExtractCast` exists
+  now and the Action wraps itself in it, with a line per billed attempt — so
+  the row says not just that it failed but that it failed twice and bought two
+  calls doing it.
+- **The retry prompt restated the guard's rules by hand, and the copies
+  disagreed.** The guard refused `weathered`; the rejection note listed
+  "wrinkles, deeply lined, sagging, liver spots" and did not name it. So an
+  extraction rejected for a word was corrected with a note that never mentioned
+  the word, re-asked, and produced it again — six billed calls across three
+  dispatches, all refused for the same term. `CharacterTextGuard::ruleSummary()`
+  generates the note from the lists it actually enforces. A hand-written summary
+  of a machine-checked list is a second source of truth that only has to agree
+  on the day it is written.
+- **`assert()` named the rule and withheld the text.** `textProblems()` — the
+  internal retry note nobody reads — carried both. An operator-facing failure
+  strictly less informative than an internal one is backwards, and answering
+  "on what text did it fire" cost a billed call that should have been a grep.
+- **The style constant's ageing-texture rule had no enforcement.** It was
+  correct, it was in the right file, and it lost to a description sitting in
+  front of it — twice, visibly, in previews that were run to look at something
+  else. A rule stated where it cannot win is the documented-guard shape again.
+  `CharacterTextGuard::AGEING_TEXTURE` refuses it at extraction now, and the
+  first real extraction after the rule went in tried to satisfy it by writing
+  "faint smile lines absent" — a negation an image model does not honour, which
+  the guard caught. The prompt is the request; the guard is the invariant.
+- **`GenerateActScripts::localeWarnings()` was printed only by `story:write`.**
+  Computed since Phase 2, surfaced on no page — so the one place a locale
+  warning could be acted on was a terminal, on the app built so an operator
+  would not need one. It matters more with two settings than it did with one:
+  `en-CN`'s warn list is mostly imperial units, which is exactly what a model
+  trained on American prose leaks without noticing. Now on the Gate 1 page,
+  beside the setting it is judged against.
+- `OperatorAction::DispatchRender` **named a caller that consulted nothing.**
+  Its `callers()` said "PreviewGate::reject()"; that method compared
+  `$status === Rendered` by hand. Same answer that day — which is exactly why it
+  could rot. Worse, `reject()` moved the story to `rendering` and then printed
+  the dispatch command: a status meaning "a clip batch is in flight" with no
+  batch in flight, until somebody opened a terminal. It dispatches now, and a
+  refused dispatch leaves the status alone.
+- **The Gate 4 checklist asked questions it could not answer.** "Category set"
+  is a tick box that cannot say WHICH category, so the answer lived in the
+  operator's memory and a video was very nearly published as Gaming. Same for
+  the video and caption languages, and for Shorts remixing — all three the same
+  value on every upload, none of them written down anywhere. **An item the
+  sheet cannot answer is unfalsifiable: you can only agree with it**, which is
+  the `target_publish_at` defect one step along — that one asked about
+  something that could not exist, this one asks about something that exists
+  only in a person's head.
+  Fixed the same way: make the thing exist. `youtube.channel` holds the
+  channel's upload settings, each checklist item names the value it is asking
+  about, and `PublishChecklist` resolves them onto the sheet and into the
+  copy-paste block. The tick now means "I entered THIS". One place to change,
+  and wrong in a way somebody can SEE rather than wrong in a way somebody has
+  to remember.
+  The warning about a tick with nothing behind it was hand-written for the
+  scheduled time and was true of every per-story item the whole time it named
+  one field — so a tick certifying a pinned comment that did not exist passed
+  silently, next to a generator that had written one. It asks the question of
+  all of them now, which is what makes the next per-story item covered by
+  construction rather than by somebody remembering to add a second copy.
+  A per-story item with nothing behind it renders "nothing to enter" and never
+  a blank: a blank beside a tick box reads as "nothing needed here".
+
+- **The escalation beat never reached the generator that asked for it.** Found
+  while wiring `acts.phase` through the same path. `GenerateActScripts` built its
+  `ActOutline` from `sequence`, `title` and `summary` only, so `escalationBeat`
+  sat at its empty default — while `actPrompt()` printed `COSTS: %s` for every
+  act in the context block and `What this act must cost the narrator: %s` for the
+  one being written. Both rendered blank. A field required by the outline schema,
+  checked by `ValidateOutlineSpine`, editable at Gate 1 and shown on the page had
+  been invisible to the call it exists for since Phase 2. The prompt asked for
+  something the caller never sent, which is the documented-guard shape with the
+  arrow reversed: not a check that cannot fire, but a request that never arrives.
+  The fake now records what it was handed, so the next dropped field fails a test
+  instead of reading as a prompt that did not work.
+
 - `stories.target_publish_at` — two timezone helpers and a display block on the
   index, and no input anywhere, so the column was null on every story and the
   block never rendered. Meanwhile the Gate 4 checklist asked the operator to
@@ -798,14 +1217,185 @@ Still open, none blocking, all findable here rather than one gate at a time:
   no button on the Gate 2 page beside edit/move/delete. `ScenesMerge` and
   `ScenesRecut` both got commands and this did not. The 70+-word single-sentence
   scene it exists to fix is currently unfixable through any interface.
+- **The three Gate 2 surgery tools are still terminal-only.** `scenes:merge`,
+  `scenes:recut` and `SplitScene` are the operations that fix a bad scene list,
+  and the console does not offer any of them — so the one part of Gate 2 that
+  still needs a terminal is the part that edits what Gate 2 is for. Lower
+  priority than the stages the console closed, because a bad cut is recoverable
+  by re-drafting and a missing dispatch button was not, but it is the same
+  defect and it is now the largest remaining instance of it.
+- **`characters:verify` and `story:fork` have no button either.** Both are free
+  and neither blocks a video, which is the only reason they were left.
 - **`OperatorAction::ReopenScenesGate` is consulted by nobody.** Its own
   `callers()` names "ScenesGate::reopen() and its blade"; both call
   `$status->canReopenScenesGate()` directly instead. Same answer today — the
   case delegates to that method — which is exactly why it can drift silently.
+- **The extraction repair loop re-asks the same question, and should be scoped
+  to the offending field. Designed, deliberately not built.**
+
+  When `CharacterTextGuard` refuses a cast, `ExtractCharacters::extractWithRepair()`
+  re-runs the whole extraction with a note appended. That is the same question
+  louder, and story 21 showed it failing exactly that way: six billed calls
+  across three dispatches, every one refused for `weathered`, and the word
+  landed on a DIFFERENT character each time — Song Peiyuan in the failed runs,
+  Lu Jianguo in the reproduction. The model is not fixated on a character; it
+  reaches for the word for *some* older man, and a fresh sample of eleven
+  descriptions gives it a fresh chance every time.
+
+  Three things are wrong with the instrument, not the bound:
+
+  1. It re-asks a prompt that has just been ignored, and takes a new sample.
+  2. **The note describes a cast that no longer exists.** Attempt 2 generates
+     eleven new descriptions, so "Lu Jianguo's description says weathered" is
+     advice about a character attempt 2 may not even produce.
+  3. It re-rolls ten good descriptions to fix one adjective, which can
+     introduce new violations. The repair can make the cast worse.
+
+  **The design.** Hand the model one field: the exact stored text, the exact
+  offending term, and an instruction to rewrite that clause and nothing else.
+  Splice the returned field back and re-run the guard on that field alone. A
+  different question rather than the same one louder, a fraction of the cost,
+  auditable as a one-field diff, and the descriptions that were already right
+  are preserved.
+
+  **Branch by violation type.** Every rule the guard currently holds is
+  per-field, which is what makes a per-field repair safe *for these*. A
+  cast-level check — two women sharing a hair silhouette, an age order that
+  does not read — is a property of the group and would still need the whole-cast
+  path. The loop should choose its instrument from the kind of violation rather
+  than always reaching for the heavy one.
+
+  **Never deterministically.** Stripping `weathered ` with a regex is the
+  obvious shortcut and it is wrong: "nothing is regenerated silently" applies to
+  text as much as to assets, and a machine-edited description that nobody knows
+  was edited is worse than a refusal. The model rewrites the clause; the guard
+  checks the result; the operator can see both.
+
+  **Keep the hard refusal.** One scoped repair, then refuse. The existing bound
+  is correct.
+
+  **Why it is not built yet, which is the part most likely to be forgotten.**
+  The patch that unblocked story 21 was widening the system prompt from
+  "weathered skin" to the bare word — and attempt 1 never touches the rejection
+  block at all, so the rejection-block half of that fix is UNTESTED. Building
+  the scoped repair on top of it would stack a second untested mechanism on the
+  first. It waits for a real failure to design against, which is the same reason
+  every guard in this file names the instance it was written for.
+
+- **The prompt bans build; nothing enforces it.** Found auditing the rejection
+  block against the prompt's ban list. Every other rule in that list has a
+  `CharacterTextGuard` category behind it, so a violation is refused and
+  retried; `DO NOT DESCRIBE BUILD, HEIGHT OR FRAME` is a request with no
+  mechanism, and a description carrying "stocky and broad" passes silently.
+  Left open on purpose — a guard on `tall`, `slim` or `heavy` would be
+  false-positive-prone in a way the other lists are not, and the cost of a miss
+  is wasted words rather than a wrong picture. But it is the documented-guard
+  shape and it should be named rather than assumed covered.
+- **`assets:generate` prints a `--max-time` that is no longer the sized one.**
+  Its closing "if nothing moves" hint still says `--max-time=3600`, which is the
+  number that stalled story 21 and which `docs/queue-workers.md` now derives as
+  32,400. A hand-written copy of a number that lives somewhere else, agreeing
+  only on the day it was written — the same shape as the retry prompt that
+  restated the guard's rules and disagreed with them. Found during a paid run
+  and deferred for that reason twice now, since the fix is in `app/` and an edit
+  there cancels an in-flight batch. Prefer generating the hint from config over
+  retyping it a third time.
+
+- **A story does not record the wpm its script was sized against.** Found
+  immediately after locale-keying the pace profile. `expectedWpm()` is read live
+  from config when the guard runs, so it answers "what do we believe now", while
+  the guard needs "what was this script written to". The fix is a
+  `stories.sized_against_wpm` column written at outline time and frozen, like
+  `locale_profile` and for the same reason.
+  Less urgent than it looked, now that en-CN is measured: the two locales are
+  1.26% apart, so the gap between "what we believe now" and "what this script
+  was sized to" is currently smaller than the pace tolerance by an order of
+  magnitude. It becomes real the first time a profile moves by more than a few
+  percent, and it should be built before that rather than after.
+
+- **The dispatch preflight's notes do not reach the surface built for deciding
+  to spend.** `assets:generate --estimate` prints the itemised bill and exits
+  before the preflight runs, so the pace expectation, the aligner probe and the
+  style fingerprint appear only on a real dispatch. Nothing is unsafe — they
+  still print before anything is queued — but the page whose entire job is to
+  inform a spending decision is the one that does not carry them.
+
+- **`CostCategory::isSpendOnAssets()` has no caller.** Found while adding the
+  fourth category. It is the only method on that enum nothing consults, and with
+  `Evaluation` in the enum its answer is now also ambiguous — evaluation buys a
+  file but is not asset spend in the sense the gate means. Use it or drop it.
 - **`CostUnit::InputTokens` has no writer.** The Anthropic writer records one row
   per call at `OutputTokens` with the split in `detail`. Either use it or drop it.
 - **`providers.whisperx.compute_type`** is documented as "the script passes it
   through" and the PHP side never sends it.
+
+**A guard can be measuring correctly and still be certain about the wrong
+thing.** `NarrationPace` compared story 21's en-CN narration against 197 wpm
+measured on story 9's en-US script, found +14% on a 12% tolerance, and cancelled
+a 270-scene batch at scene 2. Every number in it was right. The KEY was wrong:
+reading rate is a property of a voice, AT A SPEED, READING A PARTICULAR KIND OF
+PROSE, and the config modelled only the first two — so a measurement of one
+setting silently answered a question about another. The fix is the key, not the
+tolerance. Widening the tolerance would have been the false-success pattern
+exactly: adjusting the measurement until the outcome passes.
+
+**And then the measurement came in and said the key was not the cause.** Story
+21's narration finished: en-CN is **199.49 wpm** across 270 scenes against
+en-US's 197.00 across 186 — **1.26% apart**. The locale dimension is real and it
+is measuring almost nothing. What actually fired was `pace_min_words`, which was
+**50** — two scenes. Running-average deviation from each story's OWN final rate,
+measured across both finished stories:
+
+| cumulative words | story 9 | story 21 |
+|---|---|---|
+| 50 | +9.9% | **+12.6%** |
+| 400 | +8.8% | +6.9% |
+| 800 | +3.9% | +3.5% |
+| 1,000 | +2.3% | +1.9% |
+| 1,500 | +1.0% | +1.8% |
+
+At 50 words the instrument's own noise is +12.6% against a 12% tolerance. The
+guard was measuring where the sentence breaks happened to fall in the first two
+scenes. **With en-CN recorded at its true 199, the same two scenes still cancel
+the batch** — there is a test that asserts exactly that, because it is the part
+most likely to be forgotten. The threshold is now 1,000 words: noise ~2%, a
+fifth of the tolerance, reached at scene 30–34, so a systematic drift is still
+caught with 85% of a 270-scene run unspent.
+
+**Two things follow, and the second is the general one.**
+
+The first: the key stays, even though it measures 1.26%. An unmeasured pair
+still DETECTS and only declines to ENFORCE, so being finer than the effect costs
+nothing and self-heals after one story, while collapsing it would make a third
+setting enforceable on day one against prose it has never seen. **If a third
+locale also lands within ~2%, collapse it** — two agreeing measurements is a
+coincidence, three is a finding.
+
+The second: **a correct diagnosis of one defect is not evidence that it was THE
+defect.** The locale key was a real problem, correctly identified, properly
+fixed — and the batch would have died anyway. Both faults were in the same
+`violation()` call and the first one found was assumed to be the cause, because
+fixing it made the immediate symptom plausible to have gone. When a guard fires
+wrongly, keep looking after the first thing you find is wrong with it.
+
+The config's own docblock had already made the argument, one axis early —
+*"a stale expectation is worse than no expectation, because the check built on
+it would pass while being wrong"* — written about speed, and just as true of
+prose. When a rule is stated about one dimension of a key, ask whether it
+applies to the others.
+
+**Separate what a check DETECTS from what it is entitled to DO about it.** The
+first attempt at that fix made the guard silent on an unmeasured pair. It was
+nearly shipped and it would have removed the story 9 coverage entirely: that run
+had no voice profile at all, and the figure it was judged against was the
+fallback constant its own script had been sized to. Detection must not depend on
+whether the narrator has been profiled — the expected wpm is *the assumption the
+script was sized against*, so comparing reality against it is always meaningful.
+What varies is what the disagreement PROVES. On a measured pair it proves
+something is wrong: stop, at a cost of one scene. On an unmeasured pair it proves
+only that the guess was a guess: report it, on the record, and let the run
+establish the number. `NarrationPace::isEnforceable()` is that split, and the
+suite's existing tests are what caught the mistake.
 
 The same shape recurs in guards: a check that only tests the axis a component is
 already strong on will always pass. The Haiku fallback checked that sentence ranges
@@ -813,11 +1403,17 @@ tiled (counting — Haiku's strong axis) and missed that it chopped scenes too s
 When adding a guard, name the failure mode it is meant to catch and confirm it fires
 against a real instance of that failure.
 
+**And check which FIELD it is pointed at, not only which failure.** The style-notes
+guard was correct, well-tested and aimed at one of the two columns that carry the
+same invariant; the other column had live violations of every rule it enforced. Both
+of these are the same question asked twice — *can this check reach the thing it is
+supposed to distrust* — and the answer is not implied by the check being right.
+
 ### False success is a defect class, not a run of bad luck
 
-Five times now the app has reported success while something was silently wrong.
-Note where the fifth one lives: not in the pipeline, but on the PAGE the operator
-watches instead of the pipeline.
+Eight times now the app has reported success while something was silently wrong.
+Note where the fifth and seventh live: not in the pipeline, but on the PAGE the
+operator watches instead of the pipeline.
 
 | # | What was reported | What was true |
 |---|---|---|
@@ -826,15 +1422,84 @@ watches instead of the pipeline.
 | 3 | 186 scenes narrated | 117 read at speed 1.0 with NULL speed provenance |
 | 4 | An asset run "complete" | 181 alignments had failed inside it |
 | 5 | Subtitles and Mux "1/1 done", mux 506 s | Both stages were chained behind a concat that had just failed and never ran; the rows were 21 h old |
+| 6 | Story 21's render page: outline ✓, act scripts ✓, nothing after | Three terminal cast-extraction failures and $0.35 of billed calls, recorded nowhere — the stage had no `render_jobs` row to fail |
+| 7 | Story 21's asset run in flight: 118 stills done, nothing failed, no stale heartbeat | The `assets` worker had exited at `--max-time` an hour earlier. 152 scenes sat in Redis with nothing listening, and the page had stopped refreshing itself |
+| 8 | Story 21's ledger: narration $2.12, reconciling to the vendor's own counter | The credits reconciled; the DOLLARS were half. One multiplier applied twice, in a column nothing external could check |
 
 The individual bugs are all different and every fix for them was correct. The
 constant is the reporting, and it has one mechanism behind it:
+
+**And the reconciliation rule earns its place again.** Story 21's narration was
+the first run where an external counter was checked against the ledger straight
+after a batch. The two agreed exactly — 21,012 characters on both sides — which
+is what made it certain that the 42,017 the operator had been quoted was the
+estimate's error and not the recorder's. An internal number agreeing with an
+internal number proves nothing; that is the whole content of rule 3.
+
+**Then that same external number settled a second disagreement, in the opposite
+direction.** One multiplier — 0.5 credits per character — was applied in three
+places by three pieces of code that never compared notes, and the same narration
+had three prices:
+
+| | story 21's narration | wrong how |
+|---|---|---|
+| the estimate | 42,017 billable | quantity over by 2x |
+| the ledger | 21,193 billable, **$2.12** | USD under by 2x |
+| the rate card | **$4.24** | correct, and disagreeing with both |
+
+The vendor's `character-cost` header is **already the billable figure** — 183
+characters sent, 92 in the header — and the recorder multiplied it again, so
+`detail.credits` read 46 against a quantity of 92 and `usd_cost` came out half.
+The estimate did the mirror image: it summed `mb_strlen` and called it billable.
+Both were fixed from one function; `AssetRateCard` needed no change because it
+had been right the whole time.
+
+**The quantity column is what made this solvable, and it is worth being precise
+about why.** It was the only figure that did not come from us — it is the
+header, and it reconciled to the vendor's own usage page exactly. Every other
+number was internally consistent with something. The regression test asserts an
+IDENTITY between the estimate's route to a price and the recorder's, rather than
+either against a constant: a constant can be updated to match a bug.
+
+**Historic rows are not rewritten.** `cost_entries` is write-once and a ledger
+that edits itself is worth less than one that is wrong in a way you can date.
+Story 21's narration is on record at $2.12 and really cost about $4.24 at the
+plan rate; the credits figure, which is the one the allowance is actually spent
+in, was right all along.
 
 **Absence is read as agreement.** A NULL provenance column means "unknown", and
 every check in this codebase correctly refuses to destroy an asset on unknown —
 so unknown is preserved, and preserved reads as fine. A stage that never ran
 leaves no failure row. A guard that is not in a worker's loaded code cannot fire,
 and a check that cannot fire is indistinguishable from a check that passed.
+
+Row 7 is the purest form of it yet, and worth reading closely because **not one
+number on that page was wrong.** 118 stills really were done. Nothing really had
+failed. No heartbeat really was stale. The page was false as a whole because of
+what it structurally could not see: `RenderJob::open()` runs INSIDE the job, so
+a scene still queued has no row, and `render_jobs` cannot count a backlog
+however carefully it is asked. `$overall['active']` therefore went false with a
+third of the run done, the meta refresh came off the page, and the footer said
+"Nothing running".
+
+The fix is rule 3 below, applied to a page rather than to a ledger: ask the
+queue. `WorkerHealth` now reads `Queue::size()`, which is the one fact on that
+panel not derived from our own bookkeeping, and it is the only thing that can
+tell *nothing left to do* from *nobody doing it*. Depth alone is not an alarm —
+a live worker with 416 jobs behind it is a worker working. Depth **with nobody
+listening** is `stranded`, and that gets the red box. A depth that cannot be
+read is shown as unreadable and never as zero, because a dead Redis would
+otherwise report every queue as calmly empty at the exact moment the instrument
+broke.
+
+**And the cause of row 7 was a number sized against the wrong story.**
+`--max-time=3600` on `assets` was written when a story was 186 scenes, against
+an assumed 30 s per image; a fal call measures 53 s at the median and story 21
+is 270 scenes, so one worker needs six hours. The number is now derived from
+measured p99s in `docs/queue-workers.md` rather than rounded, and it is
+re-derivable when the scene count changes. But sizing only buys margin — the
+worker still exits eventually, and the actual fix is that something restarts it.
+See the NSSM note below.
 
 Three rules follow, and they are worth more than any individual guard:
 
@@ -857,8 +1522,43 @@ Three rules follow, and they are worth more than any individual guard:
    not be reproduced at all. An external number is a reason to look, not a
    verdict on its own.
 
+**A guard that fires is evidence about the guard's INPUT, not only about the
+thing it guards.** `PadSceneAudio` refusing at concat was read at first as "the
+audio is wrong"; it meant "the frame count handed to me is too small". The
+message already said so — it printed the sample count, the rate, the converted
+count and the capacity — and the fix was three steps upstream from where the
+alarm rang. When a guard fires, check what it was given before checking what it
+was checking.
+
 And when a check cannot run, that is a failure, not a pass. An unreadable quota
 is reported as unreadable and never as "fine" — the same rule, one level up.
+
+**A warning that nobody can see is not a warning.** The stale-worker refusal is
+correct and correctly placed, and it deliberately does not fire on an ABSENT
+worker — nothing is lost, the job queues and waits. That was safe while three
+terminal windows were open, because the terminals *were* the worker display.
+The console removes them, so the console has to carry the reading: worker state
+appears beside every dispatch button and in the stories index, from the same
+registry the refusal reads, recomputing nothing. Note where the guard did NOT
+move — a page rendering its own opinion about staleness would be a check
+evaluated downstream of the thing it distrusts, which is rule 1 exactly.
+
+Note also that **NSSM makes staleness more likely, not less.** A hand-started
+terminal dies on reboot and comes back with current code; a service up for six
+days across four config edits is the stale worker, restarting itself after every
+crash somebody might otherwise have noticed. Uptime is therefore shown next to
+the fingerprint — not as evidence, but as the thing to look at when the
+fingerprint agrees and something is still wrong.
+
+**That trade is worth taking, and row 7 is why.** The services were documented
+from Phase 1 and never installed, so every worker on this machine was a terminal
+that exited at `--max-time` and did not come back — which is the failure that
+stalled a 270-scene run repeatedly and reported it as in flight. The staleness
+NSSM adds is REFUSED at dispatch, loudly, by `AssertWorkersCurrent`; the stall
+it removes was silent and cost hours per occurrence. A refusal you can read
+beats a stall you have to notice. `scripts/install-worker-services.ps1` is the
+install, elevated and idempotent, and the only remaining discipline is
+`queue:restart` after a config or provider change.
 
 ---
 
@@ -867,7 +1567,6 @@ is reported as unreadable and never as "fine" — the same rule, one level up.
 Do not build these until asked, and do not add scaffolding "for later":
 
 - YouTube upload API integration (the app outputs a file and a metadata sheet)
-- Thumbnail image composition
 - Multi-user accounts, teams, billing
 - Any SaaS/tenancy layer
 - Video-generation models (Ken Burns on stills is the format, and it is ~100x cheaper)
