@@ -211,6 +211,62 @@ class NewStory extends Component
         return app(LocaleGuard::class)->profiles();
     }
 
+    /**
+     * The narrator this story will be created with, said where it is decided.
+     *
+     * -------------------------------------------------------------------
+     * WHY A READOUT AND NOT A PICKER
+     * -------------------------------------------------------------------
+     *
+     * A channel keeps ONE narrator across every video, which is the whole
+     * reason `voice_id` is stored per story rather than read from config at
+     * synthesis time. A dropdown here would invite a per-story choice on the
+     * one axis that is supposed to be constant, and the operator would be
+     * choosing before there is a script to choose for. `voices:list --set` is
+     * the deliberate move, and it validates against the account.
+     *
+     * **But a default written silently is a value nobody chose and nobody can
+     * find later**, which is how `narrator-us-01` — a string the fake
+     * synthesizer invented — sat on every story in the database for a phase
+     * with no screen anywhere disagreeing with it. So the value is printed at
+     * the moment of creation, with what the app knows about it.
+     *
+     * -------------------------------------------------------------------
+     * NO NETWORK CALL, AND THE LIMIT THAT IMPOSES IS STATED RATHER THAN HIDDEN
+     * -------------------------------------------------------------------
+     *
+     * `NarrationPace::voiceName()` reads `render.narration.voices`, which is
+     * this app's own record of narrators it has MEASURED. It cannot answer
+     * whether the id is on the vendor account — only the vendor can, and
+     * putting a provider call behind a form render would make story creation
+     * fail when ElevenLabs is slow.
+     *
+     * So an unrecognised id is reported as unrecognised — never as fine, and
+     * never as absent. It means one of two things and the readout says both:
+     * a real voice this app has not measured, or an id that is not a voice at
+     * all. `PreflightAssetDispatch` is what separates them, against the real
+     * account list, before anything is queued.
+     *
+     * @return array{voice_id: ?string, name: ?string, measured: bool, wpm: int}
+     */
+    #[Computed]
+    public function narrator(): array
+    {
+        $voiceId = config('providers.default_voice_id');
+        $voiceId = is_string($voiceId) && trim($voiceId) !== '' ? trim($voiceId) : null;
+
+        return [
+            'voice_id' => $voiceId,
+            'name' => NarrationPace::voiceName($voiceId),
+            // Against THIS story's setting, which the picker above can change.
+            // A voice measured on en-US and not on en-CN is measured for one
+            // of the two stories this form can make, and saying "measured"
+            // flatly would be true of the voice and false of the run.
+            'measured' => NarrationPace::isMeasured($voiceId, $this->localeProfile),
+            'wpm' => NarrationPace::bestKnownWpm($voiceId, $this->localeProfile),
+        ];
+    }
+
     public function mount(): void
     {
         // Pre-selected to the house setting rather than left blank. A

@@ -44,17 +44,24 @@ final class NarrationPace
      * The best measurement available for this pair.
      *
      * A DIFFERENT QUESTION FROM `expectedWpm()`, and the difference is not
-     * academic: a script is sized before there is a narrator. `voice_id` is
-     * null until the channel's narrator is locked — `providers.default_voice_id`
-     * is deliberately null, `GenerateSceneNarration` refuses to synthesize
-     * without one, and `voices:list --set` assigns it — so at act-script time
-     * the story routinely knows its locale and not its voice.
+     * academic: a script is sized before anyone has measured the narrator, and
+     * on some stories before there is one at all.
+     *
+     * `providers.default_voice_id` is Brian now rather than null, so a story
+     * made today does know its voice at act-script time. That does NOT retire
+     * this method, and reading it as a fix would be the mistake: the default
+     * covers new rows only, every story written before it still carries null,
+     * and a voice being SET has never implied a voice being MEASURED. A
+     * narrator with no profile for this locale lands on the fallback exactly as
+     * a null one does.
      *
      * **That is why pointing the word target at `expectedWpm()` alone would
      * have been a fix that did not fix.** `expectedWpm(null, 'en-US')` returns
      * the fallback 160, so every story created through the console would have
      * gone on being sized 18% short while the code read as corrected. Absence
-     * reading as agreement, in the change written to stop exactly that.
+     * reading as agreement, in the change written to stop exactly that. The
+     * same sentence holds for an unmeasured voice, which is the case the
+     * default does not touch.
      *
      * So this asks the locale when it cannot ask the voice, and it uses only
      * real measurements to do it. Three steps:

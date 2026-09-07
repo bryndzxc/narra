@@ -137,4 +137,122 @@ class DispatchRefusedException extends RuntimeException
             $current,
         ));
     }
+
+    /**
+     * The story has no narrator, and narration is part of this dispatch.
+     *
+     * ---------------------------------------------------------------------
+     * THE INSTANCE, AND WHY IT IS A REFUSAL RATHER THAN A WARNING
+     * ---------------------------------------------------------------------
+     *
+     * Story 23. `voice_id` was null, the operator dispatched, and the missing
+     * column became **257 identical failure rows** — one per scene, each one a
+     * worker picking up a job, loading a story, and re-discovering a fact that
+     * was knowable from one column before anything was queued. Nothing was
+     * billed, because the refusal in `GenerateSceneNarration` sits above the
+     * `synthesize()` call and that guard is correct. What it cost instead was a
+     * batch that could never fire its completion callback, on a story with 256
+     * stills already bought.
+     *
+     * It is a POSITIVE reading in the sense this codebase uses for the
+     * stale/unknown split: the column is empty, the stage provably cannot
+     * complete, and no reading of the situation makes it fine. Same standing as
+     * a stale reference sheet — and unlike an unmeasured pace pair, which
+     * claims nothing and therefore warns.
+     */
+    public static function storyHasNoVoice(string $slug, int $scenes): self
+    {
+        return new self(sprintf(
+            'REFUSED — this story has no narrator, and %d scene(s) in this run need narration.'
+            ."\n\n  stories.voice_id is null for %s\n\n"
+            .'A channel keeps one consistent narrator across every video, which is why the voice is '
+            ."stored on the story rather than read from config when a scene is synthesized.\n\n"
+            ."  php artisan voices:list                              # the account's real voices\n"
+            ."  php artisan voices:list --set=%s --voice=<voice_id>  # assign one\n\n"
+            .'This used to be discovered one scene at a time. The per-job guard is right and it is '
+            .'downstream, so a null voice became one failure row per scene instead of one refusal at '
+            .'the button — nothing billed, and a batch that could not complete.',
+            $scenes,
+            $slug,
+            $slug,
+        ));
+    }
+
+    /**
+     * The voice on the story is not a voice on the account.
+     *
+     * Worse than a null voice rather than better, which is the whole reason it
+     * is a separate check. A null voice fails loudly and for free. An id that is
+     * merely wrong reaches the vendor and comes back 422 — per scene, three
+     * times each under `--tries=3` — and reads like a provider outage rather
+     * than a typo.
+     *
+     * The account's own list is the authority, which makes this one of the few
+     * checks here reading a number the app did not compute. `voices:list --set`
+     * validates against the same list, so a voice assigned through the supported
+     * path cannot trip this; what it catches is a config default, a fork, or a
+     * hand-edited row.
+     *
+     * @param  array<int, array{id: string, name: string, locale: string}>  $voices
+     */
+    public static function voiceNotOnAccount(string $voiceId, string $provider, array $voices): self
+    {
+        $listed = array_map(
+            static fn (array $v): string => sprintf('%-24s %s', $v['id'], $v['name']),
+            array_slice($voices, 0, 12),
+        );
+
+        return new self(sprintf(
+            'REFUSED — "%s" is not a voice on the %s account.'
+            ."\n\n"
+            .'A wrong voice id is worse than a missing one. A missing one refuses here for free; this '
+            .'one would reach the vendor and come back 422 on every scene, three times each under '
+            ."--tries=3, reading like an outage rather than a typo.\n\nOn the account%s:\n\n  %s\n\n"
+            ."  php artisan voices:list --set=<story> --voice=<voice_id>\n\n"
+            .'If this came from `providers.default_voice_id`, fix it there too — a default pointing at '
+            .'a voice that does not exist lays the same trap on every new story.',
+            $voiceId,
+            $provider,
+            count($voices) > 12 ? sprintf(' (%d total, first 12)', count($voices)) : '',
+            implode("\n  ", $listed),
+        ));
+    }
+
+    /**
+     * The narration in this run does not fit the remaining allowance.
+     *
+     * **The distinctive risk of this vendor, and the one a cost estimate
+     * structurally cannot see.** On a plan without overage ElevenLabs does not
+     * bill past the allowance — it STOPS generating. So the failure is not an
+     * unexpected charge; it is a half-narrated story with the allowance spent
+     * either way: scenes 1-170 done, 171 onward refused, and nothing left to
+     * retry them with.
+     *
+     * A cost estimate answers "what will this cost", and on a subscription the
+     * marginal answer is $0.00 whichever way it goes. Only the vendor's own
+     * counter can answer "does this fit", which is why it is worth a network
+     * call at the button.
+     */
+    public static function narrationWillNotFit(
+        float $credits,
+        int $remaining,
+        int $scenes,
+        string $summary,
+    ): self {
+        return new self(sprintf(
+            'REFUSED — this run needs %s narration credits and %s remain. Short by %s.'
+            ."\n\n  %s\n\n"
+            .'%d scene(s) need narration. On a plan without overage, generation STOPS at the limit '
+            .'rather than billing past it — so dispatching now spends what is left and still leaves '
+            ."the story unfinished, with nothing to retry the remainder with.\n\n"
+            .'Buy a top-up, upgrade the plan, or switch ELEVENLABS_TTS_MODEL to a flash/turbo model at '
+            .'half the credit cost. That last one is a real quality decision on long-form narration '
+            .'and it is yours, not this guard\'s.',
+            number_format($credits),
+            number_format((float) $remaining),
+            number_format(ceil($credits - $remaining)),
+            $summary,
+            $scenes,
+        ));
+    }
 }

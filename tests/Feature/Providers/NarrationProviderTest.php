@@ -294,7 +294,7 @@ class NarrationProviderTest extends TestCase
             'narration_text' => 'Twelve chars',
         ]);
 
-        $this->fakeSpeech(str_repeat('  ', 2400), ['character-cost' => '6']);
+        $this->fakeSpeech(str_repeat("\x00\x00", 2400), ['character-cost' => '6']);
 
         $usage = app(ElevenLabsSpeechSynthesizer::class)
             ->synthesize($scene, 'Twelve chars', 'voice-abc')->usage;

@@ -11,7 +11,7 @@ namespace App\Support\Providers;
  * silently" possible — a re-run produces a new draft the caller can compare
  * against, not a mutation that has already happened.
  *
- * The seven spine fields are not metadata about the outline. They ARE the
+ * The eight spine fields are not metadata about the outline. They ARE the
  * outline, in the sense that matters: an aggrieved-narrator melodrama with a
  * vague grievance or a cartoon antagonist is not a weaker version of the genre,
  * it is a different one that nobody in this niche watches. They are required
@@ -22,11 +22,22 @@ namespace App\Support\Providers;
  * did not have, where the narrator leaves, is searched for, and refuses. That
  * half is what the niche pays off on, and a spine without it produces a video
  * that escalates for forty minutes and hands the narrator one scene of power.
+ *
+ * The eighth is `hook`, and it arrived from a measurement rather than from a
+ * gap in the arc: both shipped stories already contain four of the five beats a
+ * hook needs and land every one of them two to seven minutes late. Nothing had
+ * ever asked the outline what the first thirty seconds were, so the act 1 call
+ * had nothing to be told, and a writer with no instruction about where the
+ * opening starts writes the chronological beginning.
  */
 final class OutlineDraft
 {
     /**
      * @param  array<int, ActOutline>  $acts
+     * @param  string  $hook  The first thirty seconds, as five beats: one sentence of
+     *                        setup, the betrayal inside ~20 seconds, evidence in exact
+     *                        words, one small cold action, and a closing line promising
+     *                        the DEPARTURE. Gate 1 checks the last beat by overlap.
      * @param  string  $narratorGrievance  Who wronged the narrator, and how. First person.
      * @param  string  $antagonistJustification  The antagonist's own account of why they
      *                                           were entitled to it. The engine of the format.
@@ -45,6 +56,7 @@ final class OutlineDraft
         public readonly string $title,
         public readonly array $acts,
         public readonly ProviderUsage $usage,
+        public readonly string $hook = '',
         public readonly string $narratorGrievance = '',
         public readonly string $antagonistJustification = '',
         public readonly string $withheldInformation = '',
@@ -84,6 +96,7 @@ final class OutlineDraft
     public function spine(): array
     {
         return [
+            'hook' => $this->hook,
             'narrator_grievance' => $this->narratorGrievance,
             'antagonist_justification' => $this->antagonistJustification,
             'withheld_information' => $this->withheldInformation,

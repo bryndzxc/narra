@@ -101,7 +101,11 @@ final class ConsoleCounts
             'stranded' => collect($workers)->contains(
                 fn (array $w): bool => in_array(
                     $w['state'],
-                    [WorkerHealth::STRANDED, WorkerHealth::STALE],
+                    // NOT_CONSUMING belongs here for the same reason STRANDED
+                    // does: work is queued and nothing is moving it. The only
+                    // difference is that somebody is on the queue, which makes
+                    // it harder to see rather than less serious.
+                    [WorkerHealth::STRANDED, WorkerHealth::NOT_CONSUMING, WorkerHealth::STALE],
                     true,
                 ),
             ),

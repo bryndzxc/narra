@@ -56,7 +56,12 @@
         a story page that exists to STOP somebody acting.
     --}}
     @if ($story->isFixture())
-        <div class="alert">
+        {{-- `wide`, because this renders beside a full-width gate body at every
+             status. It was the last alert in the console at the 96ch cap, and
+             it was invisible to every check: `alertsWithoutTheirOwnWidth` runs
+             over each gate COMPONENT's markup, and this wrapper is not part of
+             any of them. --}}
+        <div class="alert wide">
             <strong>This is a fixture. It is not going to be published, and it is not waiting on you.</strong>
             <div class="mt-1">{{ $story->fixture_note }}</div>
             <div class="muted small mt-2">

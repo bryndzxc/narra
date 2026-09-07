@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Providers;
 
+use Anthropic\Client;
+use App\Actions\DraftScenes;
 use App\Actions\GenerateActScripts;
 use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
@@ -12,10 +14,17 @@ use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Livewire\Gates\OutlineGate;
 use App\Models\Act;
+use App\Models\Character;
 use App\Models\Story;
+use App\Services\Claude\ClaudeScriptWriter;
 use App\Services\Fake\FakeScriptWriter;
+use App\Support\CharacterTextGuard;
+use App\Support\LocaleGuard;
+use App\Support\Providers\ActOutline;
+use App\Support\ScriptSizing;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -354,6 +363,61 @@ class OutlineSpineTest extends TestCase
         );
     }
 
+    /**
+     * THE SAME ASSERTION AT THE SECOND CALL SITE, which is where it was missing.
+     *
+     * The test above was written when `escalation_beat` was found never to reach
+     * `GenerateActScripts`. It closed that finding — at one call site. The scene
+     * generator decides what 150-250 pictures contain, it had been receiving
+     * `Act` and `Story` the whole time, and it read neither the phase, the beat
+     * nor the spine off them. Nothing was watching, because the fake's scene
+     * path did not record what it was handed the way its act path did.
+     *
+     * The general defect is that NOTHING ASKS WHICH OTHER CALLERS READ A FIELD,
+     * and it has now cost twice — here, and `CostUnit::TotalTokens` added in
+     * code while eleven migrations built their columns from the enum. This pair
+     * of tests is the cheap version of the answer: when a field is wired to one
+     * consumer, assert its arrival at every consumer in the same change.
+     */
+    public function test_the_scene_writer_is_handed_the_phase_the_beat_and_the_spine(): void
+    {
+        $story = $this->draftStory();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh()->approveGate(Gate::Outline);
+        app(GenerateActScripts::class)->handle($story->refresh());
+
+        // The cast is a hard precondition of drafting — every prompt is built
+        // from it — so it is created rather than extracted, which keeps this
+        // case about what the SCENE call is handed.
+        Character::factory()->for($story)->create(['name' => 'Dana Whitfield']);
+        Character::factory()->for($story)->create(['name' => 'Erin Whitfield']);
+
+        $this->writer->calls = [];
+
+        app(DraftScenes::class)->handle($story->refresh());
+
+        $calls = collect($this->writer->calls)->where('method', 'scenes')->keyBy('act');
+
+        $this->assertNotEmpty($calls, 'No scene call was recorded at all.');
+
+        $this->assertSame('escalation', $calls[1]['phase']);
+        $this->assertSame('refusal', $calls[6]['phase']);
+
+        $this->assertTrue(
+            $calls->every(fn (array $call): bool => trim((string) $call['escalation_beat']) !== ''),
+            'An act had its scenes cut without the beat saying what that act costs and to whom. '
+            .'The frame is the picture the narration is spoken over, and what a face should be '
+            .'doing depends on which way the ground is moving.',
+        );
+
+        $this->assertTrue(
+            $calls->every(fn (array $call): bool => trim((string) $call['narrator_grievance']) !== ''
+                && trim((string) $call['antagonist_justification']) !== ''),
+            'The scene generator was not handed the genre spine it is cutting a story out of.',
+        );
+    }
+
     // -- Gate 1 sees a broken reversal ----------------------------------------
 
     public function test_an_announced_departure_is_flagged(): void
@@ -478,12 +542,23 @@ class OutlineSpineTest extends TestCase
 
     public function test_an_outline_written_before_the_reversal_says_so_once(): void
     {
-        // Story 9 and story 21 are both this. Three "missing" problems on a
-        // shipped video would be three red boxes about one nameable thing, and
-        // the thing is not that somebody forgot to fill a field in.
+        // Stories 9, 12, 20 and 21 are all this — every outline written before
+        // the reversal phase existed. Four "missing" problems on a shipped video
+        // would be four red boxes about one nameable thing, and the thing is not
+        // that somebody forgot to fill a field in.
+        //
+        // THE HOOK IS BLANKED HERE TOO, and it has to be: an outline generated
+        // before the reversal phase was generated before this field existed, so
+        // a fixture that left one behind would describe a story that cannot
+        // exist and would take the ordinary per-field path instead.
         $story = $this->outlinedStory();
         $story->acts()->update(['phase' => null]);
-        $story->update(['departure' => '', 'reversal_beats' => '', 'refusal' => '']);
+        $story->update([
+            'hook' => '',
+            'departure' => '',
+            'reversal_beats' => '',
+            'refusal' => '',
+        ]);
 
         $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
 
@@ -493,7 +568,7 @@ class OutlineSpineTest extends TestCase
             implode(' ', $review['warnings']),
         );
 
-        foreach (['departure', 'reversal_beats', 'refusal'] as $field) {
+        foreach (['hook', 'departure', 'reversal_beats', 'refusal'] as $field) {
             $this->assertSame('absent', $review['spine'][$field]['state']);
         }
     }
@@ -565,6 +640,329 @@ class OutlineSpineTest extends TestCase
             'premise' => 'My sister billed me for her entire wedding over eleven months and told the '
                 .'family I had offered.',
         ]);
+    }
+
+    // -- The hook -----------------------------------------------------------
+
+    /**
+     * The outline answers what the first thirty seconds are.
+     *
+     * It had no opinion at all until now, which is why the act 1 call could
+     * only ever be told what NOT to do. Both shipped stories opened on the
+     * chronological beginning and both contain four of the five beats a hook
+     * needs, two to seven minutes further down.
+     */
+    public function test_the_outline_produces_and_stores_a_hook(): void
+    {
+        $story = $this->draftStory();
+
+        $draft = app(GenerateOutline::class)->handle($story);
+
+        $this->assertNotSame('', trim($draft->hook));
+        $this->assertNotEmpty($story->refresh()->hook);
+    }
+
+    /**
+     * The hook's closing line promises the departure, and Gate 1 says which
+     * part of it.
+     *
+     * The same argument as the refusal naming the moment it answers: "it
+     * promises something" is worth less in front of an approve button than the
+     * sentence it promises.
+     */
+    public function test_a_hook_that_promises_the_departure_names_which_part(): void
+    {
+        $story = $this->outlinedStory();
+
+        $review = app(ValidateOutlineSpine::class)->handle($story);
+
+        $this->assertSame('ok', $review['spine']['hook']['state']);
+        $this->assertNotEmpty($review['spine']['hook']['promises'] ?? '');
+    }
+
+    /**
+     * A hook closing on the exposure is selling a different video.
+     *
+     * THE MISMATCH CLASS, not a missing field. The exposure is the public
+     * payoff and it is what the TITLE promises; the hook promises the gap
+     * before it. A closing line about reading out the receipts sells a
+     * reckoning, and this outline's middle third is a search.
+     */
+    public function test_a_hook_that_closes_on_the_exposure_is_flagged(): void
+    {
+        $story = $this->outlinedStory();
+
+        // Beats 1-4 unchanged and correct. Only the promise moves, which is
+        // the point: this is not a badly written hook.
+        $story->update([
+            'hook' => 'My older sister Dana got married in June and I paid for all of it. '
+                .'The first invoice arrived eleven days after she asked me to stand up with her. '
+                .'She told me, "You have no kids and no mortgage, and family helps family." '
+                .'I opened a spreadsheet that night and named it DANA WEDDING. '
+                .'At the reception, in front of eighty guests and both families, I stood up and '
+                .'read out every receipt.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['hook']['state']);
+        $this->assertStringContainsString(
+            'closes on the exposure rather than the departure',
+            implode(' ', $review['warnings']),
+        );
+    }
+
+    /** A closing line that reaches nothing nameable is reported as that. */
+    public function test_a_hook_that_promises_nothing_is_flagged(): void
+    {
+        $story = $this->outlinedStory();
+
+        $story->update([
+            'hook' => 'My older sister Dana got married in June and I paid for all of it. '
+                .'The first invoice arrived eleven days after she asked me to stand up with her. '
+                .'She told me, "You have no kids and no mortgage, and family helps family." '
+                .'I opened a spreadsheet that night and named it DANA WEDDING. '
+                .'Nothing was ever the same again after that, and I think about it a lot.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['hook']['state']);
+        $this->assertStringContainsString(
+            'does not close on the departure',
+            implode(' ', $review['warnings']),
+        );
+    }
+
+    /**
+     * Only the LAST line is the promise.
+     *
+     * A hook whose betrayal beat happens to reuse the departure's language
+     * would otherwise pass while closing on nothing — and beats 2 and 3 are
+     * about the same family as the departure, so an overlap between them is
+     * expected rather than evidence.
+     */
+    public function test_the_promise_is_read_from_the_closing_line_only(): void
+    {
+        $story = $this->outlinedStory();
+
+        $story->update([
+            'hook' => 'The week I moved out of the apartment and left no address was the week she '
+                .'sent the last invoice. She told me, "You have no kids and no mortgage." '
+                .'I think about that sentence a great deal these days.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['hook']['state']);
+    }
+
+    /**
+     * A story with no departure gets no hook finding.
+     *
+     * Four stories are in this position — 9, 12, 20 and 21, every outline
+     * written before the reversal phase existed — and the blanket legacy
+     * warning has already named it once. A second finding saying the hook
+     * promises nothing would be a per-field problem on a shipped video about an
+     * absence the line above it already reported, and it is not one the
+     * operator can act on without regenerating the outline.
+     */
+    public function test_a_story_with_nothing_to_promise_gets_no_hook_finding(): void
+    {
+        $story = $this->outlinedStory();
+        $story->acts()->update(['phase' => null]);
+        $story->update(['hook' => '', 'departure' => '', 'reversal_beats' => '', 'refusal' => '']);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame([], $review['problems']);
+        $this->assertSame('absent', $review['spine']['hook']['state']);
+
+        foreach ($review['warnings'] as $warning) {
+            $this->assertStringNotContainsString('the departure', $warning);
+        }
+    }
+
+    /**
+     * A hook with no departure BESIDE it raises no promise finding either.
+     *
+     * THE HALF OF THE GUARD NO TEST COULD REACH, and it was found by a drill
+     * PASSING rather than by design: removing the `$departure === ''` half of
+     * the early return left every hook test green, because the only fixture
+     * that exercised the return had an empty hook as well and stopped on the
+     * first half of the condition. A guard whose second clause nothing can
+     * reach is indistinguishable from one that is not there.
+     *
+     * The state is real and is not the legacy one. An operator who types a hook
+     * into Gate 1 on a story whose departure is still empty has ENDED the
+     * blanket excuse — that is what filling one field by hand does — so the
+     * departure is a PROBLEM one panel up. A warning here saying the hook
+     * promises nothing is a second finding about that same absence, and both
+     * are repaired by one edit.
+     */
+    public function test_a_hook_with_no_departure_beside_it_raises_no_promise_finding(): void
+    {
+        $story = $this->outlinedStory();
+        $story->update(['departure' => '']);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        // The departure's own absence is reported, once, where it belongs.
+        $this->assertStringContainsString('Departure is missing', implode(' ', $review['problems']));
+
+        foreach ($review['warnings'] as $warning) {
+            $this->assertStringNotContainsString('close on the departure', $warning);
+        }
+
+        $this->assertSame('ok', $review['spine']['hook']['state']);
+    }
+
+    /**
+     * An operator who has started writing one by hand gets the ordinary checks.
+     *
+     * The legacy predicate is about an outline the generator produced before
+     * these fields existed. A hook typed into Gate 1 is not that, so the
+     * blanket excuse stops applying to every field including this one — which
+     * is the behaviour `departure` already had, extended to the field beside
+     * it rather than written a second time.
+     */
+    public function test_a_hand_written_hook_ends_the_blanket_excuse(): void
+    {
+        $story = $this->outlinedStory();
+        $story->acts()->update(['phase' => null]);
+        $story->update(['departure' => '', 'reversal_beats' => '', 'refusal' => '']);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertStringNotContainsString(
+            'generated before the reversal phase existed',
+            implode(' ', $review['warnings']),
+        );
+        $this->assertNotSame([], $review['problems']);
+    }
+
+    /**
+     * The twenty seconds is one story's own sizing rate, in one place.
+     *
+     * Not `NarrationPace`. The budget is an instruction to the WRITER about how
+     * much text it may spend, and it rides in the same act 1 prompt as the word
+     * target — two rates in one prompt is the $2.12 / $4.24 / 42,017 shape
+     * reproduced inside a single string.
+     */
+    public function test_the_hook_word_budget_uses_the_frozen_sizing_rate(): void
+    {
+        $story = $this->draftStory();
+
+        // Frozen at 160, like every story generated before the correction.
+        $story->forceFill(['sized_against_wpm' => 160])->save();
+        $this->assertSame(53, ScriptSizing::hookBetrayalWords($story));
+
+        // Sized today, at the measured rate. Same twenty seconds.
+        $story->forceFill(['sized_against_wpm' => 197])->save();
+        $this->assertSame(66, ScriptSizing::hookBetrayalWords($story));
+    }
+
+    /**
+     * Act 1 is handed the beats, the budget and the outline's own hook.
+     *
+     * Read off the REAL prompt builder rather than off the fake, because the
+     * fake has no prompt: this is the seam where a field required at outline,
+     * checked at Gate 1 and shown on the page can go missing on the way to the
+     * only call it exists for. `escalation_beat` did exactly that for two
+     * phases, and nothing could see it.
+     */
+    public function test_act_one_is_handed_the_hook_the_outline_wrote(): void
+    {
+        $story = $this->outlinedStory();
+        $act = new ActOutline(sequence: 1, title: 'The First Invoice', summary: 'It arrives.');
+
+        $prompt = $this->actPrompt($story, $act, 985);
+
+        $this->assertStringContainsString('THIS ACT OPENS THE VIDEO', $prompt);
+        $this->assertStringContainsString('THE HOOK THIS OUTLINE ASKS FOR', $prompt);
+        $this->assertStringContainsString(trim((string) $story->hook), $prompt);
+    }
+
+    /**
+     * The betrayal deadline reaches the prompt as WORDS, at this story's rate.
+     *
+     * 53 at the frozen 160, 66 at the measured 197 — the same twenty seconds,
+     * and the same rate `$targetWords` was derived from. A prompt carrying the
+     * act target at one rate and the hook budget at another would be two
+     * beliefs about one narration inside a single string.
+     */
+    public function test_the_hook_budget_in_the_prompt_follows_the_stories_own_rate(): void
+    {
+        $story = $this->outlinedStory();
+        $act = new ActOutline(sequence: 1, title: 'The First Invoice', summary: 'It arrives.');
+
+        $story->forceFill(['sized_against_wpm' => 160])->save();
+        $this->assertStringContainsString(
+            'inside the first 53 words',
+            $this->actPrompt($story->refresh(), $act, 985),
+        );
+
+        $story->forceFill(['sized_against_wpm' => 197])->save();
+        $this->assertStringContainsString(
+            'inside the first 66 words',
+            $this->actPrompt($story->refresh(), $act, 985),
+        );
+    }
+
+    /**
+     * A story outlined before the field existed still gets the beats.
+     *
+     * Four stories are in that position. Handing act 1 nothing at all because
+     * the outline predates the column would leave the one instruction this
+     * whole change is about un-given on exactly the stories that demonstrated
+     * the need for it.
+     */
+    public function test_a_story_with_no_hook_still_gets_the_beats(): void
+    {
+        $story = $this->outlinedStory();
+        $story->update(['hook' => '']);
+
+        $act = new ActOutline(sequence: 1, title: 'The First Invoice', summary: 'It arrives.');
+        $prompt = $this->actPrompt($story->refresh(), $act, 985);
+
+        $this->assertStringContainsString('THIS ACT OPENS THE VIDEO', $prompt);
+        $this->assertStringNotContainsString('THE HOOK THIS OUTLINE ASKS FOR', $prompt);
+    }
+
+    /** Act 2 gets the re-hook, not the hook. */
+    public function test_a_later_act_gets_the_rehook_instead(): void
+    {
+        $story = $this->outlinedStory();
+        $act = new ActOutline(sequence: 2, title: 'The Second Invoice', summary: 'And another.');
+
+        $prompt = $this->actPrompt($story, $act, 985);
+
+        $this->assertStringContainsString('are a re-hook', $prompt);
+        $this->assertStringNotContainsString('THIS ACT OPENS THE VIDEO', $prompt);
+    }
+
+    /** The real prompt builder, which the fake does not have. */
+    private function actPrompt(Story $story, ActOutline $act, int $targetWords): string
+    {
+        $writer = new ClaudeScriptWriter(
+            // Never called: only the private prompt builder is invoked.
+            client: app(Client::class),
+            locale: app(LocaleGuard::class),
+            text: app(CharacterTextGuard::class),
+        );
+
+        $method = new ReflectionMethod($writer, 'actPrompt');
+        $method->setAccessible(true);
+
+        // A two-act outline so the sequence-2 case is not also the last act,
+        // which would change the ending instruction rather than the opening one.
+        $outline = [
+            $act->sequence === 1 ? $act : new ActOutline(sequence: 1, title: 'One', summary: 'One.'),
+            $act->sequence === 2 ? $act : new ActOutline(sequence: 2, title: 'Two', summary: 'Two.'),
+            new ActOutline(sequence: 3, title: 'Three', summary: 'Three.'),
+        ];
+
+        return (string) $method->invoke($writer, $story, $act, $outline, [], $targetWords);
     }
 
     /** A story whose outline has been generated and whose spine is sound. */

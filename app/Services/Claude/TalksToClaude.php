@@ -97,16 +97,73 @@ trait TalksToClaude
         }
 
         if ($message->stopReason === 'max_tokens') {
-            throw new ScriptWriterException(sprintf(
-                '%s hit the %d-token output ceiling and was truncated mid-sentence. Raise '
-                .'ANTHROPIC_MAX_TOKENS or lower the per-act word target — a truncated act cannot be '
-                .'salvaged and re-running it costs the same again.',
-                $operation,
-                (int) $config['max_tokens']
-            ));
+            throw new ScriptWriterException($this->truncationMessage($operation, $config));
         }
 
         return [$message->text, $this->priceUsage($message, $operation, $config)];
+    }
+
+    /**
+     * What to say when a call runs out of output tokens.
+     *
+     * -----------------------------------------------------------------------
+     * THE DEFECT THIS REPLACES
+     * -----------------------------------------------------------------------
+     *
+     * One sentence served all eight operations: *"Raise ANTHROPIC_MAX_TOKENS or
+     * lower the per-act word target — a truncated act cannot be salvaged."*
+     * Every clause of it was wrong on the stage that actually hit it.
+     *
+     *   - `generate_outline` HAS NO PER-ACT WORD TARGET. That lever belongs to
+     *     the act scripts. An operator following the advice would go looking for
+     *     a knob this stage does not have.
+     *   - `ANTHROPIC_MAX_TOKENS` IS NOT A VARIABLE THIS APP READS. Every ceiling
+     *     is suffixed — `_OUTLINE`, `_ACT_SCRIPT`, `_SCENES`. Setting the name
+     *     in the message changes nothing, silently, which is the worse half:
+     *     the remedy appears to be applied and the next run fails identically.
+     *   - "a truncated ACT" is the wrong noun on six of the eight operations.
+     *
+     * **A message that names a remedy the stage does not have is worse than no
+     * message.** It is confident, it is specific, and it sends the reader
+     * somewhere there is nothing to find — the same family as a checklist item
+     * about something that cannot exist, and as `updated_at` standing in for a
+     * publication date because it was the right TYPE.
+     *
+     * -----------------------------------------------------------------------
+     * WHY THE REMEDY LIVES IN CONFIG
+     * -----------------------------------------------------------------------
+     *
+     * Beside the `max_tokens` it talks about, so the advice and the number
+     * cannot drift apart, and so the env var it names is the one written on the
+     * line above it. A `match` here would be a second copy of the roster, keyed
+     * the same way, which is how `assets:generate` came to print a `--max-time`
+     * that stopped being the sized one.
+     *
+     * An operation with no remedy configured says so plainly and stops. Inventing
+     * a plausible generic one is exactly how the old message read.
+     *
+     * @param  array{model: string, effort: string|null, max_tokens: int, truncation_remedy?: string}  $config
+     */
+    private function truncationMessage(string $operation, array $config): string
+    {
+        $remedy = trim((string) ($config['truncation_remedy'] ?? ''));
+
+        return sprintf(
+            '%s hit its %s-token output ceiling on %s and was truncated mid-response. The response '
+            .'is not salvageable and the call was billed in full, at the ceiling. %s',
+            $operation,
+            number_format((int) $config['max_tokens']),
+            $config['model'],
+            $remedy !== ''
+                ? $remedy
+                : sprintf(
+                    'No truncation_remedy is configured for this operation, so there is no advice '
+                    .'here that is known to apply to it — add one beside max_tokens in '
+                    .'config/providers.php -> anthropic.operations.%s rather than assuming another '
+                    ."stage's lever works on this one.",
+                    $operation,
+                ),
+        );
     }
 
     /** The SDK client this implementation was constructed with. */

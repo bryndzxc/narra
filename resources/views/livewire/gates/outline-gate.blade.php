@@ -341,12 +341,33 @@
         <x-gate-group>
             @if ($this->spineReview()['problems'])
                 <div class="alert fail wide">
-                    <strong>The outline is missing part of its structure.</strong>
+                    {{-- The card's own header bar, as the design has it: the
+                         subject in the alert's own ink, and how many. The ink
+                         comes from `.alert.fail > .alerthead h2` rather than
+                         from a class written here, so a refusal cannot end up
+                         headed in warning amber. --}}
+                    <div class="alerthead">
+                        <svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                             stroke="var(--fail)" stroke-width="2.4" aria-hidden="true">
+                            <path d="M12 3.5 2.5 20h19L12 3.5Z"></path>
+                            <path d="M12 9.5v5M12 17.2v.1"></path>
+                        </svg>
+                        <h2>The outline is missing part of its structure</h2>
+                        <span class="count">{{ count($this->spineReview()['problems']) }}</span>
+                    </div>
                     <ul class="small indent">
                         @foreach ($this->spineReview()['problems'] as $problem)
                             <li>{{ $problem }}</li>
                         @endforeach
                     </ul>
+                    {{-- The card had no closing note at all, while both of its
+                         neighbours had one — so the loudest advisory on the page
+                         was the only one that never said what it costs to act on
+                         it. Through the voice, because both halves of that
+                         sentence name a decision. --}}
+                    <div class="muted small mt-2">
+                        {{ $this->voice()->blocksApproval() }} {{ $this->voice()->fixHere() }}
+                    </div>
                 </div>
             @endif
         </x-gate-group>
@@ -358,15 +379,25 @@
                  on was a terminal. --}}
             @if ($this->localeWarnings())
                 <div class="alert warn wide">
-                    <strong>{{ count($this->localeWarnings()) }} term(s) read wrong for {{ $this->localeLabel() }}.</strong>
-                    <ul class="small indent">
+                    <div class="alerthead">
+                        <h2>{{ count($this->localeWarnings()) }} term(s) read wrong for {{ $this->localeLabel() }}</h2>
+                    </div>
+                    {{-- A fixed act column, not a list. "Act 3 — torch …swept
+                         the beam of a torch across the garage…" as one run-on
+                         line makes the eye find the term twice: once as the
+                         thing flagged, once inside the sentence. Two columns
+                         separate the two jobs. --}}
+                    <div class="localehits">
                         @foreach ($this->localeWarnings() as $hit)
-                            <li>
-                                Act {{ $hit['act'] }} &mdash; <code>{{ $hit['term'] }}</code>
-                                <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
-                            </li>
+                            <div class="hit">
+                                <span class="at">act {{ $hit['act'] }}</span>
+                                <span class="minw">
+                                    <code>{{ $hit['term'] }}</code>
+                                    <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
+                                </span>
+                            </div>
                         @endforeach
-                    </ul>
+                    </div>
                     <div class="muted small mt-2">
                         None of these block anything. Each has a legitimate reading, which is why the
                         stage was not failed &mdash; the unambiguous terms are refused before an act
@@ -377,11 +408,19 @@
         </x-gate-group>
 
         <x-gate-group>
-            @if ($this->spineReview()['warnings'])
+            @if ($this->structuralWarnings())
                 <div class="alert warn wide">
-                    <strong>Structural warnings.</strong>
+                    {{-- The heading names the DECISION, so it comes from the
+                         voice: "Worth a look before you approve" beside a strip
+                         saying nothing can be approved is the sentence this
+                         mechanism exists for. The design draws one story in one
+                         state and does not know about the other ten. --}}
+                    <div class="alerthead">
+                        <h2>{{ $this->voice()->advisoryHeading('this outline') }}</h2>
+                        <span class="count">{{ count($this->structuralWarnings()) }}</span>
+                    </div>
                     <ul class="small indent">
-                        @foreach ($this->spineReview()['warnings'] as $warning)
+                        @foreach ($this->structuralWarnings() as $warning)
                             <li>{{ $warning }}</li>
                         @endforeach
                     </ul>
@@ -394,26 +433,45 @@
         </x-gate-group>
     </x-gate-row>
 
-    <div class="panel">
-        {{-- The setting, read-only. Chosen at creation, and every act on this
-             page was written against it — so it is shown rather than edited. --}}
-        <div class="muted small mb-5">
-            Setting: <strong>{{ $this->localeLabel() }}</strong>
-            &middot; fixed at creation, because the outline and the acts were generated against it.
-        </div>
+    {{--
+        TWO PANELS, NOT ONE PANEL OF TWO FIELDS.
 
-        {{-- TWO-UP. Premise and cast age are the pair the operator writes
-             together, and stacked they are two short textareas above a column
-             of whitespace on any real screen. --}}
-        <div class="twoup">
-        <div class="field">
-            <label for="premise">Premise</label>
-            <textarea id="premise" wire:model="premise" rows="4"
-                      @disabled(! $this->editable())></textarea>
-            @error('premise') <div class="error">{{ $message }}</div> @enderror
-            <div class="muted small mt-2">
-                Everything downstream is generated from this: the acts, then 5,500&ndash;8,000 words of
-                script, then 150&ndash;250 stills. It is the cheapest thing here to change.
+        Premise and cast age are one decision taken twice — what the story is,
+        and who is in it — and `.twoup` already put them side by side. What it
+        could not do was give either of them a header: they shared one panel, so
+        they shared a bottom edge and a single "Setting: …" preamble, and
+        neither could carry the note that belongs to it. The setting is a
+        property of the PREMISE and states what it is fixed against; "the last
+        free place to state it" is a property of the CAST AGE and is a warning,
+        which is why it is in warn ink and why it cannot live in a line above
+        both.
+    --}}
+    <div class="twoup">
+        <div class="panel flush">
+            <div class="panelhead ruled">
+                <h2>Premise</h2>
+                {{-- The setting, read-only. Chosen at creation, and every act on
+                     this page was written against it — so it is shown rather
+                     than edited. --}}
+                <span class="right muted small">
+                    setting: {{ $this->localeLabel() }} &middot; fixed at creation
+                </span>
+            </div>
+            <div class="pad">
+                <div class="field">
+                    {{-- The panel header is the label. `aria-label` rather
+                         than a visually-hidden element: one fewer rule to keep
+                         true, and nothing on screen to fall out of step with
+                         the heading above it. --}}
+                    <textarea id="premise" aria-label="Premise" wire:model="premise" rows="5"
+                              @disabled(! $this->editable())></textarea>
+                    @error('premise') <div class="error">{{ $message }}</div> @enderror
+                    <div class="muted small mt-2">
+                        Everything downstream is generated from this: the acts, then
+                        5,500&ndash;8,000 words of script, then 150&ndash;250 stills. It is the
+                        cheapest thing here to change.
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -421,23 +479,29 @@
              is dispatched from Gate 2 — so this gate is the last place it is free
              to state. After that, changing it means reopening Gate 1 and
              re-extracting, which rewrites every description the scene prompts
-             were built from. --}}
-        <div class="field">
-            <label for="cast-age">
-                Cast age range
-                <span class="muted small">optional</span>
-            </label>
-            <textarea id="cast-age" wire:model="castAgeProfile" rows="2"
-                      placeholder="Spouses in their late twenties and thirties. Workplace and marriage settings. No elderly characters carrying plot."
-                      @disabled(! $this->editable())></textarea>
-            @error('castAgeProfile') <div class="error">{{ $message }}</div> @enderror
-            <div class="muted small mt-2">
-                Steers the ages the script does not state outright. Where the script does state one,
-                the script wins &mdash; a picture that contradicts the narration is worse than one
-                outside the intended range. The art style cannot carry this: one style line is shared
-                by every story, so it can describe how age is drawn but never who is in this one.
+             were built from. That is what the header says, in warn ink, because
+             it is the only thing on this pair with a deadline. --}}
+        <div class="panel flush">
+            <div class="panelhead ruled">
+                <h2>Cast age range</h2>
+                <span class="badge">optional</span>
+                <span class="right small warnnote">last free place to state it</span>
             </div>
-        </div>
+            <div class="pad">
+                <div class="field">
+                    <textarea id="cast-age" aria-label="Cast age range" wire:model="castAgeProfile" rows="5"
+                              placeholder="Spouses in their late twenties and thirties. Workplace and marriage settings. No elderly characters carrying plot."
+                              @disabled(! $this->editable())></textarea>
+                    @error('castAgeProfile') <div class="error">{{ $message }}</div> @enderror
+                    <div class="muted small mt-2">
+                        Steers the ages the script does not state outright. Where the script does
+                        state one, the script wins &mdash; a picture that contradicts the narration
+                        is worse than one outside the intended range. The art style cannot carry
+                        this: one style line is shared by every story, so it can describe how age is
+                        drawn but never who is in this one.
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -447,16 +511,42 @@
         the story, so a cartoon antagonist here becomes 5,500-8,000 words of
         cartoon antagonist and the cost of finding out is the whole pipeline.
     --}}
-    <h2>The spine</h2>
-    <p class="muted small" style="margin-top:-6px">
-        The structure this genre runs on. Everything below is generated against it. The first four
-        say how the narrator is wronged and where it comes out; the last three say that they leave,
-        that they are searched for, and what they say when they are found.
-    </p>
+    <div class="panel flush">
+        {{-- The heading reads WITH its explanation rather than above it. A bare
+             `h2` here is a page landmark with a 32px top margin and a rule over
+             it; this is a panel's own title, and the sentence beside it is the
+             reason the panel is worth reading. It was two blocks with an inline
+             `margin-top:-6px` dragging the paragraph back under the heading —
+             a workaround for the arrangement instead of the arrangement. --}}
+        <div class="panelhead ruled">
+            <div class="sectionhead">
+                <h2>The spine</h2>
+                <p>
+                    The structure this genre runs on. Every act-generation call reads these fields
+                    off the story, so a cartoon antagonist here becomes 5,500&ndash;8,000 words of
+                    cartoon antagonist. The first four say how the narrator is wronged and where it
+                    comes out; the last three say that they leave, that they are searched for, and
+                    what they say when they are found.
+                </p>
+            </div>
+        </div>
 
-    <div class="panel">
+        <div class="pad">
+        {{-- TWO COLUMNS. Seven fields down the left of a 1770px viewport is the
+             argument `.twoup` exists for one section up, at seven times the
+             size. --}}
+        <div class="spinegrid">
         @foreach ($this->spineReview()['spine'] as $key => $field)
-            <div class="field">
+            {{-- The state is on the FIELD as well as in the badge. On a grid of
+                 seven, a missing field and a filled one are the same shape
+                 until the badge is read, and scanning is the whole reason the
+                 grid is a grid. `problem` and `flagged` are literal so
+                 class-audit can see them. --}}
+            <div @class([
+                'field',
+                'problem' => $field['state'] === 'missing',
+                'flagged' => in_array($field['state'], ['thin', 'weak'], true),
+            ])>
                 <label for="spine-{{ $key }}">
                     {{ $field['label'] }}
                     @if ($field['state'] === 'missing')
@@ -477,14 +567,31 @@
                              than "it answers act 3". --}}
                         <span class="badge run">answers {{ $field['answers'] }}</span>
                     @endif
+                    @if (! empty($field['promises']))
+                        {{-- Which part of the departure the hook's closing line
+                             promises. Same argument as the refusal badge beside it:
+                             "it promises something" is worth less than the sentence
+                             it promises, and the sentence is short enough to read. --}}
+                        <span class="badge run">promises &ldquo;{{ $field['promises'] }}&rdquo;</span>
+                    @endif
                 </label>
                 <textarea id="spine-{{ $key }}" wire:model="spine.{{ $key }}" rows="3"
                           @disabled(! $this->editable())></textarea>
                 @error("spine.$key") <div class="error">{{ $message }}</div> @enderror
             </div>
         @endforeach
+        </div>
 
-        <div class="muted small">
+        <div class="muted small mt-4">
+            The hook is the first thirty seconds and five beats: one sentence of setup, the betrayal
+            inside twenty seconds, evidence in exact words, one small cold action, and a closing line
+            promising the DEPARTURE. Only that last beat is checked here, against the departure
+            itself &mdash; a hook promising revenge on a story whose payoff is a refusal is selling a
+            different video. It draws on the antagonist's justification and does not spend it: the
+            same line lands twice in this genre, once as bait and once played out.
+        </div>
+
+        <div class="muted small mt-4">
             The antagonist's justification is the engine: the infuriating part is the excuse, not the
             villainy. The exposure is the public payoff and it needs witnesses &mdash; the same reveal
             in private is a different and much worse video. The refusal is the private one, and it is
@@ -493,21 +600,17 @@
             announcing it &mdash; an announced departure cannot be searched for, and the search is
             the next third of the video.
         </div>
+        </div>
     </div>
 
-    @if ($this->actsMissingRehooks())
-        <div class="alert warn">
-            <strong>{{ count($this->actsMissingRehooks()) }} act(s) have no re-hook written.</strong>
-            <div class="muted small mt-1">
-                A 15-second opening hook is not enough over 35 minutes. Every act after the first has to
-                open with a line that carries the viewer forward, or the retention graph falls off at
-                the act boundary &mdash; which is also exactly where a chapter marker invites them to leave.
-            </div>
-        </div>
-    @endif
-
+    {{-- The re-hook advisory was here, as its own `.alert.warn` with no `wide`,
+         three screens below the fold on a seven-act story and drawing at the
+         96ch cap. It is a bullet in the structural warnings now, at the top of
+         the page where the design has it -- see `structuralWarnings()`, which
+         also records why no test had ever rendered this element. --}}
+    <div class="sectionhead">
     <h2>Acts &mdash; {{ count($acts) }}</h2>
-    <p class="muted small" style="margin-top:-6px">
+    <p>
         Each act is one unit of script generation and one YouTube chapter. The title does both jobs.
         The phase is the act structure and is not editable here: escalation through roughly the first
         two thirds, then the departure, then the search and the refusal. Changing one act's phase
@@ -515,9 +618,24 @@
         fixed by re-generating the outline.
     </p>
 
+    {{-- A GRID, NOT A STACK. Seven full-width panels at roughly 400px each is
+         three screens of scrolling to read an outline the design fits in one
+         and a half — on the page whose one job is a single approve decision
+         about that outline. --}}
+    <div class="actgrid">
     @foreach ($acts as $i => $act)
-        <div class="panel">
-            <div class="row mb-4">
+        {{-- The phase on the card's EDGE as well as in its badge, so the
+             direction of an act is legible while scanning seven of them.
+             `leaving` and `turning` are literal keys, so class-audit can read
+             them — a class built from `$act['phase']` would be invisible to it,
+             which is the shape that let `.warnfill` paint nothing for a phase. --}}
+        <div @class([
+            'panel',
+            'actcard',
+            'leaving' => $act['phase'] === 'departure',
+            'turning' => in_array($act['phase'], ['search', 'refusal'], true),
+        ])>
+            <div class="alerthead">
                 <span class="badge">Act {{ $act['sequence'] }}</span>
                 @if ($act['phase'])
                     {{-- The direction of the act, and the one thing the script
@@ -529,23 +647,31 @@
                 @if ($act['sequence'] === 1)
                     <span class="badge run" title="Chapter 1 must start at 00:00">opens the video</span>
                 @endif
-                <span class="right muted mono small">chapter title, {{ mb_strlen($act['title']) }}/100</span>
+                {{-- The design's badge, added rather than substituted: the
+                     checkbox below is the only producer `acts.is_rehook_written`
+                     has, and a column read by an advisory and written by nothing
+                     is `target_publish_at` again. This makes the state visible
+                     while scanning; the checkbox is still how it is set. --}}
+                @if ($act['sequence'] > 1 && ! $act['is_rehook_written'])
+                    <span class="badge warn">no re-hook</span>
+                @endif
+                <span class="right muted mono small">{{ mb_strlen($act['title']) }}/100</span>
             </div>
 
             <div class="field">
-                <label for="act-title-{{ $i }}">Title</label>
+                <label for="act-title-{{ $i }}">Title &mdash; also the chapter title</label>
                 <input id="act-title-{{ $i }}" type="text" wire:model="acts.{{ $i }}.title"
                        @disabled(! $this->editable())>
                 @error("acts.$i.title") <div class="error">{{ $message }}</div> @enderror
             </div>
 
             <div class="field">
-                <label for="act-summary-{{ $i }}">Summary</label>
+                <label for="act-summary-{{ $i }}">Summary &mdash; fed to the next act's generation call</label>
                 <textarea id="act-summary-{{ $i }}" wire:model="acts.{{ $i }}.summary" rows="3"
                           @disabled(! $this->editable())></textarea>
                 <div class="muted small mt-2">
-                    Fed to the next act's generation call. This is the mechanism that stops 7,000 words
-                    drifting, repeating, or contradicting themselves.
+                    This is the mechanism that stops 7,000 words drifting, repeating, or
+                    contradicting themselves.
                 </div>
             </div>
 
@@ -581,18 +707,49 @@
             @endif
         </div>
     @endforeach
+    </div>
 
+    {{--
+        THE DECISION, KEPT ON SCREEN.
+
+        Gate 1 is one approve press about a document three screens long, and the
+        button was at the bottom of the third screen — so the decision was taken
+        from memory, or taken after scrolling back past the thing being decided.
+
+        Rendered only where the decision EXISTS. A sticky bar on a settled story
+        would be `.dash.quiet`'s empty container nailed to the bottom of the
+        viewport, which is worse than the row it replaces: the strip above
+        already says where the story stands and what, if anything, can be done.
+
+        THE NOTE IS NOT A FABRICATED COUNT. The design puts "unsaved changes in
+        2 fields" beside Save, and there is no dirty tracking behind it — a
+        figure with no producer next to the control it describes is the
+        form-with-nothing-behind-it defect, and this file has already paid for
+        one of those at Gate 4. What is printed instead is a fact the page
+        actually holds: how many structural findings are still open. That
+        sentence names a decision, so it comes from the voice.
+    --}}
     @if ($this->editable())
-        <div class="row">
+        @php($open = count($this->spineReview()['problems']) + count($this->structuralWarnings()))
+
+        <div class="gatebar">
             <button wire:click="save">Save outline</button>
 
+            @if ($open > 0)
+                <span class="note">
+                    {{ $this->voice()->countBlocking($open) }}
+                    {{ $this->voice()->fixHere() }}
+                </span>
+            @endif
+
             @if ($this->canApprove())
-                <button class="gate" wire:click="approve"
+                <button class="gate {{ $open > 0 ? '' : 'right' }}" wire:click="approve"
                         wire:confirm="Approve Gate 1? Act scripts get generated against this outline.">
                     Approve Gate 1 &mdash; outline is right
                 </button>
             @else
-                <span class="muted small">Save once to move the story to <span class="mono">outlined</span>, then approve.</span>
+                <span class="{{ $open > 0 ? '' : 'right' }} muted small">Save once to move the story to
+                    <span class="mono">outlined</span>, then approve.</span>
             @endif
         </div>
     @endif

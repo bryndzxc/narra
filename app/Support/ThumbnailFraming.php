@@ -114,23 +114,18 @@ final class ThumbnailFraming
         // three others will outrank anyway; a false `close` promotes a bad one
         // into a composition the operator then has to notice. Err toward the
         // one that costs a ranking rather than the one that costs a thumbnail.
-        $shot = 'unstated';
+        ['shot' => $shot, 'markers' => $markers] = $this->framing($frame);
 
-        if ($this->hits($frame, self::WIDE_MARKERS) !== []) {
-            $score -= 25;
-            $shot = 'wide';
-            $reasons[] = 'framed wide: "'.implode('", "', array_slice($this->hits($frame, self::WIDE_MARKERS), 0, 2)).'"';
-        } elseif (($close = $this->hits($frame, self::CLOSE_MARKERS)) !== []) {
-            $score += 30;
-            $shot = 'close';
-            $reasons[] = 'framed close: "'.implode('", "', array_slice($close, 0, 2)).'"';
-        } elseif (($mid = $this->hits($frame, self::MID_MARKERS)) !== []) {
-            $score += 10;
-            $shot = 'mid';
-            $reasons[] = 'framed mid: "'.implode('", "', array_slice($mid, 0, 2)).'"';
-        } else {
-            $reasons[] = 'the frame does not state a shot scale';
-        }
+        match ($shot) {
+            'wide' => $score -= 25,
+            'close' => $score += 30,
+            'mid' => $score += 10,
+            default => null,
+        };
+
+        $reasons[] = $shot === 'unstated'
+            ? 'the frame does not state a shot scale'
+            : sprintf('framed %s: "%s"', $shot, implode('", "', array_slice($markers, 0, 2)));
 
         // The opening still is engineered to stop a scroll, which is the same
         // job a thumbnail has. A small nudge, not a decision.
@@ -151,6 +146,34 @@ final class ThumbnailFraming
             'reasons' => $reasons,
             'frame' => $this->frameOf($scene),
         ];
+    }
+
+    /**
+     * The shot scale a frame states, and the words that said so.
+     *
+     * Extracted from score() so that it is asked rather than repeated. It is
+     * now read by two callers with different jobs — this class ranks a still
+     * for a thumbnail, and ValidateSceneDrafts asks Gate 2 whether a close
+     * frame named anywhere for the camera to be — and two copies of a marker
+     * list is how they come to disagree about what "close" means.
+     *
+     * The precedence is unchanged and the reasoning for it is in score(): wide
+     * is tested first because a false `wide` costs a ranking and a false
+     * `close` costs a thumbnail.
+     *
+     * @return array{shot: string, markers: array<int, string>}
+     */
+    public function framing(string $frame): array
+    {
+        $frame = mb_strtolower($frame);
+
+        foreach (['wide' => self::WIDE_MARKERS, 'close' => self::CLOSE_MARKERS, 'mid' => self::MID_MARKERS] as $shot => $markers) {
+            if (($hits = $this->hits($frame, $markers)) !== []) {
+                return ['shot' => $shot, 'markers' => $hits];
+            }
+        }
+
+        return ['shot' => 'unstated', 'markers' => []];
     }
 
     /**

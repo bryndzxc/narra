@@ -47,6 +47,24 @@ return [
     'max_candidates' => (int) env('CHARACTER_MAX_CANDIDATES', 6),
 
     /*
+    | How long one character's sheet-generation claim survives a request that
+    | died — a killed worker, a closed tab, a crashed browser.
+    |
+    | Sized off measurement, not picked. Across 62 real candidate images the
+    | gap between consecutive rows is 36s at the median and 53s at the worst,
+    | so a four-candidate sheet is about 144 seconds. This is an order of
+    | magnitude above that on purpose: the cost of being too SHORT is a second
+    | press getting through on a slow provider day and billing four more
+    | images, and the cost of being too LONG is a character that cannot be
+    | regenerated for half an hour after a crash. The first is money and the
+    | second is a wait, so the number leans long.
+    |
+    | It is only ever reached by a request that died. The ordinary path
+    | releases the claim in a finally.
+    */
+    'sheet_claim_seconds' => (int) env('CHARACTER_SHEET_CLAIM_SECONDS', 1800),
+
+    /*
     |--------------------------------------------------------------------------
     | The reference frame
     |--------------------------------------------------------------------------

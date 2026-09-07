@@ -22,9 +22,21 @@ use App\Models\Story;
  * an antagonist's justification reads as a confession rather than an excuse,
  * that an exposure has no witnesses in it, that two acts claim the same
  * escalation, that a departure was announced, that a search costs the
- * antagonist nothing, or that a refusal answers nothing anybody named earlier.
+ * antagonist nothing, that a refusal answers nothing anybody named earlier, or
+ * that a hook closes on the wrong payoff.
  * Those are the ways this genre actually gets written wrong, and all of them
  * are visible in the text.
+ *
+ * The hook check arrived from a measurement rather than from a watch-back, and
+ * the measurement is the reason it is shaped the way it is. Both shipped
+ * stories were read against the five beats a hook in this niche runs: FOUR OF
+ * THE FIVE ALREADY EXIST IN BOTH, and every one of them lands two to seven
+ * minutes late. Story 21's cold action — *I said, "Have a good trip. I'll take
+ * you to the airport."* — is at 3:09; story 12 opens a spreadsheet and names it
+ * MOM EXPENSES 2020 at 3:24; neither states its betrayal inside forty scenes.
+ * Nothing was missing and no writer failed. The act 1 call had no instruction
+ * about where the opening starts, and a writer with none writes the
+ * chronological beginning, because context is what comes first in time.
  *
  * The last three arrived after story 21 was watched back. It ran escalation ->
  * escalation -> exposure -> end and gave the narrator one scene of power out of
@@ -177,7 +189,7 @@ class ValidateOutlineSpine
             $value = trim((string) $story->{$key});
             $state = 'ok';
 
-            if ($value === '' && $legacy && ($meta['reversal'] ?? false)) {
+            if ($value === '' && $legacy && ($meta['later'] ?? false)) {
                 // Reported once, below, as the one thing it actually is.
                 $state = 'absent';
             } elseif ($value === '') {
@@ -198,12 +210,14 @@ class ValidateOutlineSpine
 
         if ($legacy) {
             $warnings[] = 'This outline was generated before the reversal phase existed, so it has no '
-                .'departure, no search and no refusal — it escalates to the last act and pays off in '
-                .'the ending. That is the shape this genre loses on: the reversal is a phase, not a '
-                .'scene. Re-generating the outline adds it; the acts already written against this one '
-                .'stay on record.';
+                .'hook, no departure, no search and no refusal — it escalates to the last act and pays '
+                .'off in the ending. That is the shape this genre loses on: the reversal is a phase, '
+                .'not a scene, and the opening is five beats rather than a summary of the premise. '
+                .'Four stories are in this position. Re-generating the outline adds both; the acts '
+                .'already written against this one stay on record.';
         }
 
+        $this->checkHook($story, $warnings, $spine);
         $this->checkJustification($story, $warnings, $spine);
         $this->checkExposure($story, $warnings, $spine);
         $this->checkDeparture($story, $warnings, $spine);
@@ -216,6 +230,149 @@ class ValidateOutlineSpine
         return ['problems' => $problems, 'warnings' => $warnings, 'spine' => $spine];
     }
 
+    /**
+     * The hook's closing line promises the DEPARTURE.
+     *
+     * -----------------------------------------------------------------------
+     * WHY THIS ONE BEAT AND NOT THE OTHER FOUR
+     * -----------------------------------------------------------------------
+     *
+     * The hook has five beats and this checks the fifth. That is deliberate and
+     * it is worth saying which four are NOT checked, so nobody reads the field
+     * as covered: one sentence of setup, the betrayal inside the word budget,
+     * evidence in exact words, and one small cold action are all instructions
+     * to the writer with nothing structural to measure at Gate 1 — the outline
+     * holds a paragraph describing the opening, not the opening itself, so
+     * counting its sentences would be counting the wrong text.
+     *
+     * The fifth beat is different in kind. It is a claim about WHICH VIDEO this
+     * is, and the story already carries the answer in another column, so the
+     * two can be compared. A hook promising revenge on a story whose payoff is
+     * a refusal is not a thin field or a missing one — it is the same mismatch
+     * class as an outline that escalates to an exposure and stops, which is the
+     * defect the reversal phase was added for. It is the one beat that can be
+     * wrong rather than merely weak.
+     *
+     * -----------------------------------------------------------------------
+     * HOW
+     * -----------------------------------------------------------------------
+     *
+     * The same way `checkRefusal()` works, for the same reason: overlap of
+     * distinctive words, two of them, because one shared word is a coincidence
+     * in any two paragraphs about the same family. The last sentence of the
+     * hook is the promise; earlier sentences are the setup, the betrayal and
+     * the evidence, and letting those match would make almost every hook pass
+     * on its own grievance.
+     *
+     * It reports WHICH part of the departure it promises, sentence by sentence,
+     * because "it promises something" is worth less at Gate 1 than "it promises
+     * the part where nobody is given an address". That is the same argument as
+     * the refusal naming the moment it answers.
+     *
+     * A closing line that instead reaches the exposure is named as that, rather
+     * than as promising nothing. The two are different repairs: one is a hook
+     * pointed at the wrong payoff and one is a hook pointed at nothing.
+     *
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array{label: string, value: string, state: string}>  $spine
+     */
+    private function checkHook(Story $story, array &$warnings, array &$spine): void
+    {
+        $text = trim((string) $story->hook);
+        $departure = trim((string) $story->departure);
+
+        // Nothing to promise against. Four stories are in this position — every
+        // outline written before the reversal phase existed — and the blanket
+        // legacy warning has already said so once. Reporting "the hook promises
+        // nothing" here would be a second finding about the same absence, and a
+        // finding the operator cannot act on without regenerating the outline.
+        if ($text === '' || $departure === '') {
+            return;
+        }
+
+        $promise = $this->distinctiveWords($this->lastSentence($text));
+
+        foreach ($this->departureBeats($departure) as $label => $beat) {
+            if (count(array_intersect($promise, $this->distinctiveWords($beat))) >= 2) {
+                $spine['hook']['promises'] = (string) $label;
+
+                return;
+            }
+        }
+
+        $exposure = (string) $story->exposure_moment;
+
+        if (trim($exposure) !== ''
+            && count(array_intersect($promise, $this->distinctiveWords($exposure))) >= 2) {
+            $warnings[] = 'The hook closes on the exposure rather than the departure. That is the '
+                .'public payoff and it is what the TITLE promises; the hook has to promise the gap '
+                .'before it — that the narrator will be gone, and that somebody will have to look '
+                .'for them. A hook selling the reckoning on a story whose middle third is a search '
+                .'is selling a different video from the one this outline builds.';
+
+            $spine['hook']['state'] = 'weak';
+
+            return;
+        }
+
+        $warnings[] = 'The hook does not close on the departure — its last line shares no specific '
+            .'language with how the narrator goes. That last line is the promise the whole video is '
+            .'made against, and this genre pays off on the gap: the reference channel frames its '
+            .'own videos on "never expecting to see me and our son 5 years later", which is a '
+            .'departure and a refusal and no exposure at all. Name the leaving, in the words the '
+            .'departure uses.';
+
+        $spine['hook']['state'] = 'weak';
+    }
+
+    /**
+     * The departure, split into the parts a hook can promise.
+     *
+     * Sentences rather than fields, which is where this differs from
+     * `earlierMoments()`: the departure is one column, and what a hook reaches
+     * for is one thing inside it — the leaving, the silence, or the finding out
+     * later. Labelled with the text itself, trimmed, because a label reading
+     * "the departure's second sentence" tells the operator nothing they can act
+     * on and the sentence tells them everything.
+     *
+     * @return array<string, string>
+     */
+    private function departureBeats(string $departure): array
+    {
+        $sentences = preg_split('/(?<=[.!?])\s+/u', trim($departure)) ?: [];
+        $beats = [];
+
+        foreach ($sentences as $sentence) {
+            $sentence = trim($sentence);
+
+            if ($sentence === '') {
+                continue;
+            }
+
+            $beats[$this->label($sentence)] = $sentence;
+        }
+
+        return $beats === [] ? ['the departure' => $departure] : $beats;
+    }
+
+    /** The last sentence of a passage, which for a hook is its promise. */
+    private function lastSentence(string $text): string
+    {
+        $sentences = array_values(array_filter(
+            array_map('trim', preg_split('/(?<=[.!?])\s+/u', trim($text)) ?: []),
+            fn (string $sentence): bool => $sentence !== ''
+        ));
+
+        return $sentences === [] ? trim($text) : (string) end($sentences);
+    }
+
+    /** A sentence, short enough to sit in a badge beside a field label. */
+    private function label(string $sentence): string
+    {
+        return mb_strlen($sentence) <= 60
+            ? rtrim($sentence, '.')
+            : rtrim(mb_substr($sentence, 0, 57)).'...';
+    }
     /**
      * The antagonist has to believe their own excuse.
      *
@@ -591,7 +748,7 @@ class ValidateOutlineSpine
             return false;
         }
 
-        foreach (['departure', 'reversal_beats', 'refusal'] as $field) {
+        foreach (['hook', 'departure', 'reversal_beats', 'refusal'] as $field) {
             if (trim((string) $story->{$field}) !== '') {
                 return false;
             }
@@ -694,11 +851,26 @@ class ValidateOutlineSpine
     }
 
     /**
-     * @return array<string, array{label: string, why: string, reversal?: bool}>
+     * @return array<string, array{label: string, why: string, later?: bool}>
      */
     private function fields(): array
     {
         return [
+            'hook' => [
+                'label' => 'Hook',
+                // Grouped with the reversal three not because it is part
+                // of the reversal but because the flag means the same
+                // thing for all four: the pre-phase outline generator
+                // never wrote this field, so its absence on those four
+                // stories is a fact about when they were outlined and not
+                // a fault in them.
+                'later' => true,
+                'why' => 'The first thirty seconds, as five beats: one sentence of setup, the '
+                    .'betrayal inside twenty seconds, evidence in exact words, one small cold '
+                    .'action, and a closing line promising the DEPARTURE. Both shipped stories '
+                    .'already contain four of the five and land every one of them two to seven '
+                    .'minutes late, because act 1 was never told where the opening starts.',
+            ],
             'narrator_grievance' => [
                 'label' => 'Narrator grievance',
                 'why' => 'The narrator has to be the person who was wronged, not someone watching it '
@@ -722,21 +894,21 @@ class ValidateOutlineSpine
             ],
             'departure' => [
                 'label' => 'Departure',
-                'reversal' => true,
+                'later' => true,
                 'why' => 'How and when the narrator goes, and whether they announce it. They must not: '
                     .'an announced departure cannot be searched for, and the search is the next third '
                     .'of the video.',
             ],
             'reversal_beats' => [
                 'label' => 'Reversal beats',
-                'reversal' => true,
+                'later' => true,
                 'why' => 'What the antagonist does to find them, and what each attempt costs HER. The '
                     .'humiliation beats running the other way, escalating the same. Without them the '
                     .'middle of the reversal is empty and the refusals are unearned.',
             ],
             'refusal' => [
                 'label' => 'Refusal',
-                'reversal' => true,
+                'later' => true,
                 'why' => 'What the narrator says when they are finally found, and which earlier moment '
                     .'it answers. The exposure is the public payoff; this is the private one, and it '
                     .'is what viewers wait forty minutes for.',

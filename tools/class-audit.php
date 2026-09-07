@@ -161,6 +161,111 @@ function stylesheetRules(string $css): array
 // -- 2. What the markup asks for --------------------------------------------
 
 /**
+ * The literals inside `@class([...])` THAT ARE ACTUALLY CLASSES.
+ *
+ * ---------------------------------------------------------------------------
+ * THE DEFECT THIS REPLACES, WHICH WAS THE TOOL BEING CONFIDENTLY WRONG
+ * ---------------------------------------------------------------------------
+ *
+ * This was `preg_match_all("/'([A-Za-z0-9_ -]+)'/")` over the whole array body
+ * — every quoted string inside the brackets, wherever it sat. That is right for
+ * `@class(['warnfill' => $cond, 'panel'])` and wrong the moment a CONDITION
+ * contains a string, which is the ordinary way to write one:
+ *
+ *     @class(['actcard', 'leaving' => $act['phase'] === 'departure'])
+ *
+ * `departure` is an operand. `phase` is an array key. Neither is ever emitted
+ * as a class, and both were reported UNDEFINED — the tool's most severe
+ * category, the one that found `.panel.money`. Gate 1's rebuild produced SEVEN
+ * such phantoms in one pass.
+ *
+ * That is worse than a miss. A tool whose loudest section fills with findings
+ * that cannot be acted on is a tool whose loudest section stops being read, and
+ * this codebase has the same sentence written about an alarm that fires for
+ * something the reader cannot act on. It is also the exact family the
+ * known-answer fixtures exist for: the output looked plausible, and only
+ * checking it against a page whose classes were known could tell.
+ *
+ * So the array body is walked at top level rather than grepped. Commas inside
+ * nested brackets, parentheses or quotes do not split — `in_array($p, ['a','b'],
+ * true)` is one element — and each element yields a class only when the literal
+ * is in a CLASS POSITION: the key of `'name' => expr`, or a bare `'name'`.
+ * Anything else is an expression, and an expression is not a class.
+ *
+ * @return array<int, string>
+ */
+function classLiteralsIn(string $body): array
+{
+    $elements = [];
+    $current = '';
+    $depth = 0;
+    $quote = null;
+
+    foreach (str_split($body) as $char) {
+        if ($quote !== null) {
+            $current .= $char;
+
+            if ($char === $quote) {
+                $quote = null;
+            }
+
+            continue;
+        }
+
+        if ($char === "'" || $char === '"') {
+            $quote = $char;
+            $current .= $char;
+
+            continue;
+        }
+
+        if (in_array($char, ['[', '(', '{'], true)) {
+            $depth++;
+        } elseif (in_array($char, [']', ')', '}'], true)) {
+            $depth--;
+        }
+
+        if ($char === ',' && $depth === 0) {
+            $elements[] = $current;
+            $current = '';
+
+            continue;
+        }
+
+        $current .= $char;
+    }
+
+    $elements[] = $current;
+
+    $classes = [];
+
+    foreach ($elements as $element) {
+        $element = trim($element);
+
+        if ($element === '') {
+            continue;
+        }
+
+        // A key — `'name' => $condition` — or a bare literal. In both cases the
+        // literal is what lands in the class attribute; in neither case is
+        // anything to the RIGHT of `=>` a class.
+        $matched = preg_match("/^'([A-Za-z0-9_ -]+)'\s*(=>|$)/", $element, $m) === 1;
+
+        if (! $matched) {
+            continue;
+        }
+
+        foreach (preg_split('/\s+/', trim($m[1])) ?: [] as $class) {
+            if ($class !== '') {
+                $classes[] = $class;
+            }
+        }
+    }
+
+    return $classes;
+}
+
+/**
  * Every element in every blade that carries a class, with its tag and the full
  * set of classes it can carry.
  *
@@ -273,15 +378,9 @@ function markupUsages(string $dir): array
             }
 
             // `@class(['warnfill' => $cond, 'panel'])`
-            if (preg_match('/@class\(\[(.*?)\]\)/s', $attrs, $m) === 1) {
-                if (preg_match_all("/'([A-Za-z0-9_ -]+)'/", $m[1], $inner) > 0) {
-                    foreach ($inner[1] as $literal) {
-                        foreach (preg_split('/\s+/', trim($literal)) ?: [] as $c) {
-                            if ($c !== '') {
-                                $classes[] = $c;
-                            }
-                        }
-                    }
+            if (preg_match('/@class\(\[(.*)\]\)/s', $attrs, $m) === 1) {
+                foreach (classLiteralsIn($m[1]) as $c) {
+                    $classes[] = $c;
                 }
             }
 

@@ -6,6 +6,7 @@ use App\Actions\EstimateCharacterSheets;
 use App\Actions\GenerateCharacterSheet;
 use App\Actions\SelectCharacterReference;
 use App\Actions\ValidateCharacterSheets;
+use App\Exceptions\SheetInFlightException;
 use App\Models\Character;
 use App\Models\CharacterReference;
 use App\Models\Story;
@@ -126,6 +127,16 @@ class CharacterSheets extends Component
 
         try {
             $produced = app(GenerateCharacterSheet::class)->handle($character);
+        } catch (SheetInFlightException $e) {
+            // Reported as reassurance rather than as a fault, and separately
+            // from a provider failure, because the two mean opposite things:
+            // this one says the first press DID land and nothing extra was
+            // bought. Pressing twice is what the old screen invited.
+            $this->confirming = null;
+            $this->forget();
+            $this->notice = $e->getMessage();
+
+            return;
         } catch (Throwable $e) {
             $this->confirming = null;
             $this->problem = $e->getMessage();
@@ -197,8 +208,26 @@ class CharacterSheets extends Component
         return $this->story->characters()->whereKey($id)->firstOrFail();
     }
 
+    /**
+     * Drop everything derived, including the story's own loaded relations.
+     *
+     * The computed properties re-query on their own, which is why the badge and
+     * the candidate strip already followed a completed generation. What did NOT
+     * re-read is `$this->story` — a Livewire model property carrying whatever
+     * relations were loaded earlier in the request — and both
+     * `EstimateCharacterSheets` and `ValidateCharacterSheets` are handed that
+     * instance. A cached `characters` relation on it would answer from before
+     * the sheet existed, which is the reported symptom exactly, and neither
+     * Action can tell a stale relation from a fresh one.
+     *
+     * So the model is refreshed rather than trusted. It costs one query on an
+     * action that has just spent about two minutes and real money.
+     */
     private function forget(): void
     {
+        $this->story->unsetRelations();
+        $this->story->refresh();
+
         unset($this->cast, $this->estimate, $this->readiness);
     }
 }

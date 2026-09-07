@@ -17,6 +17,7 @@ use App\Support\LocaleGuard;
 use App\Support\Providers\CharacterProfile;
 use App\Support\Providers\SceneDraft;
 use App\Support\SentenceSplitter;
+use App\Support\ThumbnailFraming;
 use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -315,7 +316,12 @@ class DraftScenes
                         'is_hook' => ! $partial && $sequence === 1,
                         'is_thumbnail_candidate' => $isThumbnail,
                         'narration_text' => $narration,
-                        'image_prompt' => $this->prompts->build($draft->frame, $cast, $present),
+                        'image_prompt' => $this->prompts->build(
+                            $draft->frame,
+                            $cast,
+                            $present,
+                            $this->expressionFor($draft, $present),
+                        ),
                         'motion_preset' => $this->motionFor($draft, $sequence, $fallback),
                         'status' => SceneStatus::Drafted,
                     ]);
@@ -387,8 +393,38 @@ class DraftScenes
         // Park everything clear of the target range first; 1..n overlaps the
         // numbers still in use and the unique index does not care that the end
         // state would have been fine.
+        //
+        // ABOVE EVERY LIVE SEQUENCE, not at PARK_BASE — and that difference is
+        // the whole of a bug that made `--acts=` fail on every real story.
+        //
+        // persist() parks the NEW rows at PARK_BASE+1 .. PARK_BASE+N. Parking
+        // here at PARK_BASE+$index walks straight back through that band: the
+        // scenes of the untouched earlier acts get indices 1..N and are moved
+        // onto numbers the new rows are still sitting on. Story 12 died on
+        // exactly this — `Duplicate entry '12-30001'` — after billing two calls
+        // for the act it then rolled back.
+        //
+        // It survived a test file written for this method because that
+        // fixture's three acts produce ONE scene each, so the two bands are a
+        // single number wide and the only row assigned 30001 is the row already
+        // there. Passing on a fixture that cannot express the failure is the
+        // shape this project keeps paying for; see the multi-scene case in
+        // PartialSceneRedraftTest.
+        $base = ((int) $story->scenes()->max('sequence')) + 1;
+
+        // unsignedSmallInteger. A story long enough to overflow this is not a
+        // story, but a silent wrap here would renumber a video at random.
+        if ($base + $ordered->count() - 1 > 65535) {
+            throw new RuntimeException(sprintf(
+                'Cannot renumber %d scenes from %d without overflowing scenes.sequence. Something '
+                .'has left this story numbered far above its scene count.',
+                $ordered->count(),
+                $base,
+            ));
+        }
+
         foreach ($ordered as $index => $id) {
-            Scene::whereKey($id)->update(['sequence' => self::PARK_BASE + $index]);
+            Scene::whereKey($id)->update(['sequence' => $base + $index]);
         }
 
         foreach ($ordered as $index => $id) {
@@ -469,6 +505,79 @@ class DraftScenes
 
         return $resolved;
     }
+
+    /**
+     * The expression, or nothing, and there are two ways to earn nothing.
+     *
+     * **Nobody in the frame.** Roughly a quarter of a real story is cutaways —
+     * an envelope on a doormat, a driveway at dusk — and an expression there
+     * describes a face the picture does not contain.
+     *
+     * **A wide establishing shot with no face named in it.** The frame budget is
+     * 25-45 words and an expression on a house seen from the street is spent on
+     * something no viewer can resolve. Story 12 produced exactly that: *"A
+     * modest single-story house on Ridgeline Drive seen from the street … brows
+     * drawn together"*.
+     *
+     * **The second condition is deliberately narrower than "the shot is wide",
+     * and the reason is that the same method answers a different question for
+     * ThumbnailFraming.** Its precedence tests wide FIRST and is documented as
+     * erring that way on purpose, because there a false `wide` costs a ranking
+     * and a false `close` costs a thumbnail. Here a false `wide` DELETES a real
+     * expression from a real close-up, so the cost function is reversed and the
+     * marker list cannot be trusted alone: 'empty' matched a shot of a print
+     * shop counter, and 'the street' matched a frame whose subject is standing
+     * in it.
+     *
+     * So the frame must be wide AND say nothing about a face. A frame that names
+     * a face keeps its expression however the shot was marked — which is the
+     * conservative direction, and the only one where a wrong answer costs
+     * nothing worse than the words it was already spending.
+     *
+     * Read off `$draft->frame`, the model's own field, before assembly — so it
+     * cannot see the expression it is deciding about. That ordering is
+     * load-bearing: "eyes wide" inside a frame classifies the frame as wide.
+     *
+     * @param  array<int, string>  $present
+     */
+    private function expressionFor(SceneDraft $draft, array $present): string
+    {
+        $expression = trim($draft->expression);
+
+        if ($expression === '' || $present === []) {
+            return '';
+        }
+
+        $frame = mb_strtolower($draft->frame);
+
+        if (app(ThumbnailFraming::class)->framing($frame)['shot'] !== 'wide') {
+            return $expression;
+        }
+
+        foreach (self::FACE_IN_FRAME as $cue) {
+            if (preg_match('/\b'.preg_quote($cue, '/').'\b/u', $frame)) {
+                return $expression;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Words that say a face is actually in the picture.
+     *
+     * Kept here rather than shared with ValidateSceneDrafts::FACE_CUES, and that
+     * is a decision rather than an oversight. That list answers "is this frame
+     * ABOUT a face" for an advisory an operator reads; this one answers "is a
+     * face visible enough to be worth describing" for a suppression that
+     * silently drops text. Two questions, two costs, and merging them would make
+     * one of them wrong the next time either is tuned.
+     */
+    private const FACE_IN_FRAME = [
+        'face', 'faces', 'eyes', 'expression', 'mouth', 'jaw', 'brow', 'brows',
+        'cheek', 'cheeks', 'chin', 'smile', 'staring', 'stares', 'gaze', 'lips',
+        'looking', 'watching', 'glancing', 'turns to', 'close on', 'close-up',
+    ];
 
     /**
      * @param  array<int, string>  $fallback

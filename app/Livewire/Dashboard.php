@@ -88,8 +88,12 @@ class Dashboard extends Component
     {
         $rank = [
             WorkerHealth::STRANDED => 0,
-            WorkerHealth::STALE => 1,
-            WorkerHealth::ABSENT => 2,
+            // Beside stranded rather than below it: both mean the pipeline has
+            // stopped right now, and this one is the harder to believe because
+            // the health table shows a live worker with a fresh heartbeat.
+            WorkerHealth::NOT_CONSUMING => 1,
+            WorkerHealth::STALE => 2,
+            WorkerHealth::ABSENT => 3,
         ];
 
         $troubled = array_values(array_filter(

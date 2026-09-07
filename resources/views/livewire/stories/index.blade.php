@@ -75,7 +75,17 @@
                                      assets looks identical, from the outside, to one that
                                      is working. --}}
                                 <span class="mono small">{{ $n->queue }}</span>
-                                @if ($w && $w['state'] === \App\Support\WorkerHealth::STALE)
+                                {{-- STRANDED was missing from this chain and fell through
+                                     to no badge at all, which is the state this column
+                                     exists for: a story parked at assets_generating on a
+                                     queue holding work that nothing is taking. It and
+                                     TAKING NOTHING are the two readings where the row
+                                     looks most normal and is most wrong. --}}
+                                @if ($w && $w['state'] === \App\Support\WorkerHealth::STRANDED)
+                                    <span class="badge fail">stranded</span>
+                                @elseif ($w && $w['state'] === \App\Support\WorkerHealth::NOT_CONSUMING)
+                                    <span class="badge fail">taking nothing</span>
+                                @elseif ($w && $w['state'] === \App\Support\WorkerHealth::STALE)
                                     <span class="badge fail">stale</span>
                                 @elseif ($w && $w['state'] === \App\Support\WorkerHealth::ABSENT)
                                     <span class="badge warn">nothing listening</span>

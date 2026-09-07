@@ -14,12 +14,25 @@ use InvalidArgumentException;
  * of Phase 2 — so the only way to start a video was a terminal, and the app
  * that exists to keep an operator out of one had no front door.
  *
- * Nothing here is a default with an opinion. `voice_id` in particular comes
- * from config and is allowed to be null: `narrator-us-01` lived in this code
- * path for a phase and is a string the FAKE synthesizer invented to have
- * something to record. It is not a voice on any vendor, and every story written
- * before it was removed carried it. Null is the honest answer and
- * GenerateSceneNarration refuses to synthesize without one.
+ * Nothing here is a default with an opinion, and `voice_id` is the one that has
+ * now been wrong in both directions.
+ *
+ * It was `narrator-us-01`, hard-coded in this path for a phase — a string the
+ * FAKE synthesizer invented to have something to record, on no vendor, carried
+ * by every story written before it was removed. It was then null, on the
+ * argument that a narrator should be a deliberate pick.
+ *
+ * Null is not neutral either, and story 23 is what showed it: the story reached
+ * a paid asset dispatch with no narrator, and the missing column turned into 257
+ * identical per-scene refusals after 256 stills had already been bought. A
+ * channel keeps ONE narrator across every video — that is the spec's sentence —
+ * so "no narrator" is not a resting state, it is a hole every new story falls
+ * into once.
+ *
+ * So it still comes from config and this Action still has no opinion; what
+ * changed is that the config now holds the channel's actual narrator. Null
+ * remains legal and still refuses in `GenerateSceneNarration`, and is now also
+ * refused at the dispatch by `PreflightAssetDispatch`, before anything queues.
  */
 class CreateStory
 {

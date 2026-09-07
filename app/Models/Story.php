@@ -45,6 +45,14 @@ class Story extends Model
         // STATED where it varies — per story — rather than compensated for by
         // the one art-style line that every story shares. See the migration.
         'cast_age_profile',
+        // The first thirty seconds. Five beats, the last of which promises the
+        // DEPARTURE rather than revenge or exposure — checked at Gate 1 by
+        // overlap, the way `refusal` is. Added last and for a measured reason:
+        // four of its five beats already existed in both shipped stories and
+        // every one of them landed two to seven minutes late, because the act 1
+        // call had no instruction about where the opening starts and a writer
+        // with none writes the chronological beginning. See the migration.
+        'hook',
         // The genre spine. Written by the outline generator, edited by the
         // operator at Gate 1, and read by every act-generation call after it.
         // See the migration that added them for why each one is load-bearing.

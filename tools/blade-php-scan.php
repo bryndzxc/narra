@@ -90,6 +90,34 @@ define('VIEWS', (static function (array $argv): string {
 })($argv));
 
 /** @return array<int, array{file: string, line: int, kind: string, detail: string}> */
+/**
+ * The source with every pass-2 uncompiled block blanked out, offsets preserved.
+ *
+ * `storeUncompiledBlocks` extracts these before comments are stripped and
+ * before anything is compiled, so their contents reach the output verbatim.
+ * Spaces rather than deletion, so byte offsets — and the line numbers derived
+ * from them — are unchanged.
+ */
+function maskUncompiledBlocks(string $source): string
+{
+    // Built at runtime for the same reason the pairing walk builds its tokens:
+    // so this file can name them without a scan of itself matching them.
+    $pairs = [
+        '/@'.'php\b(?!\s*\().*?@'.'endphp\b/s',
+        '/@'.'verbatim\b.*?@'.'endverbatim\b/s',
+    ];
+
+    foreach ($pairs as $pattern) {
+        $source = (string) preg_replace_callback(
+            $pattern,
+            static fn (array $m): string => str_repeat(' ', strlen($m[0])),
+            $source,
+        );
+    }
+
+    return $source;
+}
+
 function scan(string $dir): array
 {
     $findings = [];
@@ -175,8 +203,40 @@ function scan(string $dir): array
             }
         }
 
+        /*
+         * A FOREIGN COMMENT INSIDE AN UNCOMPILED BLOCK IS NOT A HAZARD.
+         *
+         * `@php…@endphp` and `@verbatim…@endverbatim` are extracted by
+         * `storeUncompiledBlocks` at PASS 2 — before comments are stripped and
+         * long before component tags or directives are compiled. Nothing inside
+         * one is compiled at all, so a `<x-gate-group>` named in a CSS comment
+         * there is inert.
+         *
+         * VERIFIED AGAINST THE COMPILER, not reasoned about. That is the
+         * standing rule for any claim about pass order here, and it is the rule
+         * this file's own component-tag check was written in violation of once.
+         * Run through `compileString()`: a component tag named inside a CSS
+         * comment inside a php block comes back untouched, while the same
+         * comment inside a `style` element comes back as a component render.
+         *
+         * Without this the scan reported that inert case as COMPILED-IN-COMMENT
+         * — a FALSE POSITIVE IN A SEVERE CATEGORY, which is the failure mode
+         * `class-audit`'s `@class` parser and `theme-audit`'s GONE both had. A
+         * severe category that fills with findings nobody can act on is a severe
+         * category that stops being read, and this one exists to catch a defect
+         * that takes the entire console down.
+         *
+         * Masked with spaces rather than removed, so every byte offset — and so
+         * every reported line number — still points where it did.
+         *
+         * The pairing walk below reads the UNMASKED source, deliberately: its
+         * whole subject is which opener meets which closer, and a masked block
+         * would hide exactly the thing it is counting.
+         */
+        $scannable = maskUncompiledBlocks($source);
+
         foreach ($foreignComments as $pattern) {
-            if (! preg_match_all($pattern, $source, $foreign, PREG_OFFSET_CAPTURE)) {
+            if (! preg_match_all($pattern, $scannable, $foreign, PREG_OFFSET_CAPTURE)) {
                 continue;
             }
 

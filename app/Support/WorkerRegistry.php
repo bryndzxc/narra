@@ -34,6 +34,15 @@ use Illuminate\Support\Facades\Cache;
  * heartbeat()` calls `touchAnnounced()`, so the row's staleness clock and this
  * one are ticked by the same beat rather than by two timers that could drift.
  *
+ * **Three beats, two clocks, and the split is the point.** `seen_at` is ticked
+ * by a poll, by a job start and from inside a long job, which is what makes it
+ * a good liveness signal and a useless activity one — a fresh `seen_at` means
+ * the process exists and nothing more. So the entry also carries `looped_at`,
+ * written only by a poll, and `last_job_at`, written only when a job is taken.
+ * A worker that is polling and taking nothing has a fresh `looped_at` and an
+ * old `last_job_at`; a worker inside a forty-minute mux has the reverse. Those
+ * two states were indistinguishable before, and `WorkerHealth` reads the pair.
+ *
  * One cache key per queue holding a map of pid => entry, rather than a key per
  * worker. The Cache facade cannot enumerate keys on the Redis store without
  * reaching past it into a raw connection, and a preflight that only works on one
@@ -58,6 +67,23 @@ final class WorkerRegistry
     private static ?float $lastWrite = null;
 
     /**
+     * When this process last POLLED an empty-handed queue, and when it last
+     * STARTED a job. Two clocks, and the pair is the whole signal.
+     *
+     * Kept as process statics and folded into every write, so the throttle
+     * above cannot lose them: a write that lands fifteen seconds late still
+     * carries the freshest value of each rather than the value at write time.
+     *
+     * Null until the corresponding thing has happened. A worker that has never
+     * started a job has no `last_job_at`, and that is a fact about the worker
+     * rather than a missing reading — `booted_at` is what the age is measured
+     * from in that case.
+     */
+    private static ?float $lastLoopAt = null;
+
+    private static ?float $lastJobAt = null;
+
+    /**
      * When THIS process started.
      *
      * `LARAVEL_START` is defined by `artisan` before the framework loads, which
@@ -76,11 +102,27 @@ final class WorkerRegistry
     /**
      * Record this worker as alive on `$queue`, with what it believes.
      *
+     * `$polling` says the beat came from `Looping` — the daemon asking the
+     * queue for work and being between jobs by construction. It is deliberately
+     * NOT the default: `touchAnnounced()` beats from INSIDE a running job, and
+     * a beat that claimed to be a poll would make a worker forty minutes into a
+     * mux look like a worker sitting empty-handed. That distinction is the
+     * whole of the signal `WorkerHealth` reads, so it is set only where it is
+     * true.
+     *
      * @param  array<string, scalar|null>  $fingerprint
      */
-    public static function heartbeat(string $queue, array $fingerprint, bool $force = false): void
-    {
+    public static function heartbeat(
+        string $queue,
+        array $fingerprint,
+        bool $force = false,
+        bool $polling = false,
+    ): void {
         $now = microtime(true);
+
+        if ($polling) {
+            self::$lastLoopAt = $now;
+        }
 
         if (! $force && self::$lastWrite !== null && ($now - self::$lastWrite) < self::HEARTBEAT_INTERVAL) {
             return;
@@ -98,9 +140,37 @@ final class WorkerRegistry
     }
 
     /**
+     * Record that this worker has just STARTED a job on `$queue`.
+     *
+     * The second clock, and the one nothing recorded before. A heartbeat says
+     * the loop is turning; this says work was taken off the queue. Without it
+     * `live = 1, state = ok, heartbeat fresh` is compatible with a worker that
+     * has consumed nothing for twenty minutes with 550 jobs in front of it,
+     * which is the state the panel could not express and read as healthy.
+     *
+     * **Forced past the fifteen-second write throttle, and its own test is what
+     * said so.** Written as an ordinary beat first, on the reasoning that the
+     * value rides in a process static and would land on the next write anyway.
+     * True, and it left a window where the clock this state is read from was
+     * simply absent from the cache — a worker that took a job and then ran it
+     * for forty minutes recorded nothing until `touchAnnounced()` happened to
+     * fire. Throttling the one signal that says work is being consumed, to save
+     * one cache write per job on a pipeline whose jobs are 53-second API calls,
+     * is the wrong trade in both directions.
+     *
+     * @param  array<string, scalar|null>  $fingerprint
+     */
+    public static function jobStarted(string $queue, array $fingerprint): void
+    {
+        self::$lastJobAt = microtime(true);
+
+        self::heartbeat($queue, $fingerprint, force: true);
+    }
+
+    /**
      * The workers currently alive on `$queue`, newest boot first.
      *
-     * @return array<int, array{pid: int, booted_at: float, seen_at: float, fingerprint: array<string, scalar|null>, digest: string}>
+     * @return array<int, array{pid: int, booted_at: float, seen_at: float, looped_at: ?float, last_job_at: ?float, fingerprint: array<string, scalar|null>, digest: string}>
      */
     public static function live(string $queue): array
     {
@@ -124,7 +194,7 @@ final class WorkerRegistry
      * or — for anything the fingerprint does not cover — do it the old way.
      *
      * @param  array<string, scalar|null>  $fingerprint
-     * @return array<int, array{pid: int, booted_at: float, seen_at: float, fingerprint: array<string, scalar|null>, digest: string}>
+     * @return array<int, array{pid: int, booted_at: float, seen_at: float, looped_at: ?float, last_job_at: ?float, fingerprint: array<string, scalar|null>, digest: string}>
      */
     public static function stale(string $queue, array $fingerprint): array
     {
@@ -224,6 +294,8 @@ final class WorkerRegistry
         }
 
         self::$lastWrite = null;
+        self::$lastLoopAt = null;
+        self::$lastJobAt = null;
     }
 
     public static function bootedAt(): float
@@ -247,6 +319,19 @@ final class WorkerRegistry
             'pid' => (int) getmypid(),
             'booted_at' => self::bootedAt(),
             'seen_at' => $now,
+
+            /*
+             * The two clocks, written on every beat whichever beat it was.
+             *
+             * `seen_at` answers "is this process alive" and is ticked by three
+             * different things on purpose, which is exactly why it cannot
+             * answer "is it doing anything". These two can, because each is
+             * ticked by one thing only: `looped_at` by a poll, `last_job_at`
+             * by a job start.
+             */
+            'looped_at' => self::$lastLoopAt,
+            'last_job_at' => self::$lastJobAt,
+
             'fingerprint' => $fingerprint,
             'digest' => RunFingerprint::digest($fingerprint),
         ];

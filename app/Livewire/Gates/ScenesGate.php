@@ -112,6 +112,17 @@ class ScenesGate extends Component
 
     public ?string $problem = null;
 
+    /**
+     * What the dispatch checks said, when they were asked without dispatching.
+     *
+     * Empty until `checkReadiness()` runs, and never populated by a real
+     * dispatch — the money press reports what it QUEUED, and folding a
+     * readiness readout into that would make a run look like a check.
+     *
+     * @var array<int, array{level: string, message: string}>
+     */
+    public array $readinessNotes = [];
+
     public function mount(Story $story): void
     {
         $this->story = $story;
@@ -751,6 +762,61 @@ class ScenesGate extends Component
         }
     }
 
+    /**
+     * Run every dispatch check WITHOUT dispatching, and print what they say.
+     *
+     * -------------------------------------------------------------------
+     * A GUARD WITH NO CALLER IS WORSE THAN NO GUARD
+     * -------------------------------------------------------------------
+     *
+     * `narration:preflight` has asked five free questions since it was written
+     * — what is actually bound, is the voice real, does the run fit the
+     * allowance, does the aligner import, do the workers agree — and **nothing
+     * in the app has ever called it.** A terminal command, on the app built so
+     * an operator would not need a terminal, guarding the money button.
+     *
+     * That is the console-audit shape landing in the worst possible place, and
+     * story 23 is what it cost: dispatch, then 257 identical per-scene failures
+     * for a null `voice_id` the command would have named in one line.
+     *
+     * Questions 1-3 now run inside `PreflightAssetDispatch`, so pressing
+     * Generate cannot skip them. This button is the other half — the same
+     * questions asked for FREE, before committing, which is what the command
+     * was for. It dispatches nothing and bills nothing; a refusal is caught and
+     * printed rather than thrown.
+     *
+     * The command keeps its place for `--align`, which actually runs WhisperX
+     * against a real scene and is the one question a page should not ask on a
+     * render.
+     */
+    public function checkReadiness(): void
+    {
+        $this->problem = null;
+        $this->notice = null;
+        $this->resetErrorBag();
+
+        try {
+            // The same Action the money press runs, not a second copy of the
+            // questions. A check that agreed with the dispatch only on the day
+            // it was written is how one narration came to have three prices.
+            $notes = app(PreflightAssetDispatch::class)->handle($this->story);
+        } catch (DispatchRefusedException $e) {
+            $this->addError('generation', $e->getMessage());
+
+            return;
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->readinessNotes = $notes;
+
+        if ($notes === []) {
+            $this->notice = 'Nothing outstanding to check — this story has no unfinished asset stages.';
+        }
+    }
+
     public function askToGenerate(): void
     {
         $this->confirmingGeneration = true;
@@ -775,6 +841,29 @@ class ScenesGate extends Component
 
         try {
             $result = app(DispatchAssetGeneration::class)->handle($this->story);
+        } catch (DispatchRefusedException $e) {
+            /*
+             * THE REFUSAL, AS TEXT ON THE PAGE THAT CAUSED IT.
+             *
+             * This catch was missing. `alignTimings()` and `draftScenes()` both
+             * had it and the money press did not, so every refusal
+             * `PreflightAssetDispatch` can raise — stale workers, a dead
+             * aligner, a reference sheet in the wrong style — reached the
+             * operator as a stack trace on the one screen where the message is
+             * the entire point. Each of those refusals is several paragraphs
+             * naming the fix, and none of it was being read.
+             *
+             * It went unnoticed because those three refusals all require a
+             * broken machine to fire, and the button is pressed on a working
+             * one. The narrator and allowance checks are ordinary states — a
+             * new story, a nearly-spent month — so the gap would have started
+             * firing immediately.
+             */
+            $this->confirmingGeneration = false;
+            $this->notice = null;
+            $this->addError('generation', $e->getMessage());
+
+            return;
         } catch (MissingCharacterReferenceException $e) {
             // The reference rule, reaching the operator as text on the page
             // that fixes it rather than as a stack trace. Gate 2 refuses to

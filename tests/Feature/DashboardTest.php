@@ -74,7 +74,15 @@ class DashboardTest extends TestCase
                 $text,
                 $queue.' is not named in the band with its own count.',
             );
-            $this->assertStringContainsString('nssm start '.$service, $html, $queue.' has no pasteable fix.');
+            // `Restart-Service`, not `nssm start`. nssm is not on PATH on this
+            // machine — the installer resolves it three ways and the panel did
+            // none of them — and `start` is a no-op against a service that is
+            // running and taking nothing.
+            $this->assertStringContainsString(
+                'Restart-Service '.$service,
+                $html,
+                $queue.' has no pasteable fix.',
+            );
         }
 
         // The total, so the collapse states how much work has stopped rather

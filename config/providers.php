@@ -34,21 +34,64 @@ return [
     'transcriber' => env('PROVIDER_TRANSCRIBER', 'fake'),
 
     /*
-    | The narrator a new story starts with, or null to force a deliberate pick.
+    |--------------------------------------------------------------------------
+    | The narrator a new story starts with
+    |--------------------------------------------------------------------------
     |
-    | Null is the default and it is a correction rather than an omission. This
-    | used to be the literal string 'narrator-us-01' hard-coded into StoryWrite
-    | — a voice id FakeSpeechSynthesizer invented so it had something to record.
-    | It is not a voice on any vendor. Every story in the database carries it,
-    | and nothing ever noticed, because `SpeechSynthesizer::voices()` was
-    | declared on the contract and called from nowhere: there was no picker to
-    | disagree with the placeholder.
+    | Brian, and the reasoning for the value it replaced is worth keeping
+    | because both corrections were right and they were about different things.
     |
-    | Set it once a channel's narrator is locked, which is the point of storing
-    | a voice per story at all. Until then, GenerateSceneNarration refuses to
-    | synthesize without one and `voices:list --set` assigns a real id.
+    | It was once the literal string 'narrator-us-01', hard-coded — a voice id
+    | FakeSpeechSynthesizer invented so it had something to record. It is not a
+    | voice on any vendor. Every story in the database carried it and nothing
+    | noticed, because `SpeechSynthesizer::voices()` was declared on the contract
+    | and called from nowhere: there was no picker to disagree with the
+    | placeholder.
+    |
+    | The fix for that was NULL, on the argument that a narrator should be a
+    | deliberate pick. Correct about the placeholder and wrong about null, and
+    | story 23 is what showed the difference. **A null default is not neutral.**
+    | This file's own sentence is that a channel keeps one consistent narrator
+    | across every video, so "no narrator" is not a position a story is ever
+    | meant to rest in — it is a trap laid on every new story that has to be
+    | defused by hand, and story 23 hit it after 256 stills were already bought:
+    | 257 identical refusals, one per scene, on a fact knowable from one column
+    | before a single job was queued.
+    |
+    | 197.00 wpm on en-US and 199.49 on en-CN, measured across two finished
+    | stories. It is the only voice on this account with a measured reading rate
+    | at all, so it is also the only default that does not put a new story on the
+    | 160 wpm fallback — see `render.narration.voices`.
+    |
+    | -------------------------------------------------------------------------
+    | IF THIS ID IS NOT ON THE ACCOUNT
+    | -------------------------------------------------------------------------
+    |
+    | Nothing validates it here. A config file cannot ask a vendor anything, and
+    | a default pointing at a voice that does not exist would once have been
+    | WORSE than null — null refuses in `GenerateSceneNarration` with a sentence
+    | naming the fix, while a wrong id reaches ElevenLabs and comes back 422, per
+    | scene, three times each under `--tries=3`.
+    |
+    | That is no longer where it is discovered. `PreflightAssetDispatch` checks
+    | the id against the account's real voice list before anything is queued and
+    | REFUSES, in the dispatching process, once — and it only asks when narration
+    | is actually part of the dispatch. The two changes are coupled on purpose:
+    | this default is safe to set because that guard exists, and it would not
+    | have been before.
+    |
+    | Two more places say it out loud rather than leaving it to the guard. The
+    | new-story form prints the narrator a story will be created with, so a wrong
+    | value is visible at the moment of creation instead of at the money button;
+    | and `voices:list` prints the account's real list with the current pick
+    | marked, which is the one place the answer comes from the vendor rather than
+    | from us.
+    |
+    | Changing it here affects NEW stories only. `CreateStory` reads this at
+    | insert; nothing re-reads it and nothing backfills. A story already made
+    | keeps whatever it was given, and `voices:list --set` is how one is moved.
     */
-    'default_voice_id' => env('NARRATION_VOICE_ID') ?: null,
+    'default_voice_id' => env('NARRATION_VOICE_ID') ?: 'nPczCjzI2devNBz1zQrb',
 
     'anthropic' => [
 
@@ -99,6 +142,21 @@ return [
         | `fallback` is a model retried once when a response comes back
         | structurally invalid. Both attempts are billed and both write a cost
         | row — see ClaudeScriptWriter::scenes().
+        |
+        | `truncation_remedy` is what to DO when this operation hits its ceiling,
+        | and it lives here rather than in the thrower for one reason: it names
+        | the env var directly above it, and a remedy stored anywhere else is a
+        | hand-written copy of a number that lives here.
+        |
+        | It exists because the thrower had ONE sentence for every operation:
+        | "Raise ANTHROPIC_MAX_TOKENS or lower the per-act word target." Both
+        | halves were wrong on the stage that actually hit it. `generate_outline`
+        | has no per-act word target — that is the act-script stage's lever — and
+        | ANTHROPIC_MAX_TOKENS is not a variable this app reads; every ceiling is
+        | suffixed. So an operator following the advice would have set a variable
+        | nothing consults and gone looking for a knob the stage does not have.
+        | A remedy the stage does not have is worse than no remedy: it is
+        | confident and it costs an hour.
         */
         'operations' => [
 
@@ -106,6 +164,20 @@ return [
                 'model' => env('ANTHROPIC_MODEL_OUTLINE', 'claude-opus-5'),
                 'effort' => env('ANTHROPIC_EFFORT_OUTLINE', 'high'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_OUTLINE', 16000),
+                // The outline's size is the act count and the spine, and neither
+                // is a word target — the outline stage has none. Measured on
+                // story 22: eight spine fields are ~2,400 output tokens and six
+                // acts ~2,500, so a whole outline is about a third of this
+                // ceiling and an overshoot past it is variance rather than
+                // shape. Re-running is the first thing to try, and it is the
+                // only stage here where that is true.
+                'truncation_remedy' => 'The outline has no per-act word target — that lever belongs '
+                    .'to the act scripts. A whole outline measures about a third of this ceiling '
+                    .'(eight spine fields ~2,400 tokens, six acts ~2,500), so hitting it is '
+                    .'generation variance rather than a structural overflow: RE-RUN IT FIRST. If it '
+                    .'truncates repeatedly, drop the act count (story:write --acts, or '
+                    .'GenerateOutline::DEFAULT_ACTS_SINGLE) or raise '
+                    .'ANTHROPIC_MAX_TOKENS_OUTLINE.',
             ],
 
             'generate_act_script' => [
@@ -136,12 +208,27 @@ return [
                 // outline without connecting them.
                 'effort' => env('ANTHROPIC_EFFORT_ACT_SCRIPT', 'high'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_ACT_SCRIPT', 16000),
+                // The one stage where the per-act word target is real. Measured
+                // at 2,636 output tokens for a 1,123-word act, so ~16% of this
+                // ceiling — and the target only moves the writer by +0.30, so
+                // lowering it is a weak lever and the act count is the strong
+                // one.
+                'truncation_remedy' => 'This is the stage the per-act word target belongs to. A '
+                    .'1,123-word act measures ~2,636 output tokens, about a sixth of this ceiling, '
+                    .'so a truncation here means the act ran several times its target. Check '
+                    .'ScriptSizing::targetWordsPerAct() for this story, then raise '
+                    .'ANTHROPIC_MAX_TOKENS_ACT_SCRIPT. Note the word target only moves the writer '
+                    .'by about +0.30 per word asked, so lowering it is a weak lever.',
             ],
 
             'extract_characters' => [
                 'model' => env('ANTHROPIC_MODEL_CHARACTERS', 'claude-sonnet-5'),
                 'effort' => env('ANTHROPIC_EFFORT_CHARACTERS', 'medium'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_CHARACTERS', 8000),
+                'truncation_remedy' => 'The size here is the CAST — one description per named '
+                    .'character, and a story with a large family produces a large cast. Raise '
+                    .'ANTHROPIC_MAX_TOKENS_CHARACTERS. Do not try to shorten the descriptions to '
+                    .'fit: they are what every still of that character is conditioned on.',
             ],
 
             'draft_scenes' => [
@@ -151,6 +238,17 @@ return [
                 // accepted-and-ignored, it is a hard 400 on every call.
                 'effort' => env('ANTHROPIC_EFFORT_SCENES') ?: null,
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_SCENES', 16000),
+                // THE STAGE CLOSEST TO THIS CEILING BY SOME WAY. Story 21's act
+                // 3 came back at 14,031 output tokens against 16,000 — 88% —
+                // and every scene call is one act's whole script cut into
+                // scenes, so the output scales with the act rather than with
+                // anything this stage controls.
+                'truncation_remedy' => 'This stage is measured at 88% of its ceiling on a real act '
+                    .'(story 21 act 3, 14,031 output tokens), so it is the closest one to '
+                    .'truncating and a long act will exceed it. The lever is the ACT LENGTH '
+                    .'upstream, not anything here — scenes are cut from a script that already '
+                    .'exists. Raise ANTHROPIC_MAX_TOKENS_SCENES; a truncated scene list is not '
+                    .'salvageable and re-running bills the act again.',
                 'fallback' => env('ANTHROPIC_MODEL_SCENES_FALLBACK', 'claude-sonnet-5'),
                 'fallback_effort' => env('ANTHROPIC_EFFORT_SCENES_FALLBACK', 'medium'),
             ],
@@ -213,12 +311,18 @@ return [
                 'model' => env('ANTHROPIC_MODEL_TITLES', 'claude-opus-5'),
                 'effort' => env('ANTHROPIC_EFFORT_TITLES', 'high'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_TITLES', 8000),
+                'truncation_remedy' => 'Five titles and a description opening cannot approach 8,000 '
+                    .'tokens, so a truncation here means the model wrote something other than what '
+                    .'was asked. Re-run once, then raise ANTHROPIC_MAX_TOKENS_TITLES.',
             ],
 
             'generate_copy' => [
                 'model' => env('ANTHROPIC_MODEL_METADATA_COPY', 'claude-sonnet-5'),
                 'effort' => env('ANTHROPIC_EFFORT_METADATA_COPY', 'medium'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_METADATA_COPY', 4000),
+                'truncation_remedy' => 'Overlay phrases and a pinned comment are short copy; a '
+                    .'truncation here is the model over-writing rather than a real ceiling. Re-run '
+                    .'once, then raise ANTHROPIC_MAX_TOKENS_METADATA_COPY.',
             ],
 
             'generate_tags' => [
@@ -226,6 +330,9 @@ return [
                 // NULL, and load-bearing. See draft_scenes above.
                 'effort' => env('ANTHROPIC_EFFORT_TAGS') ?: null,
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_TAGS', 4000),
+                'truncation_remedy' => 'A tag list inside a 500-character budget cannot fill 4,000 '
+                    .'tokens. A truncation here means the model ignored the budget entirely; '
+                    .'re-run once, then raise ANTHROPIC_MAX_TOKENS_TAGS.',
             ],
         ],
 

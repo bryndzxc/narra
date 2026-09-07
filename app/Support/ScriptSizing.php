@@ -86,6 +86,64 @@ final class ScriptSizing
         return $wpm;
     }
 
+    /**
+     * How many words of narration a stretch of runtime is worth.
+     *
+     * -----------------------------------------------------------------------
+     * WHY THIS IS HERE AND NOT ON `NarrationPace`
+     * -----------------------------------------------------------------------
+     *
+     * The one consumer today is the hook: "state the betrayal within the first
+     * ~20 seconds". That is an instruction to the WRITER about how much text it
+     * may spend before the betrayal lands, so it is the sizing question, and it
+     * travels in the same act 1 prompt that already carries a word target from
+     * `targetWordsPerAct()`.
+     *
+     * **Deriving one from `wpmFor()` and the other from `bestKnownWpm()` would
+     * put two beliefs about one narration in a single prompt.** That is the
+     * $2.12 / $4.24 / 42,017 shape — one multiplier applied by pieces of code
+     * that never compared notes — reproduced inside one file, which is if
+     * anything harder to see than across three. So the seconds go through the
+     * story's own frozen rate, and this is the only place the conversion is
+     * written.
+     *
+     * What it does NOT claim is that the finished video says the betrayal
+     * inside twenty seconds. It claims the script was WRITTEN to. The two agree
+     * exactly as well as the sizing rate does, and `NarrationPace` is already
+     * the thing that measures the disagreement — the same split this class
+     * opens by drawing.
+     *
+     * The direction is the safe one wherever the two differ, which is every
+     * shipped story. `bestKnownWpm()` takes the HIGHEST measured rate on the
+     * locale, so a sizing rate sits at or below the reading rate: story 21 is
+     * frozen at 160, so twenty seconds buys 53 words, and its narrator reads 53
+     * words in 16.0 seconds. Measured against that story's real audio, 53 words
+     * lands mid-scene-2 and scene 2 ends at 00:20.1. Sized short, plays early.
+     */
+    public static function wordsForSeconds(Story $story, float $seconds): int
+    {
+        return max(1, (int) round($seconds / 60 * self::wpmFor($story)));
+    }
+
+    /**
+     * The runtime the hook has to state the betrayal inside.
+     *
+     * Config rather than a constant here for the reason every tunable in
+     * `render.php` is: it is a number about the format, and the format is what
+     * moves. The five beats are prose in the prompt; this is the only one of
+     * them with arithmetic behind it, so it is the only one that can drift.
+     */
+    public static function hookBetrayalSeconds(): float
+    {
+        return (float) config('render.script.hook_betrayal_seconds', 20);
+    }
+
+    /** That runtime as a word budget for this story. */
+    public static function hookBetrayalWords(Story $story): int
+    {
+        return self::wordsForSeconds($story, self::hookBetrayalSeconds());
+    }
+
     /** The whole-script word budget, from the story's own runtime target. */
     public static function targetWords(Story $story): int
     {

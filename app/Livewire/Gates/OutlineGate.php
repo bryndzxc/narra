@@ -66,9 +66,16 @@ class OutlineGate extends Component
      * one more — the departure act and every search act are written against
      * them, so a departure that gets announced here is announced in the script.
      *
+     * `hook` is first and is the same argument at the sharpest point on the
+     * curve: it is handed to the act 1 call verbatim, and act 1's first thirty
+     * seconds decide whether anybody sees the other thirty-nine minutes. It is
+     * also the one spine field whose fix is free at every stage — nothing
+     * downstream of Gate 1 is generated from it except act 1.
+     *
      * @var array<string, string>
      */
     public array $spine = [
+        'hook' => '',
         'narrator_grievance' => '',
         'antagonist_justification' => '',
         'withheld_information' => '',
@@ -148,6 +155,78 @@ class OutlineGate extends Component
     }
 
     /**
+     * Every structural finding about this outline, in one list.
+     *
+     * THE RE-HOOK ADVISORY USED TO BE ITS OWN ALERT, AND IT WAS THE ONLY ONE
+     * ON THE PAGE THAT HAD NEVER BEEN RENDERED BY A TEST. It sat below the
+     * spine panel — three screens down on a seven-act story — as a bare
+     * `.alert.warn` with no `wide`, so it drew at the 96ch cap beside
+     * full-width neighbours. `alertsWithoutTheirOwnWidth` would have reported
+     * it on sight and never got the chance: the Gate 1 case built one act at
+     * sequence 1 and this check exempts act 1, and the travelling fixture wrote
+     * a re-hook on both of its acts.
+     *
+     * The design has it as a bullet inside the structural warnings, at the top
+     * of the page, and that is also what fixes the width by construction — a
+     * finding in a list cannot have a width of its own to get wrong. Same
+     * reasoning as `.alert.wide` and `.measure`: prefer an arrangement where
+     * the bad outcome is unreachable over a check that it did not happen.
+     *
+     * It NAMES THE ACTS, which the standalone alert did not. "2 acts have no
+     * re-hook" is a count the operator then has to go and find; "acts 4 and 6"
+     * is the same warning at the same volume, already actionable — the
+     * refusal-answers-act-3 argument, one advisory down.
+     *
+     * `actsMissingRehooks()` stays the producer and is untouched. This composes
+     * what is already computed; it decides nothing.
+     *
+     * @return array<int, string>
+     */
+    #[Computed]
+    public function structuralWarnings(): array
+    {
+        $warnings = $this->spineReview()['warnings'];
+
+        if ($missing = $this->actsMissingRehooks()) {
+            $sequences = array_map(
+                static fn (array $act): int => (int) $act['sequence'],
+                $missing,
+            );
+
+            $one = count($sequences) === 1;
+
+            $warnings[] = sprintf(
+                '%d %s no re-hook written — %s %s. A 15-second opening hook is not enough over 35 '
+                .'minutes. Every act after the first has to open with a line that carries the viewer '
+                .'forward, or the retention graph falls off at the act boundary — which is exactly '
+                .'where a chapter marker invites them to leave.',
+                count($sequences),
+                $one ? 'act has' : 'acts have',
+                $one ? 'act' : 'acts',
+                $this->inWords($sequences),
+            );
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * "4 and 6", "4, 6 and 7" — a list a person reads rather than parses.
+     *
+     * @param  array<int, int>  $sequences
+     */
+    private function inWords(array $sequences): string
+    {
+        if (count($sequences) === 1) {
+            return (string) $sequences[0];
+        }
+
+        $last = array_pop($sequences);
+
+        return implode(', ', $sequences).' and '.$last;
+    }
+
+    /**
      * The setting this story is being generated for, by its label.
      *
      * Read-only, because it is chosen once at creation and everything on
@@ -207,6 +286,7 @@ class OutlineGate extends Component
         $this->validate([
             'premise' => ['required', 'string', 'min:20'],
             'castAgeProfile' => ['nullable', 'string', 'max:500'],
+            'spine.hook' => ['nullable', 'string', 'max:2000'],
             'spine.narrator_grievance' => ['nullable', 'string', 'max:2000'],
             'spine.antagonist_justification' => ['nullable', 'string', 'max:2000'],
             'spine.withheld_information' => ['nullable', 'string', 'max:2000'],

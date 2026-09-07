@@ -81,6 +81,7 @@ class StoryFork extends Command
                 'antagonist_justification' => $source->antagonist_justification,
                 'withheld_information' => $source->withheld_information,
                 'exposure_moment' => $source->exposure_moment,
+                'hook' => $source->hook,
                 'departure' => $source->departure,
                 'reversal_beats' => $source->reversal_beats,
                 'refusal' => $source->refusal,

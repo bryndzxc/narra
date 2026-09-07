@@ -1,13 +1,11 @@
 @props(['queues' => null, 'compact' => false])
 
 @php
-    // The NSSM service behind each queue, so the fix offered is the one that
-    // survives a --max-time exit rather than another terminal that will not.
-    $services = [
-        (string) config('render.queues.text') => 'NarraText',
-        (string) config('render.queues.assets') => 'NarraAssets',
-        (string) config('render.queues.render') => 'NarraRender',
-    ];
+    // The service behind each queue, and the command that restarts it, come
+    // from App\Support\WorkerServices — one map, shared with the dashboard.
+    // It was written out here and again there, and the other copy invented a
+    // name for anything it did not hold, which is why neither is written out
+    // any more. An unmapped queue gets no command rather than a guess.
 
     // Default to all three. A caller that names one queue gets one row — used
     // beside a button, where the only queue that matters is the one that button
@@ -41,6 +39,7 @@
 
     $worst = collect($rows)->pluck('state')->pipe(fn ($s) => match (true) {
         $s->contains(\App\Support\WorkerHealth::STRANDED) => \App\Support\WorkerHealth::STRANDED,
+        $s->contains(\App\Support\WorkerHealth::NOT_CONSUMING) => \App\Support\WorkerHealth::NOT_CONSUMING,
         $s->contains(\App\Support\WorkerHealth::STALE) => \App\Support\WorkerHealth::STALE,
         $s->contains(\App\Support\WorkerHealth::ABSENT) => \App\Support\WorkerHealth::ABSENT,
         default => \App\Support\WorkerHealth::OK,
@@ -57,7 +56,9 @@
                     themselves. A <strong>stale</strong> worker is refused at dispatch. An
                     <strong>absent</strong> one is not &mdash; the job queues and waits, nothing is lost,
                     and nothing happens. When that queue is also holding jobs it is
-                    <strong>stranded</strong>, and the pipeline has stopped.
+                    <strong>stranded</strong>, and the pipeline has stopped. A worker that is polling
+                    a queue holding jobs and <strong>taking nothing</strong> off it has stopped the
+                    pipeline just as completely, while every other reading here says it is fine.
                 </div>
             </div>
         </div>
@@ -124,6 +125,11 @@
                             @break
                         @case (\App\Support\WorkerHealth::STRANDED)
                             <span class="badge fail">stranded</span>
+                            @break
+                        {{-- Named for what was seen, not for a cause: the one
+                             instance was never explained. --}}
+                        @case (\App\Support\WorkerHealth::NOT_CONSUMING)
+                            <span class="badge fail">taking nothing</span>
                             @break
                         @case (\App\Support\WorkerHealth::ABSENT)
                             <span class="badge warn">nothing listening</span>
@@ -195,6 +201,7 @@
     // the next dispatch, absent is a queue with nobody on it and nothing in it.
     $order = [
         \App\Support\WorkerHealth::STRANDED,
+        \App\Support\WorkerHealth::NOT_CONSUMING,
         \App\Support\WorkerHealth::STALE,
         \App\Support\WorkerHealth::ABSENT,
     ];
@@ -204,7 +211,7 @@
         ->groupBy('state')
         ->sortBy(fn ($group, string $state): int => array_search($state, $order, true));
 
-    $service = fn (string $queue): string => $services[$queue] ?? 'Narra'.ucfirst($queue);
+    $restart = fn (string $queue): ?string => \App\Support\WorkerServices::restartCommand($queue);
 @endphp
 
 @foreach ($grouped as $state => $queues)
@@ -219,7 +226,7 @@
                 <div @class(['mt-3' => ! $loop->first])>
                     <strong>{{ $row['pending'] }} job(s) stranded on &ldquo;{{ $row['queue'] }}&rdquo;.</strong>
                     {{ $row['headline'] }}
-                    <div class="mono small mt-2">nssm start {{ $service($row['queue']) }}</div>
+                    <x-worker-restart :queue="$row['queue']" :command="$restart($row['queue'])" />
                 </div>
             @endforeach
             <div class="small mt-3">
@@ -246,12 +253,38 @@
                 @endif
             </div>
         </div>
+    @elseif ($state === \App\Support\WorkerHealth::NOT_CONSUMING)
+        {{--
+            Loud, and deliberately as loud as stranded.
+
+            The pipeline has stopped in both, and this one is the harder of the
+            two to believe from the table above it: the worker is there, the
+            heartbeat is fresh, the pid is stable and the code marker agrees.
+            Every component reads healthy, which is why the alert has to say
+            plainly what is and is not known rather than leaving the reader to
+            reconcile it with a row that looks fine.
+        --}}
+        <div class="alert err mt-4">
+            @foreach ($queues as $row)
+                <div @class(['mt-3' => ! $loop->first])>
+                    <strong>&ldquo;{{ $row['queue'] }}&rdquo; is not moving.</strong>
+                    {{ $row['headline'] }}
+                    <x-worker-restart :queue="$row['queue']" :command="$restart($row['queue'])" />
+                </div>
+            @endforeach
+            <div class="small mt-3">
+                This is not a diagnosis. The one time it was seen the worker was current, alive, holding
+                nothing and about two thirds through its <code>--max-time</code> window, and the cause was
+                never found &mdash; the process was restarted to unblock the queue and the evidence went
+                with it. Restarting is what worked; it is not known why it was needed.
+            </div>
+        </div>
     @else
         <div class="alert warn mt-4">
             @foreach ($queues as $row)
                 <div @class(['mt-3' => ! $loop->first])>
                     {{ $row['headline'] }}
-                    <div class="mono small mt-2">nssm start {{ $service($row['queue']) }}</div>
+                    <x-worker-restart :queue="$row['queue']" :command="$restart($row['queue'])" />
                 </div>
             @endforeach
         </div>

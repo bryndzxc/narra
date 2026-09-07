@@ -196,6 +196,7 @@
         --d-alert-warn-bg: color-mix(in srgb, var(--d-warn) 13%, var(--d-panel));
         --d-alert-ok-bg: color-mix(in srgb, var(--d-ok) 10%, var(--d-panel));
         --d-alert-money-bg: color-mix(in srgb, var(--d-money) 13%, var(--d-panel));
+        --d-alert-run-bg: color-mix(in srgb, var(--d-run) 12%, var(--d-panel));
         --d-money-panel-from: color-mix(in srgb, var(--d-money) 7%, var(--d-panel));
         --d-money-panel-to: color-mix(in srgb, var(--d-money) 3%, var(--d-panel));
         --d-warnfill-bg: color-mix(in srgb, var(--d-warn) 11%, var(--d-panel));
@@ -315,6 +316,7 @@
         --l-alert-warn-bg: color-mix(in srgb, var(--l-warn) 13%, var(--l-panel));
         --l-alert-ok-bg: color-mix(in srgb, var(--l-ok) 10%, var(--l-panel));
         --l-alert-money-bg: color-mix(in srgb, var(--l-money) 13%, var(--l-panel));
+        --l-alert-run-bg: color-mix(in srgb, var(--l-run) 12%, var(--l-panel));
         --l-money-panel-from: color-mix(in srgb, var(--l-money) 22%, var(--l-panel));
         --l-money-panel-to: color-mix(in srgb, var(--l-money) 15%, var(--l-panel));
         --l-warnfill-bg: color-mix(in srgb, var(--l-warn) 11%, var(--l-panel));
@@ -384,6 +386,7 @@
         --alert-warn-bg: var(--l-alert-warn-bg);
         --alert-ok-bg: var(--l-alert-ok-bg);
         --alert-money-bg: var(--l-alert-money-bg);
+        --alert-run-bg: var(--l-alert-run-bg);
         --money-panel-from: var(--l-money-panel-from);
         --money-panel-to: var(--l-money-panel-to);
         --warnfill-bg: var(--l-warnfill-bg);
@@ -494,6 +497,7 @@
             --alert-warn-bg: var(--d-alert-warn-bg);
             --alert-ok-bg: var(--d-alert-ok-bg);
             --alert-money-bg: var(--d-alert-money-bg);
+            --alert-run-bg: var(--d-alert-run-bg);
             --money-panel-from: var(--d-money-panel-from);
             --money-panel-to: var(--d-money-panel-to);
             --warnfill-bg: var(--d-warnfill-bg);
@@ -560,6 +564,7 @@
         --alert-warn-bg: var(--d-alert-warn-bg);
         --alert-ok-bg: var(--d-alert-ok-bg);
         --alert-money-bg: var(--d-alert-money-bg);
+        --alert-run-bg: var(--d-alert-run-bg);
         --money-panel-from: var(--d-money-panel-from);
         --money-panel-to: var(--d-money-panel-to);
         --warnfill-bg: var(--d-warnfill-bg);
@@ -1131,7 +1136,8 @@
     .alert.fail + .alert.fail,
     .alert.err + .alert.err,
     .alert.warn + .alert.warn,
-    .alert.ok + .alert.ok { margin-top: -8px; }
+    .alert.ok + .alert.ok,
+    .alert.run + .alert.run { margin-top: -8px; }
     .alert ul { padding-left: 20px; }
     .alert li { margin-bottom: 4px; max-width: 84ch; }
 
@@ -1171,7 +1177,7 @@
      * vocabulary of a warning. Bare `.alert` had no accent edge at all before
      * this and rendered a plain box.
      */
-    .alert:not(.ok):not(.warn):not(.err):not(.fail):not(.money) {
+    .alert:not(.ok):not(.warn):not(.err):not(.fail):not(.money):not(.run) {
         border-color: var(--line-2);
         background: var(--panel-2);
         box-shadow: var(--lift), inset 4px 0 0 var(--meta);
@@ -1182,6 +1188,28 @@
         border-color: color-mix(in srgb, var(--money) 60%, transparent);
         background: var(--alert-money-bg);
         box-shadow: var(--lift), inset 4px 0 0 var(--money);
+        padding-left: 21px;
+    }
+
+    /*
+     * IN FLIGHT. Something is running right now and the page is waiting for it.
+     *
+     * `--run` is the status ramp for in-progress, and until now it existed only
+     * as `.badge.run` and as a progress-bar fill — so the first surface that
+     * needed to say "this is happening" in alert form asked for `.alert.run`
+     * and got the NEUTRAL treatment, silently. class-audit reported it as a
+     * COMBO the moment it was written, which is the `.panel.money` defect
+     * caught during the work instead of a phase later.
+     *
+     * It earns its place rather than being added for tidiness: the character
+     * sheet button holds the request for about 144 seconds at the measured rate
+     * and had nothing but a greyed-out button to say so. A greyed button says
+     * "not now"; this says "this is running and it is billing".
+     */
+    .alert.run {
+        border-color: color-mix(in srgb, var(--run) 55%, transparent);
+        background: var(--alert-run-bg);
+        box-shadow: var(--lift), inset 4px 0 0 var(--run);
         padding-left: 21px;
     }
 
@@ -2168,13 +2196,36 @@
         margin-bottom: 9px;
     }
 
-    .advisories > .head h2 {
+    /*
+     * ONE DECLARATION, TWO SURFACES, and that is deliberate rather than tidy.
+     *
+     * The cluster heading sits ABOVE a set of alerts; `.alerthead` sits INSIDE
+     * one, which is what Gate 1's three advisory cards need — each is its own
+     * alert with its own subject, so there is nothing for a shared heading to
+     * be shared across. Same micro-label at the same size in the same place in
+     * the reading order, so it is one block with two selectors. Two blocks is
+     * how a retry prompt came to disagree with the guard it restated.
+     */
+    .advisories > .head h2,
+    .alerthead h2 {
         margin: 0;
         font-size: 10.5px;
         letter-spacing: .12em;
         text-transform: uppercase;
         color: var(--warn-ink);
     }
+
+    /*
+     * The ink follows the ALERT's own kind, so it cannot drift from it.
+     *
+     * A refusal heading in warning amber would be the console's rule about
+     * volume broken in the quietest possible way — nothing fails, the box is
+     * still red, and only the sentence naming what is wrong is the wrong
+     * colour. Writing it as `.fail-ink` at the call site would have made that a
+     * thing somebody remembers per card.
+     */
+    .alert.fail > .alerthead h2,
+    .alert.err > .alerthead h2 { color: var(--fail-ink); }
 
     /*
      * Beside the heading, NOT pushed to the far edge.
@@ -2184,7 +2235,8 @@
      * panels and read as belonging to neither. A count is part of the label it
      * counts.
      */
-    .advisories > .head .count {
+    .advisories > .head .count,
+    .alerthead .count {
         font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
         font-size: 10px;
         font-weight: 700;
@@ -2194,6 +2246,27 @@
         background: color-mix(in srgb, var(--warn) 14%, var(--panel-2));
         border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
     }
+
+    /*
+     * An alert's own header row: the subject, and how many of it there are.
+     *
+     * Beside the heading rather than at the far edge, for the reason the
+     * cluster's count already records — `margin-left: auto` put the number at
+     * the right-hand end of a column whose container paints nothing, so it
+     * floated in the gap between two panels and read as belonging to neither. A
+     * count is part of the label it counts.
+     */
+    .alerthead {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+        padding-bottom: 9px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .alerthead .ico { flex: none; }
 
     /* Inside a column the measure cap is the column, not 96ch. */
     .gatecols .alert { max-width: none; }
@@ -2323,6 +2396,210 @@
     }
 
     @media (max-width: 1080px) { .twoup { grid-template-columns: 1fr; gap: 0; } }
+
+    /*
+     * A panel header bar that closes with a rule.
+     *
+     * `.panelhead` is the label row inside a padded panel and Gate 3 has four
+     * of them; the design's premise, cast-age and spine panels want the same
+     * row separated from the body by a line, in a `.panel.flush`. That is a
+     * MODIFIER on the header rather than a new rule under `.panel.flush`,
+     * because Gate 3's four are flush too and adding a border under the
+     * container would have drawn a line on four settled panels that never asked
+     * for one. Same shape as `.alert.wide` and `.measure`: the element carries
+     * what the element wants, so no arrangement can grant or revoke it.
+     */
+    .panelhead.ruled {
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 0;
+    }
+
+    /* A flush panel gives no padding, so the header supplies its own — and
+       states the bottom explicitly rather than letting the shorthand quietly
+       overwrite the 10px above. */
+    .panel.flush .panelhead.ruled { padding: 11px 15px 10px; }
+
+    /*
+     * A section heading with its explanation on the same baseline.
+     *
+     * `h2` here is a 32px-top-margin, top-bordered page heading — right for
+     * "Acts" as a landmark, wrong for a heading whose whole job is to be read
+     * with the sentence beside it. This was two hand-written blocks with an
+     * inline `style="margin-top:-6px"` pulling the paragraph back under the
+     * heading, which is a workaround for the arrangement rather than the
+     * arrangement.
+     */
+    .sectionhead {
+        display: flex;
+        align-items: baseline;
+        gap: 11px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+
+    .sectionhead h2 {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        font-size: 16px;
+        font-weight: 560;
+        letter-spacing: -.015em;
+        white-space: nowrap;
+    }
+
+    .sectionhead p {
+        margin: 0;
+        flex: 1;
+        min-width: 22ch;
+        max-width: 132ch;
+        font-size: 12.5px;
+        color: var(--muted);
+    }
+
+    /* Inside a panel's own ruled header the section head supplies no margin. */
+    .panelhead.ruled > .sectionhead { margin-bottom: 0; width: 100%; }
+
+    /*
+     * The locale hits: which act, which term, and the sentence around it.
+     *
+     * A fixed first column so the act numbers form a readable edge rather than
+     * being buried at the head of a wrapped list item. It was a `<ul>`, where
+     * "Act 3 — torch …swept the beam of a torch across the garage…" is one
+     * run-on line and the operator's eye has to find the term inside it twice.
+     */
+    .localehits { display: flex; flex-direction: column; gap: 7px; }
+
+    .localehits > .hit {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr);
+        gap: 8px;
+        align-items: baseline;
+    }
+
+    .localehits .at {
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--meta);
+    }
+
+    .localehits code { color: var(--warn-ink); }
+
+    /*
+     * Meta text that is a DEADLINE rather than a description.
+     *
+     * "last free place to state it" is the only note on the premise pair that
+     * carries a consequence — after Gate 2 dispatches, changing the cast age
+     * means reopening this gate and re-extracting every description the scene
+     * prompts were built from. In `--muted` beside three other muted notes it
+     * reads as one more explanation. It is the `-ink` twin, so it clears
+     * contrast on white; `--warn` itself measures 1.8:1 there.
+     */
+    .warnnote { color: var(--warn-ink); }
+
+    /*
+     * -- Gate 1: the outline -----------------------------------------------
+     *
+     * The spine and the acts are both GRIDS, and for the same reason the scene
+     * table is a table: this page is read in one pass before a single approve
+     * decision, and a seven-item column on a 1770px screen is three screens of
+     * scrolling beside a column of whitespace. The design has both two-up.
+     */
+    .spinegrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 14px;
+        align-items: start;
+    }
+
+    .actgrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        align-items: start;
+        margin-bottom: 16px;
+    }
+
+    @media (max-width: 1180px) {
+        .spinegrid,
+        .actgrid { grid-template-columns: minmax(0, 1fr); }
+
+        .spinegrid { gap: 0; }
+    }
+
+    /* The grid supplies the gap; the cards stop supplying their own. */
+    .actgrid > .actcard { margin-bottom: 0; }
+
+    /*
+     * The act's phase, on the card's edge as well as in its badge.
+     *
+     * The direction of an act is the one thing the script generator branches
+     * on, and while scanning seven cards a 3px edge answers it without reading
+     * anything. Two modifiers rather than four: escalation is the ordinary case
+     * and takes no edge, and search and refusal are one movement from the
+     * scanner's point of view — the ground is being lost by the antagonist.
+     */
+    .actcard { border-left: 3px solid transparent; }
+    .actcard.leaving { border-left-color: var(--money); }
+    .actcard.turning { border-left-color: var(--ok); }
+
+    .actcard > .alerthead { padding: 0 0 9px; }
+
+    /*
+     * A field whose CONTENT is flagged, marked on the field.
+     *
+     * The state was carried by a badge beside the label and nothing else, so a
+     * missing spine field looked exactly like a filled one until the badge was
+     * read — on a two-column grid of seven, which is the arrangement that makes
+     * scanning the point. The badge stays; this is the same fact at the size
+     * the eye actually catches.
+     */
+    .field.problem > textarea,
+    .field.problem > input { border-color: color-mix(in srgb, var(--fail) 45%, transparent); }
+
+    .field.flagged > textarea,
+    .field.flagged > input { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+
+    /*
+     * THE GATE DECISION, KEPT ON SCREEN.
+     *
+     * Gate 1 is one approve press about a document three screens long, and the
+     * button was at the bottom of the third screen. Sticky is not decoration
+     * here: the operator reads the outline and decides, and a decision that
+     * requires scrolling back past the thing being decided is a decision taken
+     * from memory.
+     *
+     * It is rendered ONLY where the decision exists — see the blade. A sticky
+     * bar with nothing in it would be `.dash.quiet`'s empty container nailed to
+     * the bottom of the viewport, which is worse than the row it replaced.
+     */
+    .gatebar {
+        position: sticky;
+        bottom: 0;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin: 16px calc(var(--s-8) * -1) 0;
+        padding: 12px var(--s-8);
+        background: color-mix(in srgb, var(--bg-2) 94%, transparent);
+        backdrop-filter: blur(8px);
+        border-top: 1px solid var(--line);
+    }
+
+    .gatebar > .note {
+        margin-left: auto;
+        max-width: 52ch;
+        text-align: right;
+        font-size: 12px;
+        color: var(--warn-ink);
+    }
+
+    @media (max-width: 760px) {
+        .gatebar { position: static; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+        .gatebar > .note { margin-left: 0; text-align: left; }
+    }
 
 
     /* -- Gate 3: the preview ----------------------------------------------

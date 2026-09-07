@@ -243,8 +243,16 @@ class StrandedQueueTest extends TestCase
                 $html,
                 $queue.' is not named on the page.',
             );
+            // The service name comes from App\Support\WorkerServices now, and
+            // the verb is `Restart-Service`: nssm is not on PATH here, and
+            // `start` does nothing to a service that is already running.
+            //
+            // Note this loop no longer BUILDS the name from the queue. That is
+            // the point of the change rather than a detail — the old fallback
+            // did exactly that, and it is right for these three and confidently
+            // wrong for a fourth.
             $this->assertStringContainsString(
-                'nssm start Narra'.ucfirst($queue),
+                'Restart-Service '.\App\Support\WorkerServices::forQueue($queue),
                 $html,
                 $queue.' has no pasteable fix.',
             );

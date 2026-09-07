@@ -442,11 +442,64 @@
                             <button class="gate" wire:click="askToGenerate">
                                 {{ $this->failedScenes()->isNotEmpty() ? 'Retry failed scenes' : 'Generate assets' }}
                             </button>
+                            {{--
+                                THE FREE HALF, BESIDE THE PAID ONE.
+
+                                Every question this runs is also run by the button to
+                                its left, so nothing can be skipped by not pressing it.
+                                What it adds is asking them WITHOUT committing — which
+                                is what `narration:preflight` was for, and that command
+                                has had no caller in the app since it was written. A
+                                guard reachable only from a terminal, guarding the money
+                                button, on the app built so an operator would not need a
+                                terminal.
+
+                                Story 23 is what that cost: dispatched with a null
+                                voice_id, 257 identical per-scene failures, 256 stills
+                                already bought.
+                            --}}
+                            <button wire:click="checkReadiness" wire:loading.attr="disabled">
+                                Check without spending
+                            </button>
                             <a href="{{ route('renders.show', $story->slug) }}" class="small" style="margin-left:8px">
                                 watch progress
                             </a>
+
+                            <div wire:loading wire:target="checkReadiness" class="alert run mt-3">
+                                Asking the providers &mdash; the narrator list and the narration allowance are
+                                read from the vendor, so this takes a moment. Nothing is being queued.
+                            </div>
                         @endif
                     </div>
+
+                    {{--
+                        WHAT THE CHECKS SAID.
+
+                        Only after `checkReadiness()`, never after a dispatch: the money
+                        press reports what it QUEUED, and folding a readiness readout
+                        into it would make a run look like a check.
+
+                        The `ok` lines are kept rather than filtered to the problems, and
+                        that is the point of running it — "narration fits: 21,350 credits
+                        needed, 27,953 remaining" is a number an operator wants BEFORE
+                        pressing, and it is not visible anywhere else in the console.
+                    --}}
+                    @if ($readinessNotes !== [])
+                        <div class="mt-4">
+                            @foreach ($readinessNotes as $note)
+                                <div @class([
+                                    'alert',
+                                    'wide',
+                                    'warn' => $note['level'] !== 'ok',
+                                    'ok' => $note['level'] === 'ok',
+                                    'mt-2' => ! $loop->first,
+                                ])>{{ $note['message'] }}</div>
+                            @endforeach
+                            <div class="small muted mt-2">
+                                Checked, not queued. Nothing was billed and nothing was dispatched.
+                            </div>
+                        </div>
+                    @endif
                 </div>
             @else
                 {{--

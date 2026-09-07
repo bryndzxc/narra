@@ -71,6 +71,72 @@
             </div>
         </div>
 
+        {{--
+            THE NARRATOR, STATED WHERE THE STORY IS MADE.
+
+            Not a picker. A channel keeps one narrator across every video, which
+            is why `voice_id` is stored per story rather than read from config at
+            synthesis time — a dropdown here would invite a per-story choice on
+            the one axis meant to be constant, before there is a script to choose
+            for. `voices:list --set` is the deliberate move and it validates
+            against the account.
+
+            It is PRINTED because the alternative has already been paid for
+            twice. `narrator-us-01`, a string the fake synthesizer invented, sat
+            on every story in the database for a phase with no screen anywhere
+            disagreeing with it. Then the default was null, and story 23 reached
+            a paid dispatch with no narrator at all — 257 identical refusals, one
+            per scene, after 256 stills were bought. A default written silently
+            is a value nobody chose and nobody can find later, whichever value
+            it is.
+        --}}
+        <div class="row mt-6">
+            <div>
+                <label>Narrator</label>
+                @if ($this->narrator()['voice_id'] === null)
+                    {{-- Legal, and loud. GenerateSceneNarration refuses without
+                         one and the dispatch preflight refuses before that, so
+                         nothing is silently broken — but this story will need a
+                         voice set by hand before it can be narrated, and this is
+                         the only screen that can say so in advance. --}}
+                    <div class="alert warn wide">
+                        No narrator is configured, so this story will be created without one and cannot
+                        be narrated until it has a voice. Set the channel's default in
+                        <span class="mono">providers.default_voice_id</span>, or assign one per story with
+                        <span class="mono">php artisan voices:list --set=&lt;story&gt; --voice=&lt;id&gt;</span>.
+                    </div>
+                @else
+                    <div>
+                        <strong>{{ $this->narrator()['name'] ?? 'Unrecognised voice' }}</strong>
+                        <span class="mono small muted">{{ $this->narrator()['voice_id'] }}</span>
+                    </div>
+                    <div class="muted small mt-1" style="max-width:52ch">
+                        @if ($this->narrator()['measured'])
+                            Reads {{ $this->narrator()['wpm'] }} wpm on this setting, measured on finished
+                            narration &mdash; so the runtime above is derived from a real reading rate
+                            rather than from the fallback.
+                        @else
+                            {{-- Never "fine". This app cannot ask the vendor from
+                                 here, so an id it does not recognise means either
+                                 a real voice nobody has measured or an id that is
+                                 not a voice at all — and only the account can
+                                 tell those apart. --}}
+                            This app has no measured reading pace for this voice on this setting, so the
+                            runtime above uses <span class="mono">{{ $this->narrator()['wpm'] }}</span>
+                            wpm as its best available figure. It also cannot tell from here whether this
+                            id is on the account at all &mdash; run
+                            <span class="mono">php artisan voices:list</span> to check, and the asset
+                            dispatch refuses before spending if it is not.
+                        @endif
+                        <br>
+                        Changeable until the narration is bought:
+                        <span class="mono">php artisan voices:list --set=&lt;story&gt; --voice=&lt;id&gt;</span>.
+                        After that, switching makes every paid scene stale and re-bills it.
+                    </div>
+                @endif
+            </div>
+        </div>
+
         <div class="row mt-6">
             <div>
                 <label for="format">Format</label>

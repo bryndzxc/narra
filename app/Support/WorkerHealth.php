@@ -48,6 +48,15 @@ use Illuminate\Support\Facades\Queue;
  * unreadable check is a failed check, not a passed one, so an absent queue
  * whose depth is unknown says exactly that rather than quietly settling into
  * the calm case.
+ *
+ * **And depth with somebody listening who is taking nothing is NOT_CONSUMING.**
+ * The third thing this panel could not distinguish, and the worst of the three,
+ * because every component of it reads healthy: a live worker, a fresh
+ * heartbeat, a matching code marker, a stable pid. It was invisible because
+ * every reading here is a LEVEL and this state is a relationship between two of
+ * them — so the registry now records the poll and the job start as separate
+ * moments, and the question becomes a pure read of one snapshot rather than
+ * something a page would have to remember across requests.
  */
 final class WorkerHealth
 {
@@ -66,6 +75,38 @@ final class WorkerHealth
      * stopped while the page says it is running.
      */
     public const STRANDED = 'stranded';
+
+    /**
+     * A worker is polling this queue, work is waiting, and nothing has been
+     * taken off it in a long time.
+     *
+     * ---------------------------------------------------------------------
+     * NAMED FOR WHAT WAS OBSERVED, NOT FOR A CAUSE.
+     * ---------------------------------------------------------------------
+     *
+     * The instance: story 23's asset batch, 550 jobs on `assets`, a live worker
+     * with a fresh heartbeat, a matching code marker, a stable pid and 5h54m of
+     * uptime, consuming exactly zero of them for about twenty minutes. A
+     * service restart unblocked it. **Why it stopped consuming is still
+     * unknown**, the process was replaced, and the evidence went with it.
+     *
+     * So this constant says only what a reading can support: LISTENING AND
+     * TAKING NOTHING. It is not `wedged`, not `half_open_redis`, not
+     * `max_time_exhausted` — the last of those is the plausible name that was
+     * nearly used and is REFUTED for that incident, because the worker was
+     * 5h54m into a 9h window. A state named after a diagnosis that turns out to
+     * be wrong is worse than one named after the symptom, because the name then
+     * argues against the next investigation.
+     *
+     * **Why the panel could not say it before.** Every other reading here is a
+     * LEVEL — a heartbeat age, a depth, an uptime — and this state is about the
+     * relationship between two of them over time. `Looping` fires on every poll
+     * INCLUDING the empty ones, so a fresh heartbeat has only ever meant the
+     * loop is turning. The registry records the two moments separately now, so
+     * the question is a pure read of one snapshot and needs no memory of a
+     * previous page load.
+     */
+    public const NOT_CONSUMING = 'not_consuming';
 
     public const INLINE = 'inline';
 
@@ -167,6 +208,15 @@ final class WorkerHealth
             // ABSENT case so the loud reading wins whenever both are true.
             $live === [] && ($pending ?? 0) > 0 => self::STRANDED,
             $live === [] => self::ABSENT,
+            /*
+             * Somebody IS listening, work is waiting, and nothing is being
+             * taken. Last of the troubled states because the three above it are
+             * all narrower: stale is a fingerprint mismatch and outranks this
+             * because restarting fixes both and the refusal is already in
+             * force, and the other two require no live worker at all, which
+             * this one cannot have.
+             */
+            self::takingNothing($live, $pending) => self::NOT_CONSUMING,
             default => self::OK,
         };
 
@@ -239,6 +289,13 @@ final class WorkerHealth
                     $queue,
                 ),
                 self::ABSENT => sprintf('Nothing is listening on "%s".', $queue),
+                self::NOT_CONSUMING => sprintf(
+                    '%d worker(s) on "%s" are polling and have taken nothing off it %s, with %d job(s) waiting.',
+                    count($live),
+                    $queue,
+                    self::sinceLastJob($live),
+                    $pending,
+                ),
                 default => sprintf(
                     '%d worker(s) on "%s" agree with this process (fingerprint %s)%s.',
                     count($live),
@@ -256,6 +313,20 @@ final class WorkerHealth
                 // in exactly the place the collapse was meant to improve.
                 self::STRANDED => 'This is not "about to start" — nothing waiting on a queue with no '
                     .'worker will run until one starts.',
+                /*
+                 * What this does NOT say is why. The one observed instance was
+                 * never explained — the process was restarted to unblock the
+                 * pipeline and the evidence went with it — so naming a cause
+                 * here would be inventing one, and an operator who acts on an
+                 * invented cause stops reading the ones that are real.
+                 *
+                 * `Restart-Service` and not `nssm start`: a service in this
+                 * state is RUNNING, so `start` reports it already running and
+                 * changes nothing. That is what the panel used to print.
+                 */
+                self::NOT_CONSUMING => 'The loop is turning and the queue is not moving. Why is not known '
+                    .'— the one time this was seen the worker was current, alive and two thirds through '
+                    .'its --max-time window, and restarting it was what unblocked the queue.',
                 self::ABSENT => $pending === null
                     // An unreadable depth is not an empty one. Without the
                     // number this cannot be told apart from a queue that is
@@ -275,10 +346,137 @@ final class WorkerHealth
                 self::STALE => $fact.' '.$advice.(($pending ?? 0) > 0
                     ? sprintf(' %d job(s) are already waiting on it.', $pending)
                     : ''),
-                self::STRANDED, self::ABSENT => $fact.' '.$advice,
+                self::STRANDED, self::ABSENT, self::NOT_CONSUMING => $fact.' '.$advice,
                 default => $fact,
             },
         ];
+    }
+
+    /**
+     * A state as a reader should see it.
+     *
+     * Exists because one surface — the dashboard's health table — prints the
+     * constant itself, and `not_consuming` is a value, not a sentence. The
+     * wording matches the badges elsewhere on purpose: two names for one state
+     * on two pages is how an operator ends up believing they are two states.
+     */
+    public static function label(string $state): string
+    {
+        return match ($state) {
+            self::NOT_CONSUMING => 'taking nothing',
+            self::ABSENT => 'nothing listening',
+            self::OK => 'current',
+            default => $state,
+        };
+    }
+
+    /**
+     * Is every live worker on this queue polling and taking nothing?
+     *
+     * -------------------------------------------------------------------
+     * THE PAIR OF CLOCKS, AND WHY ONE WOULD NOT DO
+     * -------------------------------------------------------------------
+     *
+     * `seen_at` cannot answer this and never could. It is ticked by a poll, by
+     * a job start AND from inside a long job by `RenderJob::heartbeat()`, which
+     * is exactly what makes it a good liveness signal and a useless activity
+     * one. `Looping` in particular fires on the EMPTY polls too, so `live = 1`,
+     * `state = ok` and a fresh heartbeat have only ever meant the loop is
+     * turning.
+     *
+     * So two narrower clocks are read instead, each written by one thing:
+     *
+     *  - `looped_at` — a poll. Fresh means the worker is BETWEEN jobs, because
+     *    the daemon does not poll while it is running one. This is what keeps a
+     *    forty-minute mux out of the alarm: that worker's `looped_at` is as old
+     *    as the job, so it reads as busy, correctly.
+     *  - `last_job_at` — a job start. Old means nothing has been taken.
+     *
+     * Fresh poll + old job start + work waiting is the observation. It is a
+     * pure read of one snapshot: no page needs to remember a previous reading,
+     * which is what made this state impossible to express before.
+     *
+     * **EVERY live worker, not any.** Four `assets` workers with one wedged is a
+     * queue that is draining, and calling that stopped would put a finding
+     * nobody can act on in the loudest category on the page.
+     *
+     * **An entry with no clocks is UNKNOWN, and unknown is not an alarm here.**
+     * A worker that booted before this signal existed cannot answer, and
+     * reporting it as taking nothing would be inventing a reading — the
+     * over-report failure this project treats as retiring the detector. It is
+     * not absence read as agreement either: such a worker booted on code that
+     * no longer matches disk, so it is already STALE, which is checked first
+     * and is louder.
+     *
+     * @param  array<int, array<string, mixed>>  $live
+     */
+    private static function takingNothing(array $live, ?int $pending): bool
+    {
+        if (($pending ?? 0) <= 0) {
+            return false;
+        }
+
+        $now = microtime(true);
+        $pollFresh = (int) config('render.workers.poll_fresh_seconds', 60);
+        $jobIdle = (int) config('render.workers.job_idle_seconds', 120);
+
+        foreach ($live as $entry) {
+            $looped = $entry['looped_at'] ?? null;
+
+            // Cannot answer, so it is not answered. See above.
+            if (! is_numeric($looped)) {
+                return false;
+            }
+
+            // Not polling: inside a job, which is a worker working.
+            if (($now - (float) $looped) > $pollFresh) {
+                return false;
+            }
+
+            /*
+             * Never started a job, so the age is measured from boot. A worker
+             * up for four seconds on a full queue has not failed at anything
+             * yet; one up for an hour that has taken nothing is the state.
+             */
+            $since = $entry['last_job_at'] ?? $entry['booted_at'] ?? null;
+
+            if (! is_numeric($since) || ($now - (float) $since) <= $jobIdle) {
+                return false;
+            }
+        }
+
+        return $live !== [];
+    }
+
+    /**
+     * How long since the most recent job start across these workers, as a
+     * phrase — or since boot, for a worker that has never started one.
+     *
+     * The MOST RECENT, so a queue with several workers reports the shortest
+     * gap rather than the worst. Overstating it would be the loudest reading
+     * available rather than the true one.
+     *
+     * @param  array<int, array<string, mixed>>  $live
+     */
+    private static function sinceLastJob(array $live): string
+    {
+        $stamps = [];
+
+        foreach ($live as $entry) {
+            $since = $entry['last_job_at'] ?? $entry['booted_at'] ?? null;
+
+            if (is_numeric($since)) {
+                $stamps[] = (float) $since;
+            }
+        }
+
+        if ($stamps === []) {
+            return 'for an unknown time';
+        }
+
+        $seconds = max(0, (int) round(microtime(true) - max($stamps)));
+
+        return 'in '.CarbonInterval::seconds($seconds)->cascade()->forHumans(short: true, parts: 2);
     }
 
     /**

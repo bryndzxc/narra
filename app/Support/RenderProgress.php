@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
+use App\Actions\CancelRenderBatch;
 use App\Models\RenderJob;
 use App\Models\Story;
 use Illuminate\Support\Carbon;
@@ -51,7 +52,7 @@ class RenderProgress
             'story' => $story,
             'stages' => $stages,
             'overall' => self::overall($stages),
-            'batches' => self::batches($story->id),
+            'batches' => self::batches($story->id, (string) $story->slug),
             'failures' => self::failures($story->id),
             'stale' => self::staleJobs($story->id),
             'scene_grid' => self::sceneGrid($story->id),
@@ -303,13 +304,49 @@ class RenderProgress
      *
      * @return array<int, array<string, mixed>>
      */
-    private static function batches(int $storyId): array
+    private static function batches(int $storyId, string $slug): array
     {
         $ids = RenderJob::query()
             ->where('story_id', $storyId)
             ->whereNotNull('batch_id')
             ->distinct()
             ->pluck('batch_id');
+
+        // THE FALLBACK, AND WITHOUT IT THIS PAGE IS BLIND EXACTLY WHEN IT
+        // MATTERS MOST.
+        //
+        // `render_jobs.batch_id` is written by `RenderJob::open()`, which runs
+        // INSIDE the job. A batch that is dispatched and not yet consumed has no
+        // rows, therefore no batch ids, therefore — before this — an empty list
+        // and the page saying "No batches recorded for this story" while 550
+        // jobs sat live on the assets queue. The one page whose job is "what is
+        // running right now" was silent about the only thing that was.
+        //
+        // That is the same hole `RenderJob::open()` puts in the STAGE list (see
+        // the false-success table in CLAUDE.md: a queued scene has no row, so a
+        // backlog cannot be counted). The stage list still cannot see it. The
+        // BATCH table can, because `job_batches` is written at dispatch by the
+        // framework — it is one of the few facts here not derived from our own
+        // bookkeeping — and it carries the name the dispatcher gave it.
+        //
+        // `CancelRenderBatch::batchIds()` has had this fallback all along, which
+        // is why cancelling worked on a batch this page could not display. A fix
+        // applied at one call site reads as covered; the prefixes are shared
+        // from there rather than retyped so the two cannot drift.
+        $named = DB::connection(config('queue.batching.database'))
+            ->table(config('queue.batching.table', 'job_batches'))
+            ->where(function ($q) use ($slug): void {
+                foreach (CancelRenderBatch::BATCH_PREFIXES as $prefix) {
+                    $q->orWhere('name', "{$prefix}:{$slug}");
+                }
+            })
+            ->pluck('id');
+
+        // Unlike the cancel path this does NOT filter out finished or cancelled
+        // batches. Cancelling wants what it can still stop; a progress page
+        // wants the history, and a batch that was called off is a thing the
+        // operator most wants to see rather than the thing to hide.
+        $ids = $ids->merge($named)->unique()->values();
 
         if ($ids->isEmpty()) {
             return [];

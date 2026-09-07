@@ -84,6 +84,82 @@ class RenderProgressPageTest extends TestCase
         $this->assertSame("scene-clips:{$story->slug}", $report['batches'][0]['name']);
     }
 
+    /**
+     * A DISPATCHED BUT UNCONSUMED BATCH IS VISIBLE, which it was not.
+     *
+     * `render_jobs.batch_id` is written by `RenderJob::open()`, which runs
+     * INSIDE the job. A batch that has been dispatched and not yet picked up has
+     * no rows at all, so resolving batch ids through `render_jobs` returned
+     * nothing and the page printed "No batches recorded for this story" — live,
+     * on story 23, with 550 jobs sitting on the assets queue.
+     *
+     * The one page whose entire job is "what is running right now" was silent
+     * about the only thing that was. `CancelRenderBatch::batchIds()` had the
+     * name-based fallback all along, which is why cancelling worked on a batch
+     * this page could not display: a fix applied at one call site reads as
+     * covered.
+     *
+     * The fixture creates NO render_jobs rows on purpose. That absence is the
+     * whole defect, and a fixture that wrote one could not express it.
+     */
+    public function test_a_dispatched_batch_with_no_started_jobs_is_still_reported(): void
+    {
+        $story = Story::factory()->status(StoryStatus::AssetsGenerating)->create(['slug' => 'unconsumed-batch']);
+
+        DB::table('job_batches')->insert([
+            'id' => 'batch-unconsumed',
+            'name' => "scene-assets:{$story->slug}",
+            'total_jobs' => 550,
+            'pending_jobs' => 550,
+            'failed_jobs' => 0,
+            'failed_job_ids' => '[]',
+            'options' => '',
+            'created_at' => now()->subMinutes(10)->getTimestamp(),
+            'cancelled_at' => null,
+            'finished_at' => null,
+        ]);
+
+        $report = RenderProgress::for($story->refresh());
+
+        $this->assertCount(
+            1,
+            $report['batches'],
+            'A batch with 550 queued jobs and none started must appear. Before the name-based '
+            .'fallback the page said "No batches recorded" while the queue was full.',
+        );
+        $this->assertSame(550, $report['batches'][0]['total']);
+        $this->assertSame(0, $report['batches'][0]['processed']);
+        $this->assertSame(0, $report['batches'][0]['percent']);
+    }
+
+    /**
+     * And a cancelled batch stays visible, unlike in the cancel path.
+     *
+     * `CancelRenderBatch` filters finished and cancelled batches out because it
+     * wants what it can still stop. A progress page wants the history — a batch
+     * somebody called off is the thing an operator most wants to see, not the
+     * thing to hide — so the fallback here deliberately does not filter.
+     */
+    public function test_a_cancelled_batch_is_still_reported(): void
+    {
+        $story = Story::factory()->status(StoryStatus::AssetsGenerating)->create(['slug' => 'cancelled-batch']);
+
+        DB::table('job_batches')->insert([
+            'id' => 'batch-cancelled',
+            'name' => "scene-assets:{$story->slug}",
+            'total_jobs' => 550,
+            'pending_jobs' => 550,
+            'failed_jobs' => 0,
+            'failed_job_ids' => '[]',
+            'options' => '',
+            'created_at' => now()->subMinutes(20)->getTimestamp(),
+            'cancelled_at' => now()->subMinutes(2)->getTimestamp(),
+            'finished_at' => null,
+        ]);
+
+        $this->assertCount(1, RenderProgress::for($story->refresh())['batches']);
+    }
+
     public function test_a_batch_whose_failures_were_never_retried_is_not_reported_as_in_flight(): void
     {
         // Laravel's incrementFailedJobs() does not decrement pending_jobs — a

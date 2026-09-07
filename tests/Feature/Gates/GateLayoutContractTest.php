@@ -472,6 +472,30 @@ class GateLayoutContractTest extends TestCase
 
     // -- Shared -------------------------------------------------------------
 
+    /**
+     * A story with acts, one of which has no re-hook written.
+     *
+     * THE SECOND ACT IS THE FIXTURE'S WHOLE POINT AND IT WAS NOT THERE.
+     *
+     * This built ONE act, at sequence 1. `actsMissingRehooks()` filters
+     * `sequence > 1`, so the re-hook advisory could not render for any story
+     * this method produced — and `pageFixtureFor()` sets `is_rehook_written`
+     * true on both of its acts, so the travelling contract could not render it
+     * either. **No test in this suite had ever drawn that element**, and it was
+     * live on story 22 as an `.alert.warn` with no `wide`, at the 96ch cap
+     * beside full-width neighbours.
+     *
+     * The detector was right. `alertsWithoutTheirOwnWidth` would have reported
+     * it on sight; it was never handed a page containing it. That is the same
+     * sentence as the null `escalation_beat` that made the empty-track drill
+     * vacuous, as the `sized_against_wpm` that hid Gate 1's sizing clause from
+     * the claim check, and as `queueDepthIs()` before both — a fixture that
+     * cannot describe the failing state makes the suite blind to it however
+     * carefully the assertion is written.
+     *
+     * So act 2 carries the factory default of `false`, deliberately, and the
+     * re-hook advisory renders wherever this fixture is used.
+     */
     private function story(StoryStatus $status): Story
     {
         $story = Story::factory()->status($status)->create([
@@ -479,7 +503,17 @@ class GateLayoutContractTest extends TestCase
         ]);
 
         if ($status !== StoryStatus::Draft) {
+            // The factory takes a unique sequence out of 1-8 before
+            // atSequence() overrides it, so a run's worth of acts can exhaust
+            // the pool and the fixture dies of the factory's bookkeeping
+            // rather than of anything these tests are about.
+            app(Generator::class)->unique(reset: true);
+
             Act::factory()->for($story)->atSequence(1)->create();
+
+            // No re-hook, so the advisory exists. Act 1 opens the video and is
+            // exempt; only an act after the first can be missing one.
+            Act::factory()->for($story)->atSequence(2)->create();
         }
 
         return $story->refresh();

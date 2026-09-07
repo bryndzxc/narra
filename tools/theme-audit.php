@@ -139,6 +139,51 @@ function tokensFrom(string $css, array $selectors): array
  *
  * @return array<string, string>
  */
+/**
+ * A selector list, split into selectors, ignoring commas inside brackets.
+ *
+ * `:not(.a, .b)` and `:is(.a, .b)` are one selector each; `.a, .b` is two.
+ *
+ * @return array<int, string>
+ */
+function splitSelectorList(string $head): array
+{
+    $selectors = [];
+    $current = '';
+    $depth = 0;
+
+    foreach (str_split($head) as $char) {
+        if ($char === '(' || $char === '[') {
+            $depth++;
+        } elseif ($char === ')' || $char === ']') {
+            $depth--;
+        }
+
+        if ($char === ',' && $depth === 0) {
+            $selectors[] = $current;
+            $current = '';
+
+            continue;
+        }
+
+        $current .= $char;
+    }
+
+    $selectors[] = $current;
+
+    $out = [];
+
+    foreach ($selectors as $selector) {
+        $selector = trim($selector);
+
+        if ($selector !== '') {
+            $out[] = $selector;
+        }
+    }
+
+    return $out;
+}
+
 function rulesFrom(string $css): array
 {
     $rules = [];
@@ -187,8 +232,37 @@ function rulesFrom(string $css): array
                 continue;
             }
 
-            $key = $context === [] ? $head : implode(' ', $context).' { '.$head;
-            $rules[$key] = isset($rules[$key]) ? $rules[$key].' '.$body : $body;
+            /*
+             * ONE ENTRY PER SELECTOR, NOT PER SELECTOR LIST.
+             *
+             * This keyed by the whole `head` — everything before the `{` — so
+             * `.alpha, .beta { … }` was one rule called ".alpha, .beta". Merging
+             * two identical rules into one comma-separated rule, or splitting one
+             * back into two, therefore reported the originals GONE and the result
+             * NEW while nothing the page paints had changed at all.
+             *
+             * Measured, not assumed: `.alpha { c }` `.beta { c }` against
+             * `.alpha, .beta { c }` reported **2 GONE, 0 identical** — the tool
+             * saying every rule in the baseline had vanished, for a pure
+             * reformat. GONE increments the failure count and carries no "not a
+             * regression" qualifier, so it reads as a loss.
+             *
+             * That is the `class-audit` `@class` defect again and in the same
+             * direction: a FALSE POSITIVE IN A SEVERE CATEGORY, which costs more
+             * than a miss in a benign one. It also MASKS: comma-merge two rules
+             * while genuinely deleting a third and you get three GONE entries
+             * that look alike, on the check this file leans on to catch one
+             * mistyped hex in two hundred token lines.
+             *
+             * Splitting is bracket-aware because `:not(.a, .b)` and `:is(.a, .b)`
+             * carry commas that do not separate selectors.
+             */
+            $prefix = $context === [] ? '' : implode(' ', $context).' { ';
+
+            foreach (splitSelectorList($head) as $selector) {
+                $key = $prefix.$selector;
+                $rules[$key] = isset($rules[$key]) ? $rules[$key].' '.$body : $body;
+            }
 
             continue;
         }
@@ -431,6 +505,7 @@ $loudSurfaces = [
     ['alert.warn', ['--alert-warn-bg'], 4],
     ['alert.ok', ['--alert-ok-bg'], 4],
     ['alert.money', ['--alert-money-bg'], 4],
+    ['alert.run (in flight)', ['--alert-run-bg'], 4],
     // A gradient, measured across both stops. The money panel fades 7% to 3%
     // in dark, and judging it on either end alone answers a different question
     // from the one an operator's eye asks — which is how the whole rectangle

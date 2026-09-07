@@ -202,6 +202,146 @@ fails on a fourth.
    rather than as three "missing field" problems on a shipped video. An outline
    somebody has started fixing by hand gets the ordinary per-field checks back.
 
+3b. **THE OPENING IS FIVE BEATS, AND THE FINDING BEHIND IT IS THAT WE ALREADY
+   HAD FOUR OF THEM.** Both shipped stories were read against the beats this
+   niche's openings actually run, and the result is not what the fix was
+   expected to be:
+
+   | beat | rent-will (12) | my-wife (21) | wanted |
+   |---|---|---|---|
+   | the betrayal, dramatised | never in 40 scenes | never in 40 scenes | ≤ 0:20 |
+   | evidence in exact words | 6:44 | 2:08 | ≤ 0:40 |
+   | one small cold action | 3:24 | 3:09 | ≤ 0:40 |
+   | the promise | the exposure | the exposure, 3:35 | the departure |
+
+   **Four of the five exist in both stories, written well, and every one of
+   them lands two to seven minutes late.** Story 21 has the best cold action in
+   the database — *I said, "Have a good trip. I'll take you to the airport."* —
+   at 3:09. Story 12 opens a spreadsheet and names it MOM EXPENSES 2020 at
+   3:24, and has no antagonist speech at all until 6:44, while
+   `antagonist_justification` holds *"You're the only person in this family who
+   could look at a pregnant woman and see a tenant"*, used nowhere.
+
+   **That is not a writer who cannot do this.** It is a writer with no
+   instruction about where the opening starts, writing the chronological
+   beginning, because context is what you get by default — the story begins
+   with a household, so the video begins with a household. Story 12 opens on a
+   pot boiled black on a stove in March 2020; story 21 opens on the square
+   meterage of an apartment. Both are the correct first thing that happened.
+
+   It sets what the fix is FOR. Nothing here asks for better writing and
+   nothing regenerates a story: the outline gains an answer to a question
+   nobody had asked it, and act 1 is handed that answer instead of four
+   sentences of what not to do.
+
+   `scenes.is_hook` is the marker that made this invisible. It says WHICH scene
+   the hook is and has never once asked whether it does the job — a flag with
+   no contract behind it, which is the same shape as a documented guard nothing
+   implements, one step further out.
+
+   **The five beats**, on `stories.hook`:
+
+   - **One sentence of setup.** One. Never a sentence about the video itself —
+     story 12's scene 2 is *"I want to start there, at the yes, because
+     everything after it makes more sense…"*, a narrator explaining structure
+     inside the twenty seconds.
+   - **The betrayal inside ~20 seconds**, dramatised rather than summarised.
+   - **Evidence in EXACT WORDS**, quoted.
+   - **One small, cold action** by the narrator. Not a confrontation — that is
+     the final act, and spending it here spends the video.
+   - **A closing line promising the DEPARTURE**, not revenge and not exposure.
+
+   **Hoisting is COPYING, not moving, and the prompt says so in both
+   directions.** The hook draws on `antagonist_justification`; the act keeps
+   it. In this genre the same line lands twice — once in the first thirty
+   seconds as one quoted sentence of bait, once in act 2 or 3 played out at
+   length in the room it was said in — and the second landing is stronger for
+   the first. A generator told to "use it in the hook" spends it and leaves the
+   act paraphrasing itself, so the instruction names the reuse explicitly.
+
+   **The twenty seconds is measured at the story's own frozen sizing rate, and
+   one place owns the conversion.** `ScriptSizing::wordsForSeconds()`. It is a
+   SIZING question, not a pace question: the deadline is an instruction to the
+   writer about how much text it may spend, and it rides in the same act 1
+   prompt that already carries a word target from `targetWordsPerAct()`.
+   Deriving one from `wpmFor()` and the other from `bestKnownWpm()` would put
+   two beliefs about one narration inside a single string — the $2.12 / $4.24 /
+   42,017 shape reproduced in one file, which is harder to see than across
+   three, not easier.
+
+   | | rate | 20s budget | plays as |
+   |---|---|---|---|
+   | stories 9, 12, 20, 21 | 160, frozen | 53 words | 16.0 s |
+   | a story written today | 197 | 66 words | 20.1 s |
+
+   What it does NOT claim is that the finished video states the betrayal inside
+   twenty seconds. It claims the SCRIPT WAS WRITTEN TO, and those agree exactly
+   as well as the sizing rate does — `NarrationPace` is already the thing that
+   measures the disagreement, and this is the same split `ScriptSizing` opens by
+   drawing. The direction is the safe one wherever they differ, which is every
+   shipped story: `bestKnownWpm()` takes the highest measured rate, so sizing
+   sits at or below reading. Checked against real audio rather than assumed —
+   53 words lands mid-scene-2 of story 21, and scene 2 ends at **00:20.1
+   measured**.
+
+   **Gate 1 checks the last beat and only the last beat.** By overlap against
+   `departure`, exactly as `refusal` is checked against the moments it answers,
+   reporting WHICH sentence of the departure the hook promises — "it promises
+   something" is worth less in front of an approve button than "it promises the
+   part where nobody is given an address".
+
+   The other four are deliberately unchecked and that is worth saying so the
+   field is not read as covered: the outline holds a paragraph DESCRIBING the
+   opening, not the opening itself, so counting its sentences would be counting
+   the wrong text. The fifth beat is different in kind — it is a claim about
+   WHICH VIDEO this is, and the story already carries the answer in another
+   column, so the two can be compared. **A hook promising revenge on a story
+   whose payoff is a refusal is the same mismatch class as 3a, not a missing
+   field.** It is the one beat that can be wrong rather than merely weak, and a
+   closing line reaching the exposure is named as that rather than as promising
+   nothing: those are different repairs.
+
+   **Stories 9, 12, 20 and 21 get the 3a treatment — four stories, not the two
+   that were noticed.** Every outline written before the reversal phase existed
+   was written before this field existed too, so the blanket warning names the
+   hook alongside the departure, the search and the refusal, once. The overlap
+   check returns before it looks at anything when there is no departure to
+   promise against: reporting "the hook promises nothing" on a story that has
+   nothing to promise would be a second finding about an absence the line above
+   it already reported, and not one the operator can act on without
+   regenerating the outline. An operator who types a hook in by hand ends the
+   blanket excuse and gets the ordinary per-field checks back, which is the
+   behaviour `departure` already had, extended rather than written twice.
+
+   **Story 22 is NOT in that set and correctly gets a problem.** It was
+   outlined after the reversal phase and before the hook, so it is a state the
+   legacy predicate cannot detect and should not — it is a fixture at
+   `outlined`, editable, and the repair is free.
+
+   **The half of the guard that no test could reach, found by a drill
+   PASSING.** `checkHook()` returns early when the hook is empty OR the
+   departure is. Removing the departure half left every hook test green,
+   because the only fixture exercising that return had an empty hook as well
+   and stopped on the first clause. The state is real — a hook typed in at Gate
+   1 on a story whose departure is still empty — and it now has its own case.
+   That is the ninth instance of "the detector was right and the input it was
+   handed could not contain the defect", and the first one caught by running
+   the drill rather than by an unrelated change stumbling over it. **Suspect
+   the drill first** paid for itself twice in this change: the other passing
+   drill was `hook: '' ?: '…'`, which PHP evaluates to the original string, so
+   the patch was a no-op pretending to be a defect.
+
+   **The red/green pair keeps its own fixture, and that is asserted rather than
+   assumed.** A hook mismatch needs three things at once — a departure, an
+   exposure distinct from it, and a refusal payoff — and
+   `GateLayoutContractTest::pageFixtureFor()` is deliberately a pre-phase story
+   with none of them, so a pair built on it would have been green in both
+   halves. `GuardsGoRedTest::test_the_hook_fixture_can_express_the_mismatch`
+   asserts all three are present, that RED and GREEN differ in their closing
+   line and nothing else, and that the shared fixture cannot hold this — so
+   nobody later consolidates onto it and quietly makes both halves vacuous.
+   The fixture lesson applied BEFORE the third time rather than after it.
+
 4. **Narration is generated per scene, never as one 40-minute file.** One giant TTS
    call means one bad sentence forces a full re-bill. Per-scene audio is
    re-generatable in isolation and concatenated at mux time.
@@ -635,6 +775,7 @@ Written for Phase 1, but Phase 0 code should not contradict it.
 **stories**
 ```
 id, title, premise, cast_age_profile (nullable),
+hook,
 narrator_grievance, antagonist_justification,
 withheld_information, exposure_moment,
 departure, reversal_beats, refusal,
@@ -1545,6 +1686,64 @@ Closed since:
   The fake now records what it was handed, so the next dropped field fails a test
   instead of reading as a prompt that did not work.
 
+- **NOTHING ASKS WHICH OTHER CALLERS READ A FIELD, AND THAT HAS NOW COST TWICE.
+  THE ENTRY ABOVE IS HALF OF THIS ONE.** Worth reading as a single finding rather
+  than as two unlucky bugs, because the two instances look nothing alike and are
+  the same mistake:
+
+  | | the field | the consumer that was wired | the consumer nobody asked about |
+  |---|---|---|---|
+  | 1 | `CostUnit::TotalTokens` | the PHP enum and every reader of it | eleven migrations that build their MySQL ENUM from `cases()` |
+  | 2 | `acts.escalation_beat` | `GenerateActScripts`, fixed and written up as closed | `DraftScenes`, which decides what 150-250 pictures contain |
+
+  **Instance 2 is the sharper one, because the fix for it was already in this
+  file, marked done.** The entry above closes with "the fake now records what it
+  was handed, so the next dropped field fails a test". That was true of the ACT
+  path. `FakeScriptWriter::scenes()` recorded the act sequence, the sentence
+  count, the cast size and the target — and not the phase, the beat or the
+  spine, so nothing could see that the scene generator was never handed them.
+
+  And the scene call had been receiving `Act $act` and `Story $story` the whole
+  time. This was not a DTO dropping a field on the way, as it was for the act
+  path; the phase, the beat and the entire genre spine were sitting on the two
+  objects already in the argument list, unread. **A fix applied at one call site
+  and recorded as closed reads as covered** — the same sentence as
+  `ImagePromptBuilder`'s staleness check and as the migration lesson that reached
+  `category` and not `unit`.
+
+  What is in place now, and it is deliberately not a tool:
+
+  - `sceneContext()` prints the phase, the beat and the grievance/justification
+    into the scene call. Free, populated on every story in the database, and
+    `escalation_beat` reaches the pre-phase stories that have no `phase`.
+  - `FakeScriptWriter::scenes()` records all of it, the way the act path does.
+  - `OutlineSpineTest::test_the_scene_writer_is_handed_the_phase_the_beat_and_the_spine`
+    sits directly beneath the act-path version so the pair is visible as a pair.
+    Drilled: null the beat in the fake and it goes red.
+
+  **The practice, which is cheap and is what the table above would have caught:
+  when a field is wired to one consumer, assert its arrival at EVERY consumer in
+  the same change.** Not a sweep, not a linter — a question asked once, while the
+  change is open: who else reads this, and does anything fail if they stop? A
+  speculative tool here would be the documented-guard shape again; what makes
+  this checkable is that each consumer gets an arrival assertion at the moment it
+  is wired.
+
+- **A PARTIAL SCENE RE-DRAFT COLLIDED WITH ITSELF, AND ITS OWN TEST FILE COULD
+  NOT EXPRESS THE FAILURE.** `story:scenes --acts=` had never worked on a real
+  story. `DraftScenes::persist()` parks the NEW rows at `PARK_BASE + 1 ..
+  PARK_BASE + N`; `renumberByAct()` then parked EVERYTHING at `PARK_BASE +
+  $index`, walking the untouched earlier acts' scenes straight back through the
+  band the new rows were still sitting in. Story 12 died on `Duplicate entry
+  '12-30001'` after billing two model calls for the act it then rolled back.
+
+  Its six green tests are entry 10 in the self-defeating-checks table, where the
+  fixture lesson belongs — and it is a DIFFERENT mechanism from the rest of that
+  table, which is the reason it is worth reading there rather than here.
+
+  The renumber parks above `max(sequence)` now rather than at a constant, with a
+  refusal if that would overflow `unsignedSmallInteger`.
+
 - `stories.target_publish_at` — two timezone helpers and a display block on the
   index, and no input anywhere, so the column was null on every story and the
   block never rendered. Meanwhile the Gate 4 checklist asked the operator to
@@ -1553,8 +1752,1344 @@ Closed since:
   producer** — the fix is to make the thing exist or to stop asking, never to
   leave the question there.
 
+- **A SCHEMA GENERATED FROM THE CODE UNDER TEST AGREES WITH IT BY CONSTRUCTION,
+  AND THAT AGREEMENT PROVES NOTHING. Twelfth false success, first one in the
+  DDL.** `CostUnit::TotalTokens` was added in code with no migration. The first
+  real outline after it — story 23, render job #4703 — ran 87 seconds against
+  claude-opus-5, completed, and died writing its cost row:
+
+  ```
+  SQLSTATE[01000]: Warning: 1265 Data truncated for column 'unit' at row 1
+  ```
+
+  `RecordProviderCost` runs before the transaction that writes the acts, so the
+  story got no outline either. **Billed spend, no ledger row, no product** —
+  non-negotiable #4 failing in the exact way it is written to prevent.
+
+  **Why 943 tests, four clean audits, known-answer fixtures and eight drills
+  were all green.** Not one of them was wrong. Eleven columns build their MySQL
+  ENUM from the PHP enum at migration time:
+
+  ```php
+  $table->enum('unit', array_column(CostUnit::cases(), 'value'));
+  ```
+
+  `RefreshDatabase` re-runs the migrations, so **the test database's column is
+  generated from the enum under test and cannot disagree with it.** The two
+  databases on this machine had literally different columns:
+
+  ```
+  narra       enum('input_tokens','output_tokens','characters',...)   built Aug 28
+  narra_test  enum('total_tokens','output_tokens','characters',...)   built just now
+  ```
+
+  That is the fake TTS deriving its duration from the constant it was meant to
+  check, moved into the schema. No test in this suite could ever have caught it,
+  and adding one that asserts "every enum fits its column" would be worse than
+  nothing — it would pass on every machine forever, including on the morning
+  production could not write a row, and read as coverage of the one thing
+  nothing covers.
+
+  **THE FINDING WAS ALREADY WRITTEN DOWN, TWO DAYS EARLIER, IN THE SAME TABLE.**
+  `add_evaluation_category_to_cost_entries` (2026-09-03) closes with: *"The
+  value list is written out literally rather than read from the enum. The two
+  migrations before this one call `CostCategory::cases()`, which means their
+  meaning changes every time a case is added — a migration that is never edited
+  but does not say the same thing twice."* Correct, complete, and applied only
+  to `category`. Three files later the next enum change walked into the identical
+  defect on `unit`. **One instance fixed by hand is not a mechanism**, and a
+  documented finding with nothing enforcing it reads as covered — the same
+  sentence as `ImagePromptBuilder`'s staleness check and Gate 2's advisory
+  heading, this time about a migration.
+
+  **The mechanism is `php artisan schema:enum-drift`, and it is a COMMAND rather
+  than a test or a `tools/` script for one reason: it reads the live column.**
+  Rule 3 — keep one number that we did not compute — applied to DDL. Everything
+  else in this area is derived from the enum and therefore agrees with it. Run
+  it after adding or removing an enum case, and at the end of a phase beside the
+  four static audits.
+
+  It reports two directions and only one is severe. **CODE AHEAD** — the enum
+  can produce a value the column cannot hold — sets a non-zero exit, because
+  writing it truncates. **COLUMN AHEAD** is reported and never fatal: that is
+  what a retired case looks like, `output_tokens` has 107 rows and no writer and
+  must stay, and a severe category full of findings nobody can act on is a
+  severe category that stops being read.
+
+  Swept at the time of the fix: **exactly one of the twelve enum columns was
+  drifting**, and it was the one that failed. The other eleven are in step, not
+  by design but because every enum change since August happened to arrive with
+  its own `->change()` migration.
+
+  **The first version of the sweep reported all twelve as drifting**, and it was
+  nearly reported that way. MySQL returned the metadata column under a name the
+  probe did not read, `column_type` came back null on every row, and every enum
+  case therefore looked absent from its column. **A detector that reports
+  everything is worth less than one that reports nothing**, because the severe
+  category is the one that gets acted on. The query aliases the column now, and
+  an unreadable column returns null and is reported as UNREADABLE — never as an
+  empty list, which is what made the false sweep look plausible.
+
+  **The lost spend was recoverable in full, and from an unlikely place.** Laravel
+  interpolates the bindings into a `QueryException` message and `RenderJob::record`
+  stores that message verbatim, so every column of the destroyed row survived in
+  `render_jobs.error`: 10,784 total tokens, $0.152177, the four-way token split,
+  and the original timestamp. It checks against itself — 2266 + 5575 + 0 + 2943 =
+  10,784 — so the figures did not have to be inferred from a comparable call.
+
+  **Restoring it is not an edit and the distinction is load-bearing.** The
+  write-once rule is why story 21's narration still reads $2.12 when it really
+  cost $4.24: a figure the ledger states is never rewritten. This wrote a row
+  that was never written, for a call that certainly happened, at its own
+  timestamp. The row carries `restored_from` in `detail`, because a reconstructed
+  row that looks identical to a directly-written one is a small false success of
+  its own — the figures are trustworthy and the provenance is different, and only
+  the row can say so.
+
+  **A schema literal is frozen; a predicate is live.** The backfill needed the
+  set of categories that count toward a video's cost, and reads it from
+  `CostCategory::countsTowardVideoCost()` rather than retyping it — while the
+  migration beside it writes its ENUM values out by hand. Those look
+  contradictory and are the same rule: a schema literal describes what the column
+  was made to hold on the day it was made and must never move, and a predicate
+  has exactly one right answer today. Retyping the predicate is the shape that
+  gave one narration three prices.
+
+- **Gate 1's retry EXISTS. What is missing is the failure.** Worth correcting on
+  the record, because the reasonable read of the incident was "a red panel and no
+  button" and it is the other way round.
+
+  `OperatorAction::WriteScript` is permitted at `draft`, `askToWrite` renders on
+  story 23 right now, and `WriteStoryJob` re-runs the outline whenever the story
+  has no acts — so the failed run is re-runnable today, through the same button
+  that started it, and pressing it after a complete run queues nothing to bill.
+
+  **What Gate 1 does not do is read `render_jobs`.** Job #4703 is a `failed` row
+  with the full error on it; the gate page mentions neither the failure nor the
+  error, so a story whose outline died 87 seconds and fifteen cents in looks
+  exactly like a story nobody has started. That is false-success row 6 —
+  "outline ✓, act scripts ✓, nothing after" — with the arrow reversed: there the
+  stage wrote no row, here the row exists and the page does not look at it.
+  `$this->problem` holds a dispatch failure only for the life of the component,
+  so a failure inside a worker, or any page reload, erases it.
+
+  `/renders/{slug}` shows all of it, including the error text. So the
+  information is one click away and on the wrong page: the decision surface says
+  nothing and the progress page says everything.
+
+  **What it would take**, not built: a `failedStages()` read on `OutlineGate`
+  mirroring `ScenesGate::failedScenes()` — the open `render_jobs` rows for
+  `outline` and `act_scripts` with `status = failed` — surfaced as an `.alert.err
+  .wide` above the decision, naming the stage, the error and the time, with the
+  existing write button as its action. No new Action, no new job, no capability
+  change; the button and the re-run path are already there and already correct.
+  The one judgement call is whether a failure older than the last successful run
+  of the same stage should be shown at all, which is why this is a report and not
+  a patch.
+
+- **A REMEDY THE STAGE DOES NOT HAVE, PLUS AN ENV VAR THIS APP DOES NOT READ —
+  in one sentence, on all eight operations.** `generate_outline` hit its 16,000
+  output ceiling on story 23 and said:
+
+  > Raise ANTHROPIC_MAX_TOKENS or lower the per-act word target — a truncated
+  > act cannot be salvaged and re-running it costs the same again.
+
+  Three things wrong, and the middle one is the expensive one.
+
+  - **The outline has no per-act word target.** That lever belongs to
+    `generate_act_script`. The message was written for that stage and inherited
+    by seven others — the same "fixed at one call site, so it cannot reach the
+    next" shape as Gate 2's advisory heading before `GateVoice`.
+  - **`ANTHROPIC_MAX_TOKENS` is not a variable this app reads.** Every ceiling
+    is suffixed: `_OUTLINE`, `_ACT_SCRIPT`, `_SCENES`. Setting the name in the
+    message changes nothing, **silently**, so the remedy looks applied and the
+    next run fails identically. An operator can spend an hour and a second
+    billed call proving the advice does nothing.
+  - "a truncated ACT" is the wrong noun on six of the eight.
+
+  **A message naming a remedy the stage does not have is worse than no
+  message.** It is confident, specific, and points somewhere there is nothing to
+  find — the checklist-item-about-something-that-cannot-exist defect, moved into
+  an exception.
+
+  `truncation_remedy` now sits beside each operation's `max_tokens` in
+  `config/providers.php`, so the advice and the number cannot drift and the env
+  var named is the one written on the line above it. A `match` in the thrower
+  would have been a second copy of the roster, which is how `assets:generate`
+  came to print a `--max-time` that had stopped being the sized one. An
+  operation with no remedy configured **says so** rather than inventing a
+  plausible generic one — inventing one is precisely how the old message read.
+
+  **The drill that mattered passed first.** Five cases went red; restoring the
+  old inline `sprintf` at the throw site did not, because every assertion
+  reflected into `truncationMessage()` and none checked that the thrower calls
+  it. The builder was correct, well tested, and no longer reachable —
+  `escalation_beat` reaching a prompt that never sent it, in a test file. Two
+  assertions cover it now: no ceiling env var may be named anywhere in `app/`
+  code (which would have caught the original defect), and the `max_tokens`
+  branch must delegate. Drilled three ways, including a revert that names no env
+  var at all, per the rule that a text guard is drilled with the input written
+  the OTHER way.
+
+- **THE HOOK DID NOT CAUSE THE TRUNCATION, AND THE RUN THAT PROVES IT IS THE ONE
+  THAT FAILED FIRST.** The reasonable hypothesis was that the spine going from
+  seven fields to eight pushed the outline over. Measured, it did not:
+
+  | | acts | spine | output tokens | of the 16,000 ceiling |
+  |---|---|---|---|---|
+  | story 22 (fitted) | 7 | 7 fields | 5,198 | 32% |
+  | story 23 run 1 (fitted) | 6 | **8 fields, hook live** | 5,575 | 35% |
+  | story 23 run 2 (truncated) | 6 | 8 fields, hook live | >16,000 | 100% |
+
+  **Run 1 already had the hook and finished at a third of the ceiling.** Same
+  code, same story, same prompt, same act count, twenty-two minutes apart. The
+  difference between 5,575 and 16,000+ is a 2.9x overshoot on identical input,
+  which is the generation-variance item this file already has open — story 21
+  overshooting its word target by 44% is the same defect, milder.
+
+  The component sizes, measured on story 22's real output at 2.98 chars per
+  output token:
+
+  | part | tokens | of ceiling |
+  |---|---|---|
+  | one spine field (avg of seven) | 299 | 1.9% |
+  | **the hook** | **~200-300** | **~1.9%** |
+  | one act | 417 | 2.6% |
+  | six-act body | 2,500 | 16% |
+  | eight-field spine | 2,392 | 15% |
+  | whole outline | ~4,900 | 31% |
+
+  So the hook is about **one fiftieth of the ceiling** and roughly **6% of a
+  typical outline**. It cannot account for a 3x overshoot, and the field was
+  present in the run that fitted.
+
+  **I nearly reported the opposite, from a timezone.** The app writes
+  `render_jobs.started_at` in UTC and the file mtimes are +08:00, so the two runs
+  (01:11 and 01:33 UTC) looked like they PREDATED the hook migration (08:22
+  local) by seven hours, which would have made the field impossible as a cause
+  for a different and wrong reason. Converted, both runs are 09:11 and 09:33
+  local — after it. Same conclusion, opposite reasoning, and the wrong version
+  was one sentence from being written down. **Comparisons must happen in one
+  frame** is already this file's rule about centiseconds against milliseconds;
+  it applies to clocks.
+
+  **The remedy is therefore not a tighter hook schema and not splitting the
+  call**, and the numbers say why rather than a preference:
+
+  - **Re-run.** 31% mean occupancy with one observed excursion to 100%. Costs
+    ~$0.15 and is the only stage where a re-run is a reasonable first move,
+    which is what its remedy now says.
+  - **Tighter hook schema** would recover ~300 tokens, 1.9% of the ceiling. It
+    buys nothing against a 3x overshoot and would cost the beats the field
+    exists for.
+  - **Splitting the outline call** is what this file says about SCRIPTS, and the
+    reason does not transfer: a 7,000-word script cannot fit one call at any
+    ceiling, whereas an outline occupies a third of one. Splitting would add a
+    second billed call and a coherence seam — the spine and the acts are written
+    against each other — to solve a variance problem that a re-run solves for
+    fifteen cents.
+  - **Raising `ANTHROPIC_MAX_TOKENS_OUTLINE`** is available and is not free: the
+    truncated call was billed at the ceiling, so a higher ceiling makes the
+    failure mode more expensive rather than less. It is the third option, not
+    the first.
+
+- **`max_tokens` BOUNDS OUTPUT ONLY, so an eight-field spine moves no downstream
+  stage toward its ceiling.** Worth stating because the question is natural and
+  the answer is structural rather than lucky: the act-script call carries the
+  outline in its PROMPT, and prompt growth is input, which `max_tokens` does not
+  constrain.
+
+  Measured on the real prompt builder: the hook adds 974 chars (~270 input
+  tokens) to the ACT 1 prompt and **exactly zero** to act 2 — `hookInstruction()`
+  runs only for act 1, and the act prompt's spine block carries four fields, not
+  eight, with departure/reversal/refusal arriving per phase through
+  `endingFor()`. It is a small input cost on one call per story.
+
+  What the sweep did find is unrelated to the hook and worth knowing:
+
+  | stage | ceiling | worst measured output | |
+  |---|---|---|---|
+  | `draft_scenes` | 16,000 | **14,031** | **88% — story 21 act 3** |
+  | `generate_outline` | 16,000 | 5,575 | 35% |
+  | `generate_act_script` | 16,000 | 2,636 | 16% |
+
+  **`draft_scenes` is the stage actually close to truncating**, and it has been
+  since before the hook existed. Its output scales with the ACT it is cutting up,
+  which is upstream of anything that stage controls — so its remedy names the act
+  length rather than any knob at the scene stage. A truncated scene list there
+  costs the act call again.
+
+- **A SPEND BUTTON THAT DOES NOT ACKNOWLEDGE THE CLICK IS ASKING TO BE PRESSED
+  TWICE, AND EVERY PRESS IS FOUR BILLED IMAGES.** Found by using the cast panel,
+  not by a check.
+
+  Generation is synchronous on that screen for a good reason — the operator is
+  sitting in front of it waiting to choose a face — and nothing said so while it
+  ran. Measured across 62 real candidate images: **36 seconds per candidate at
+  the median, 53 at the worst, so a four-candidate sheet holds the browser for
+  about 144 seconds** with a live button and an unchanged row. That is
+  indistinguishable from a click that never landed, and the reasonable response
+  to it is another click.
+
+  **Two halves, and they are not alternatives.**
+
+  - The **acknowledgement**: `wire:loading` disables both controls and an
+    `.alert.run` says what is running and roughly how long. It makes a second
+    press unlikely. The targets are NAMED — a bare `wire:loading` fires on any
+    request the component makes, so picking a candidate elsewhere would grey out
+    a spend button that is not running.
+  - The **claim**: an atomic lock, taken in `GenerateCharacterSheet`. It makes a
+    second press impossible.
+
+  **Component state cannot do the second job, and it looks like it can.** The
+  obvious fix is to consume `$this->confirming` at the top of the handler.
+  Livewire sends a serialised snapshot with every request, so two clicks fired
+  before the first response arrive as two requests carrying the SAME snapshot,
+  each with the flag still armed. Whatever the component believes, it believes
+  twice. A cache lock is outside the request and is the only thing that can see
+  the other one — and it also covers what no UI state could reach: a second tab,
+  a second operator, and `characters:sheets` running in a terminal.
+
+  **It lives in the Action, not the component**, because the console command is
+  a caller the component cannot see. Guard upstream of the thing it distrusts.
+
+  **It expires, and that is not a detail.** A lock with no expiry converts a
+  crashed request into a character that can never be generated again, with
+  nothing on screen explaining why — a worse failure than the one being fixed
+  and silent in the way this project keeps paying for. 1,800s, an order of
+  magnitude above the measured 144s sheet, and released in a `finally` so the
+  ordinary path never waits for it.
+
+  **The refusal is a NOTICE, not a problem.** It means the first press landed and
+  nothing extra was bought. Rendering it red would tell an operator something
+  went wrong when the opposite is true, and pressing twice was what the screen
+  invited.
+
+- **THE STALE ROW DID NOT REPRODUCE, AND THE REASON IT CANNOT IS THE USEFUL
+  PART.** The report was that the sheet exists and the row still says NO SHEET
+  until a manual reload. It does not, in any test I could build, and I can now
+  say why: Livewire computed properties are cached **per request**, and each
+  `call()` is its own request, so `cast()` is first evaluated during the render
+  that FOLLOWS generation and re-queries by construction.
+
+  That has a sharp consequence for the fix: **`forget()` cannot be what makes
+  the badge update, and a drill proved it.** Deleting its body leaves both
+  behaviour tests green. It is defensive, not load-bearing, and the tests are
+  regression tests on user-visible behaviour rather than tests of the mechanism.
+  Saying so in the docblock matters, because a passing test that cannot fail
+  reads as coverage of something it never touches.
+
+  What WAS wrong and is now fixed: `forget()` did not refresh `$this->story`
+  itself. Both `EstimateCharacterSheets` and `ValidateCharacterSheets` are
+  handed that instance, and neither can tell a stale loaded relation from a
+  fresh one.
+
+  Since the badge does follow a COMPLETED request, the reported symptom points
+  at a request that did not complete — which is the first item's silence, seen
+  from the other end. `max_execution_time` is 36,000 here so PHP is not killing
+  it; a 144-second synchronous request is simply long enough for a browser, a
+  proxy or an operator to give up on. **The durable fix is not to hold the
+  request for 144 seconds at all**, and that is a real redesign of a
+  deliberately synchronous screen, so it is named here rather than done.
+
+- **`class-audit` CAUGHT `.alert.run` AS A `COMBO` THE MOMENT IT WAS WRITTEN.**
+  `.run` existed only as `.badge.run` and as a progress-bar fill, so the first
+  surface to need "this is happening" in alert form asked for a class the
+  stylesheet answered only on a badge — and would have rendered as an ordinary
+  alert with no accent. **That is `.panel.money` exactly**, caught during the
+  work instead of a phase later, which is the argument for running the audits
+  while building rather than after.
+
+  It is a real gap rather than a naming slip: the console had no in-flight alert
+  variant at all. `.alert.run` is defined now with `--run`, the status ramp that
+  already means in-progress, measured at 1.183x light and 1.251x dark from the
+  panel beside it — inside the band every other alert variant occupies.
+
+  **And `theme-audit` immediately caught the token landing in the wrong block.**
+  The dark remap is written twice on purpose, and my edit put both copies inside
+  the `prefers-color-scheme` block, leaving `[data-theme="dark"]` without one —
+  so an explicit toggle would have rendered the light tint on a dark ground at
+  14:1. The audit reported `DIVERGED` and named the token. This is the "one
+  mistyped hex in two hundred token lines" case the `--against` differ exists
+  for, working on the first run after the change.
+
+  The one `GONE` in the diff is the neutral fallback selector gaining
+  `:not(.run)` — a rename with a matching `NEW`, declarations byte-identical,
+  verified rather than assumed. The comma-merge lesson in reverse: `GONE` plus a
+  matching `NEW` of the same rule is a rename, and only reading them together
+  says which.
+
+- **THE CANDIDATE COUNT IS ALREADY CONFIGURABLE EVERYWHERE EXCEPT THE SCREEN
+  THAT SPENDS IT.** `characters.candidates` (env `CHARACTER_CANDIDATES`,
+  default 4), `characters.max_candidates` (6), `--candidates=` on
+  `characters:sheets`, and a `?int $candidates` parameter on the Action. The one
+  caller that passes nothing is the Livewire component, so the operator sitting
+  in front of the bill is the only person who cannot change it. **The
+  console-audit shape again: a capability that exists with no button.**
+
+  What it is worth, measured:
+
+  | | story 9 | story 21 |
+  |---|---|---|
+  | sheets, at 4 candidates | $1.33 | $1.365 |
+  | at 2 | $0.67 | $0.68 |
+  | video total | $12.54 | $15.24 |
+  | sheets as a share | 10.6% | 9.0% |
+
+  So halving the count saves about **$0.68 per video, ~5% of the total** — real,
+  and worth putting behind a control rather than an env var. It is not the
+  biggest line on the video: `generate_image` is $6.51 and $9.45. It IS the
+  biggest thing on THIS screen, which is what was asked.
+
+  The cost of exposing it is small and the risk is worth naming: fewer
+  candidates is a worse choice, not a cheaper one, and the sheet exists to find
+  a face worth holding across 150-250 stills. A control that defaults to 4 and
+  can be dropped to 2 for a minor character is the shape; a global default of 2
+  would be a quality decision disguised as a saving.
+
+- **NO THRESHOLD ON WHO GETS A SHEET, AND A THIRD OF THE CAST IS IN FIVE SCENES
+  OR FEWER.** A character in 120 scenes and a character in 4 get the same
+  offer, because the app has no notion of how much consistency is worth.
+
+  Measured across 39 characters that appear in at least one scene:
+
+  | scenes | characters |
+  |---|---|
+  | 1-2 | 0 |
+  | 3-5 | 13 |
+  | 6-10 | 11 |
+  | 11-25 | 5 |
+  | 26-60 | 5 |
+  | 61+ | 5 |
+
+  Median 8, mean 23 — a long tail with a heavy head. Story 9 spent $0.56 of its
+  $1.33 on four characters appearing in 18 scenes of 186.
+
+  What a threshold would look like, per story:
+
+  | cutoff | story 9 skipped / saved | story 21 skipped / saved |
+  |---|---|---|
+  | < 5 scenes | 3 chars, $0.42, 12 scenes | 0 chars, $0 |
+  | < 8 | 4 chars, $0.56, 18 scenes | 2 chars, $0.245, 10 scenes |
+  | < 10 | 6 chars, $0.84, 35 scenes | 3 chars, $0.385, 19 scenes |
+  | < 15 | 7 chars, $0.98, 45 scenes | 5 chars, $0.665, 46 scenes |
+
+  **Where the number would have to come from, and it is not this table.** These
+  are savings, and savings alone would argue for a very high cutoff. The
+  question the threshold actually asks is *at how many stills does a
+  description-only face drift visibly enough to matter*, and **nothing in this
+  app has measured that.** The drift is the entire reason references exist —
+  "a face drawn from text looks right on its own and drifts across the video,
+  and the drift is not visible until every still has been paid for" — so a
+  number picked off the cost column would be moving the measurement until the
+  outcome passes, which is the pattern this file names at story 9's runtime.
+
+  The honest experiment is cheap and has not been run: take one shipped story,
+  generate the stills for a 4-scene character from the description alone, and
+  look at them beside the same character's referenced stills. That is a handful
+  of images against a `CostCategory::Evaluation` row — the category that exists
+  for exactly this kind of question.
+
+  Two constraints on any threshold, whatever the number:
+
+  - **`MissingCharacterReferenceException` currently refuses a still whose
+    character has no reference.** A threshold is not just a hidden button; it is
+    a second legal state — "deliberately unreferenced" — and that refusal has to
+    learn the difference between it and "nobody generated this yet". Otherwise
+    the threshold silently blocks the scenes it was meant to make cheaper.
+  - **The offer should get quieter, never disappear.** A character with no
+    button is a character an operator cannot give a face to when the story turns
+    out to need one, and this screen already has the right register for it: the
+    unused-cast advisory says why no sheet is required rather than hiding the
+    row.
+
+- **THE FACES WERE INERT BECAUSE 77.5% OF PEOPLED FRAMES NEVER ASKED FOR AN
+  EXPRESSION. Measured before and after, and the prompt rule was not what fixed
+  it.** Found by watching a finished video; the stills read blank while the
+  narration moved through betrayal, departure and refusal.
+
+  The system prompt had asked for expression in prose since Phase 2 — *"who is
+  in it, where they are, what their expression and posture are"*. Measured
+  across 657 peopled frames in four finished stories, what actually arrived:
+
+  | | before | after |
+  |---|---|---|
+  | mention a face at all | 44.4% | 84.8% |
+  | **name what the face is DOING** | **22.5%** | **62.4%** |
+  | no expression instruction at all | 77.5% | 37.6% |
+  | overt affect (tears, shouting, trembling) | 1.4% | 3.2% |
+
+  Measured with one parser throughout, on story 12 re-drafted whole. Two figures
+  underneath that one: **114 of 125 peopled frames carry an expression block**
+  (91.2%) — the 62.4% is the conservative reading, counting only frames where a
+  fixed vocabulary recognises a face and a state in the same clause. And the
+  11-frame gap is not a miss: those are wide establishing shots where the
+  expression is deliberately suppressed. Over the frames actually eligible for
+  one, the parser figure is **68.4%**.
+
+  **Two changes were made and only one of them did anything**, which is why they
+  were sequenced rather than shipped together:
+
+  1. **A prompt rule banning hedged wording** — "slightly", "faintly", "barely"
+     applied to a face, which the expression-axis run measured as rendering
+     nothing at all. Free, correctly aimed, and it targets **3.2%** of peopled
+     frames. Re-drafting one act against it moved nothing measurable, and could
+     not have: at a 3.2% base rate an 18-frame act expects 0.6 instances.
+  2. **`expression` as a REQUIRED field on the scene schema**, beside
+     `motion_preset`, with the prose instruction replaced by an instruction to
+     name the visible expression plainly. This is what moved 22.5% to 72.4%.
+
+  The ratio is the lesson: the schema field's surface is **24x** the prompt
+  rule's. This is the `antagonist_justification` argument holding a second time
+  — *a model asked in prose for five things will reliably give four when one is
+  awkward* — and the corollary that a prompt rule is worth what the field behind
+  it is worth, which for a field that does not exist is nothing.
+
+  **The hedge ban did NOT work and got worse, and that is not a rounding error.**
+  Hedged expressions rose from 3.2% to 15.3% of peopled frames; per
+  expression-bearing frame, from 14% to 21%. So the rule is being ignored at a
+  slightly higher rate now that there are far more expressions to ignore it in.
+  It is a prompt request with no mechanism — the shape this file names as the
+  documented-guard defect — and the next step, if it matters, is a Gate 2
+  advisory rather than a louder sentence. Left open deliberately: a hedged
+  expression is a weak picture, not a wrong one, and the guard would be
+  false-positive-prone in exactly the way `CharacterTextGuard`'s build rule is.
+
+  **The expression is spliced into the FRAME section**, not added as a fifth
+  block, so `ThumbnailFraming`'s shot scale, the narration-overlap check and the
+  close-frame setting advisory all still see it. It is suppressed on cutaways —
+  a frame with nobody in it that carried an expression would be describing a
+  face the picture does not contain, and that is a quarter of a real story.
+
+  **THE EXPRESSION GETS ITS OWN PROMPT SECTION, AND THAT REVERSES THE FIRST
+  DESIGN ON MEASURED GROUNDS.** It was first joined into the FRAME section, on
+  the reasoning that everything asking "how was this picture framed" reads the
+  frame — `ThumbnailFraming`'s shot scale, the narration-overlap check, the
+  close-frame setting advisory — so hiding it from all three would be a loss.
+
+  The opposite was true, and one of the three was actively broken by it.
+  `ThumbnailFraming::WIDE_MARKERS` contains `'wide'`, matched whole-word, so an
+  expression reading "eyes wide" or "mouth wide open" classified its own frame
+  as a WIDE ESTABLISHING SHOT. Measured on story 12: **6 of 98 peopled frames,
+  and they were the best reaction shots in the story** — *"Beaming, eyes
+  crinkled"*, *"her hand pressed over her mouth, eyes wide"* — each scoring -25
+  for a thumbnail instead of +30. Exactly backwards, on the frames the thumbnail
+  feature exists to find.
+
+  ---------------------------------------------------------------------------
+  **THE GENERAL FORM: ANYTHING APPENDED INTO A SHARED STRING BECOMES INPUT TO
+  EVERY PARSER THAT READS THAT STRING, AND THE CALL SITE CANNOT SEE WHO THEY
+  ARE.**
+  ---------------------------------------------------------------------------
+
+  This is not a `WIDE_MARKERS` bug and reading it as one would waste it. The
+  marker list is fine; `'wide'` is a reasonable word for "wide shot" and it is
+  matched whole-word. What went wrong is that a NEW FIELD was spliced into a
+  string that three unrelated readers parse by keyword, and nothing at the
+  splice point says so.
+
+  `image_prompt` is not a value, it is a channel. Four things write into it —
+  the frame, the expression, the cast block, the style — and at least four read
+  it back out by pattern: `ThumbnailFraming` for shot scale,
+  `ValidateSceneDrafts` for narration overlap and for the close-frame setting
+  advisory, `ScenesGate::styleBlock()` for the stored art style,
+  `ImagePromptBuilder::frameFrom()` for the frame itself. **A writer cannot
+  enumerate its readers from where it stands**, so "append it to the frame, the
+  readers want to see it" was a guess about four call sites made from one.
+
+  The expression happened to contain a word one of them treats as a shot marker.
+  It could as easily have contained "described exactly" and broken the cast
+  check, or a narration word and inflated the overlap ratio. The specific
+  collision is luck; the exposure is structural.
+
+  What follows, and it is cheap:
+
+  - **A new field gets its own section, not a splice into an existing one.**
+    Sections are separated by a blank line and that convention is
+    `ImagePromptBuilder`'s to state, so a section is addressable and a splice is
+    not.
+  - **Every section that can be read back gets a labelled inverse in the class
+    that writes it** — `frameFrom()`, now `expressionFrom()`. A caller matching
+    the label itself is a second copy of a string only one method writes.
+  - **When splicing is genuinely wanted, name the readers in the change.** Same
+    question as the DTO-consumer finding above, one layer down: who else parses
+    this string, and does anything break if its vocabulary grows?
+
+  An expression is a fact about the SUBJECT, not about the SHOT, which is why it
+  was never frame content in the first place.
+
+  **An expression is not spent on a shot that cannot show it.** Suppressed on
+  cutaways, and on a wide establishing shot that names no face — story 12
+  produced *"A modest single-story house on Ridgeline Drive seen from the street
+  … brows drawn together"*, an expression on a building inside a 25-45 word
+  budget. The second condition is deliberately narrower than "the shot is wide",
+  because `WIDE_MARKERS` is tuned for a ranking where a false `wide` is cheap and
+  here it would DELETE a real expression from a real close-up: 'empty' matched a
+  print-shop counter and 'the street' matched a frame whose subject stands in it.
+  A frame naming a face keeps its expression however the shot was marked. Read
+  off the model's own `frame` field before assembly, so the rule cannot see the
+  expression it is deciding about.
+
+  **The hedge ban is a Gate 2 advisory now, not a sentence in a prompt.** It was
+  shipped as a prompt bullet and measured: hedged expressions went from 3.2% to
+  15.3% of peopled frames — 14% to 21% per expression-bearing frame — so the
+  forbidden thing became five times more common while the rule was in place. **A
+  prompt request with no mechanism reads as a guard while doing nothing**, which
+  is worse than not asking, because the sentence looks like coverage. The prompt
+  keeps the request and `checkExpressionsAreNotHedged()` is the invariant, which
+  is the same split `CharacterTextGuard` uses. It reads the EXPRESSION BLOCK and
+  never the frame: "dust faint on the drawer's edge" is not a hedged expression,
+  and scoring the whole frame is what over-counted the original figure by 4x.
+
+- **STORY 12 WAS A MIXED STORY AND IS NOT ANY MORE. It is the measurement
+  target.** Kept on the record because the mixed state is the kind of thing that
+  is invisible in the database and would otherwise be rediscovered.
+
+  For one pass its acts were drafted under three different code versions — act 3
+  under the hedge ban alone, the rest under the ban plus the `expression` field,
+  and none of them under the section split. Two consequences, both real while it
+  lasted: act 3 read 33.3% expression coverage against 72.4% elsewhere, which
+  was **a code version and not an effect**; and 0 of 173 scenes carried a
+  readable expression block, so `expressionFrom()` returned '' everywhere and
+  the hedged-expression advisory **could not fire at all** — a check that cannot
+  fire is indistinguishable from one that passed, on the story it was written
+  from.
+
+  All six acts were then re-drafted together, at 12 calls and $0.4664, and it is
+  now one format throughout. The general rule the episode is worth remembering
+  for: **when a generator changes under a story, the story is evidence about two
+  code versions and neither cleanly.** Re-draft the whole thing or compare only
+  against an external baseline, never act-to-act.
+
+  Story 12 is at `scenes_drafted` with zero paid asset spend, which is what makes
+  it the right target: text re-drafts cost cents and invalidate nothing.
+
+- **WARDROBE TRAVELS WITH THE REFERENCE SHEET, AND IT WILL NOT FIX ITSELF WHEN
+  EXPRESSION DOES.** Found in the expression-axis run, which was measuring
+  something else. Every referenced rung came back in the sheet's tan jacket and
+  beige shirt; the one unreferenced control came back in a white shirt. In story
+  21 the same thing is live and visible: Lu Wenbin stands under a streetlamp at
+  night in act 6 wearing the tan shirt from his reference portrait, and his
+  `style_notes` say only "Plain collared shirts and dark trousers, sleeves rolled
+  to the forearm" — no colour, no garment.
+
+  **Same class as the close-frame setting bleed, different remedy.** Both are the
+  edit endpoint filling a gap from the only picture it was handed. The setting
+  case is fixed in the FRAME — name the room and the model stops reaching for the
+  grey void — and `ValidateSceneDrafts::checkCloseFramesNameTheirSetting()` now
+  reports it. Wardrobe cannot be fixed the same way without undoing the thing the
+  sheet is for: a frame that re-describes the clothes per scene is a frame
+  re-describing the character, which is what `ImagePromptBuilder` exists to
+  prevent.
+
+  Why it matters beyond tidiness: this format runs 30-40 minutes across weeks or
+  years of story time. A narrator who wears one shirt from the betrayal to the
+  refusal reads as a single afternoon, and the departure — the structural centre
+  of the arc — is the moment a change of clothes would carry the most.
+
+  Three shapes it could take, none built and none obviously right: a per-scene
+  wardrobe field on the scene (a second thing for the operator to review, 150-250
+  times); a per-ACT wardrobe line, since acts already map to time and phase and
+  there are only six or seven of them; or a reference sheet deliberately drawn in
+  neutral clothing so there is less to bleed. The last is the cheapest to test
+  and the only one that costs nothing per scene — and it is a `reference_frame`
+  edit, which is inside `StyleFingerprint` and therefore stales every sheet.
+
+- **THE PROGRESS PAGE COULD NOT SEE A BATCH THAT HAD NOT STARTED, AND THE CANCEL
+  PATH COULD. FOURTH INSTANCE OF A FIX APPLIED AT ONE CALL SITE.** Story 23 sat
+  at `assets_generating` with **550 jobs live on the assets queue** and
+  `/renders/{slug}` said *"No batches recorded for this story"* and showed no
+  asset stage at all.
+
+  Two separate causes, both structural, and only one of them is now fixed:
+
+  1. **No asset stage.** `RenderJob::open()` runs INSIDE the job, so a queued
+     job has no row. 550 queued, 0 started, 0 rows, empty stage list. This is
+     false-success row 7 showing its other face — there a partial run read as
+     complete, here a full backlog reads as nothing at all. **Unfixed**, and
+     genuinely hard: the stage list is built from `render_jobs`, and the thing
+     it needs to count has not written one.
+  2. **"No batches recorded".** `RenderProgress::batches()` resolved batch ids
+     ONLY through `render_jobs.batch_id`, so no rows meant no ids meant an early
+     `return []`. **Fixed**: it now also matches `job_batches.name` against
+     `scene-assets:{slug}` and friends.
+
+  **The sharp part is that `CancelRenderBatch::batchIds()` has had exactly that
+  fallback all along.** Cancelling worked on the batch the page could not
+  display, because the cancel path already knew that an unstarted batch has to
+  be found by name. One author, two call sites, one of them taught. That is the
+  same shape as `escalation_beat` reaching `GenerateActScripts` and not
+  `DraftScenes`, and as the migration lesson that reached `category` and not
+  `unit` — **a fix applied at one call site reads as covered.**
+
+  `BATCH_PREFIXES` is shared from `CancelRenderBatch` rather than retyped, so
+  the two cannot drift. The one deliberate DIFFERENCE is that the page does not
+  filter out finished or cancelled batches: cancelling wants what it can still
+  stop, and a progress page wants the history, because a batch somebody called
+  off is the thing an operator most wants to see rather than the thing to hide.
+
+  Both halves are drilled in `RenderProgressPageTest`, and the fixture writes NO
+  `render_jobs` rows on purpose — that absence IS the defect, and a fixture that
+  wrote one could not express it.
+
+- **A WORKER THAT SAYS CURRENT AND DOES NOTHING — THE STATE THE WORKER PANEL
+  EXISTS FOR, AND IT WAS INVISIBLE. NOT DIAGNOSED.** Recorded because it is
+  unexplained, not because it is understood.
+
+  Story 23's asset batch was dispatched at 10:28 UTC. At 10:37 the assets worker
+  was alive (pid 16492), heartbeating 40 seconds old, code marker matching disk,
+  5h54m uptime — and it had consumed **zero of 550 jobs**. `WorkerHealth`
+  reported, in its own words:
+
+  > *1 worker(s) on "assets" agree with this process, working through 550 queued
+  > job(s).*
+
+  Every clause is true and the sentence as a whole is false. It is assembled
+  from two facts — a heartbeat exists, and a queue has depth — **neither of which
+  is evidence that a job was ever consumed.** That is the same construction as
+  the "118 stills done, nothing failed" page: right numbers, wrong state.
+
+  **What was ruled out**, so the next person does not repeat it:
+
+  | hypothesis | evidence against |
+  |---|---|
+  | misconfigured queue name | NSSM `AppParameters` reads `queue:work redis --queue=assets --tries=3 --max-time=32400` |
+  | recycled at `--max-time` | 5h54m uptime against a 9h ceiling |
+  | stale-code stand-down | disk marker `cba9dab8…` matches the worker's |
+  | restart loop | pid stable across the whole window |
+  | jobs failing | `worker-assets.log` has no entry since 2026-09-03; `failed_jobs` none since 09-05; batch `failed_jobs` = 0 |
+  | job stuck mid-flight | `queues:assets:reserved` does not exist — nothing was ever picked up |
+
+  So: correctly configured, alive, current, not looping, not failing, not
+  holding anything — and not working.
+
+  **A RESTART FIXED IT, AND `--max-time` WAS NOT THE REASON.** The worker was
+  restarted and the 550 jobs drained to zero within minutes — nothing bought, no
+  new `failed_jobs`, because the batch had been cancelled first and the framework
+  skips a cancelled batch's jobs. So the restart is confirmed as what unblocked
+  consumption.
+
+  The obvious explanation was that it had passed `--max-time` and become the
+  documented exit-and-never-return worker. **It had not.** The assets service
+  runs `--max-time=32400`, which is nine hours; the process had been up **5h
+  54m**, about two-thirds through its window. The arithmetic rules it out, and
+  it is worth stating because the hypothesis is extremely plausible and wrong —
+  `--max-time` exhaustion IS a real failure here (story 21's assets worker
+  exited at `--max-time=3600` and stalled a 270-scene run), which is exactly why
+  it is the first thing anyone will reach for the next time this happens.
+
+  **The mechanism is still unknown and the evidence is now gone**: the process
+  was replaced and the queue drained, so the state cannot be inspected. The
+  remaining hypothesis nothing has tested is a Redis connection that had gone
+  half-open across ~6 idle hours, where a poll returns empty forever while the
+  worker loop keeps ticking and heartbeating — which would fit every observation
+  above, and is a guess.
+
+  **Do not name the state after the diagnosis.** The panel needs a word for what
+  was OBSERVED — a worker listening and taking nothing — not for a cause that
+  turned out to be false. See below.
+
+  **What the panel would need to say it, and why it could not.** Every figure on
+  it was a LEVEL — a heartbeat age, a queue depth, an uptime. The state that
+  actually occurred looks like a RATE: a fresh heartbeat while the depth does
+  not fall. The panel had no memory of a previous reading, so it structurally
+  could not express "listening and taking nothing"; it could only say a worker
+  is there and a queue is deep, which is what it said, and which read as
+  healthy.
+
+  That is the third thing this panel cannot distinguish. The 2026-09-03 entry
+  says it exists to tell *nothing left to do* from *nobody doing it*, and
+  `stranded` covers depth-with-nobody-listening. The gap is
+  **depth-with-somebody-listening-and-not-consuming**, and it is the worst of
+  the three because every component reads healthy.
+
+  **`oldest_boot` is read and displayed and nothing branches on it**, which is
+  worth noting separately: a worker's position within its `--max-time` window is
+  known to the panel and used for nothing. Surfacing "4h left of 9h" is cheap
+  and defensible on its own merits — it just was not this defect, and building
+  it as though it were would be naming a state after a refuted diagnosis.
+
+  ---------------------------------------------------------------------------
+  **THE SIGNAL, NOT THE DIAGNOSIS. `Looping` FIRES ON THE EMPTY POLLS, SO A
+  FRESH HEARTBEAT HAS NEVER MEANT WORK IS BEING CONSUMED.**
+  ---------------------------------------------------------------------------
+
+  This entry used to close "deliberately not built, waiting for the second
+  instance". Half of that judgement was right and half of it conflated two
+  different things, and separating them is what made the state buildable
+  without guessing at a cause.
+
+  **The cause is still unknown and nothing below claims otherwise.** What was
+  found is not why the worker stopped consuming. It is why the panel could not
+  SEE that it had:
+
+  `AppServiceProvider::announceWorker()` heartbeat on `Looping`, and Laravel
+  dispatches `Looping` on **every poll of the queue, including the empty ones**.
+  So `live = 1`, `state = ok` and a fresh heartbeat all mean exactly one thing —
+  the loop is turning — and not one of them has ever meant a job was taken. The
+  panel's central signal could not tell working from idling with a full queue.
+  That is a fact about the instrument, checkable against the framework, and it
+  needed no theory about Redis or `--max-time` at all.
+
+  **And it is not a RATE, which is why no cross-request memory was needed.**
+  The first reading of this said the panel would have to remember a previous
+  depth. It does not: it needs a second CLOCK. `JobProcessing` now writes
+  `last_job_at` beside the heartbeat, so "heartbeat fresh, depth > 0, last job
+  old" is a pure read of one snapshot. The temptation was to have a page
+  remember what it saw last time, which would have made every reading depend on
+  when the page was last loaded — on a page that deliberately stops refreshing
+  itself when nothing is running.
+
+  **Two clocks, because one cannot do it.** `seen_at` is ticked by a poll, by a
+  job start AND from inside a long job by `RenderJob::heartbeat()` — which is
+  precisely what makes it a good liveness signal and a useless activity one. So
+  `looped_at` is written only by a poll and `last_job_at` only by a job start.
+  A worker polling and taking nothing has a fresh poll and an old job start; a
+  worker forty minutes into a mux has the reverse and reads as busy, correctly.
+  If the in-job beat ever claimed to be a poll, this alarm would fire on the
+  longest thing the pipeline does — there is a test for exactly that, and a
+  drill that turns it red.
+
+  **`WorkerHealth::NOT_CONSUMING`, badged "taking nothing", and the name is the
+  careful part.** It says what a reading can support and nothing more. It is not
+  `wedged`, not `half_open_redis`, and not `max_time_exhausted` — that last one
+  is the plausible name that was nearly used and is REFUTED for this incident,
+  because the worker was 5h54m into a 9h window. **A state named after a
+  diagnosis that turns out to be wrong is worse than one named after the
+  symptom, because the name then argues against the next investigation.**
+
+  **An entry with no clocks is UNKNOWN and is not accused.** A worker that
+  booted before this signal existed cannot answer, and reporting it as taking
+  nothing would be inventing a reading — the over-report that retires a
+  detector. It is not absence read as agreement either: such a worker booted on
+  code that no longer matches disk, so it is already STALE, which is checked
+  first and is louder. The blind window is one worker restart long.
+
+  **Rehearsable.** `WORKER_POLL_FRESH_SECONDS` (60) and
+  `WORKER_JOB_IDLE_SECONDS` (120) are env-tunable for the same reason the stale
+  threshold is: an alarm nobody can trigger on purpose is not an alarm. They are
+  tuned against the OBSERVATION and not against a cause, so if the cause is ever
+  found the numbers may want revisiting and the name should not.
+
+  **What is still open, stated so it is not read as closed.** Why that worker
+  stopped consuming has never been established. The process was replaced to
+  unblock the pipeline and the evidence went with it; the surviving hypothesis
+  — a Redis connection gone half-open across ~6 idle hours, where a poll returns
+  empty forever while the loop keeps ticking — fits every observation and is a
+  guess. Nothing in the code says it. **An unexplained failure written down as
+  unexplained is worth more than a plausible name**, because the name is what
+  the next person will test instead of looking.
+
+- **THE GUARD THAT WOULD HAVE CAUGHT IT EXISTS, ASKS EXACTLY THE RIGHT FIVE
+  QUESTIONS, AND NOTHING CALLED IT. THE CONSOLE-AUDIT SHAPE LANDING ON THE MONEY
+  BUTTON.** This is the sharper of the two findings from story 23 and it leads,
+  because the second one is a missing check and this one is a check that was
+  already written, already correct, and already free.
+
+  `narration:preflight` has asked five questions since Phase 2, none of which
+  spends anything:
+
+  | | the question | what it catches |
+  |---|---|---|
+  | 1 | what is ACTUALLY bound, resolved from the container | the run where a missing `PROVIDER_IMAGE_GENERATOR` sent 186 stills to a stand-in while every screen named a vendor and $8.12 went into the ledger against calls nobody made |
+  | 2 | is the voice real | a null `voice_id`, and an id that is not on the account |
+  | 3 | does it FIT | the allowance question a cost estimate structurally cannot ask |
+  | 4 | does the aligner run | the free stage that breaks second, after the paid stage it depends on |
+  | 5 | do the workers agree | a `.env` edit that has not reached a running worker |
+
+  Its own docblock states question 2 as a hard block, in these words: *"The story
+  has no voice_id. Run `php artisan voices:list --set=… --voice=<id>`."*
+
+  **Grepping `app/` and `resources/` for a caller returns nothing.** Not one. A
+  terminal command, on the app built so an operator would not need a terminal,
+  guarding the button that authorises 150-250 paid stills and a narration run.
+
+  That is the console audit's own shape — a capability that exists with no
+  button — but it is the worst instance of it found so far, and the reason is
+  the direction. Every earlier one was a capability an operator could not
+  REACH: `story:write` and `render:dispatch` had no button, so the work could
+  not be started without a terminal. This one is a GUARD. A missing button on an
+  action means the work does not happen. A missing button on a guard means the
+  work happens **unguarded**, which looks exactly like everything being fine.
+
+  **What story 23 paid for it.** Gate 2 approved, assets dispatched, 256 stills
+  bought, and then 257 identical `scene_narration` failure rows in five seconds
+  — every one of them a worker picking up a job, loading a story, and
+  re-discovering that `voice_id` was null. Question 2 would have said it once,
+  for free, before anything queued.
+
+  **Both halves were built, and they are not alternatives.**
+
+  - Questions 1-3 now run INSIDE `PreflightAssetDispatch`, so pressing Generate
+    cannot skip them. 4 and 5 were already there.
+  - Gate 2 gained a **Check without spending** button that runs the same Action
+    and prints what it says. That is the other half of what the command was for:
+    the questions asked before committing, rather than as a condition of
+    committing.
+
+  **The same Action, not a second copy of the questions.** A check that agreed
+  with the dispatch only on the day it was written is the shape that gave one
+  narration three prices.
+
+  **And the money press was not catching the refusal.** `alignTimings()` and
+  `draftScenes()` both caught `DispatchRefusedException`; `generateAssets()` did
+  not — so every refusal the preflight could already raise reached the operator
+  as a stack trace on the one screen where the message IS the remedy. Those
+  refusals run to several paragraphs each and name the exact fix, and none of it
+  was being read. It went unnoticed because all three existing refusals need a
+  broken machine to fire and the button is pressed on a working one; a missing
+  narrator is an ordinary state, so the gap would have started firing
+  immediately. Found by building the checks, not by a test.
+
+  **What the live run reported**, first time out, on the scene-246 retry:
+
+  ```
+  OK — 1 worker(s) on "assets" agree with this process (fingerprint c84c4529ca8b).
+  OK — narrator "Brian - Deep, Resonant and Comforting" is on the elevenlabs account.
+  OK — narration fits: 88 credits needed, 27,953 remaining (starter: 37,047 of
+       65,000 used, NO overage (generation stops at the limit)).
+  OK — pace expectation for Brian on en-CN: 199 wpm.
+  OK — whisperx imports on C:\Python312\python.exe (Python 3.12.10).
+  OK — every approved face was drawn in the configured art style.
+  ```
+
+  The allowance line is the one that could not be got any other way. For the
+  full 257-scene run it reads **21,350 credits needed against 27,953 remaining**
+  — it fits, by 6,603, on a plan where running out does not bill extra but
+  simply stops. No cost estimate can produce that number: on a subscription the
+  marginal answer is $0.00 on both sides of the limit.
+
+- **THE PREFLIGHT CHECKED WHETHER THE ENVIRONMENT HAD MOVED AND NEVER WHETHER
+  THE STORY COULD FINISH. A NULL COLUMN BECAME 257 FAILURE ROWS.** The second
+  finding, and it is the axis one — see PRECONDITION in the axis table.
+
+  Story 23, 2026-09-06. `stories.voice_id` was null. The operator dispatched;
+  256 stills were bought; then `scene_narration` failed **257 times in five
+  seconds**, every row carrying the identical message. Nothing was billed for
+  the narration — `GenerateSceneNarration` refuses above the `synthesize()`
+  call and that guard is correct — and being DOWNSTREAM is exactly what made it
+  257 refusals instead of one.
+
+  What it cost instead of money: 257 `render_jobs` rows, 257 `failed_jobs`
+  entries, and a batch left at `total=514, failed=258, finished_at=NULL` whose
+  completion callback could never fire.
+
+  **The field was already in the preflight's hand, and the check asked the wrong
+  question of it.** This is the part worth keeping, because the comfortable
+  reading — "the preflight could not see `voice_id`" — is false.
+  `reportPaceExpectation()` reads `$story->voice_id` and passes it to
+  `NarrationPace::unmeasured()`, which cannot distinguish *voice set but
+  unmeasured* from *no voice at all*. On that very dispatch it emitted:
+
+  ```
+   has no measured reading pace for en-CN, so the pace guard cannot judge this run.
+  ```
+
+  **The sentence begins with a space**, because the voice name interpolated to
+  nothing. An absent narrator was classified as a MEASUREMENT GAP, which is a
+  warning by design and correctly so — so the one check holding the field turned
+  a provable refusal into something to scroll past. The blank was the visible
+  tell and nobody read it.
+
+  **The roster of what else is in that class**, all knowable before a single job
+  is queued, all previously discovered per-job:
+
+  | knowable from | now | if it had been missed |
+  |---|---|---|
+  | `voice_id` null — one column | REFUSE | 0 spend, batch stranded — happened |
+  | `voice_id` not on the account — one free `GET /voices` | REFUSE | 0 spend, 422 per scene × 3 tries, reads like an outage |
+  | allowance < outstanding characters — one free quota call | REFUSE | **half-narrated story, allowance gone either way** |
+  | speech / stills / timings produced by a stand-in | WARN | the $8.12 phantom-spend shape |
+
+  Deliberately NOT in the class, so the fix is not read as wider than it is: a
+  cURL timeout on one still (transient by nature — scene 246 took one), and
+  *"scene has no audio to transcribe"*, which is an ordering dependency INSIDE
+  the batch, since narration and timings are dispatched together.
+
+  **The refuse/warn split follows the rule this file already had**, which is
+  stale-refuses / unknown-warns:
+
+  - **Null voice, wrong voice, short allowance → REFUSE.** Each is a POSITIVE
+    reading: the stage provably cannot complete and no reading of the situation
+    makes it fine.
+  - **Vendor unreachable, allowance unreadable → WARN.** A check that did not
+    RUN is a failed check and never a passed one — but the failure is in the
+    instrument, not in the story, and refusing would turn an ElevenLabs outage
+    into a refusal to spend on IMAGES. `SpeechQuota::accommodates()` already
+    returns null rather than true for exactly this.
+  - **A simulated provider is never refused.** Running against fakes is how
+    every fixture story here was made and how the render pipeline was proven
+    without spending a cent. A guard that has to be switched off to do ordinary
+    work is a guard that ends up switched off. It is reported, loudly, and not
+    refused.
+
+  **SCOPED TO THE STAGES IN THE DISPATCH**, the way the aligner check already
+  was. An images-only run must not be refused for a missing narrator: that is a
+  refusal about work that is not being done, and it is how an operator learns to
+  reach for `--no-*-check` by reflex. This has its own test and its own drill.
+
+  **Two vacuous fixtures were caught while building it, one by an assertion
+  written for the purpose and one by a drill.**
+
+  - The images-only fixture gave every scene audio and timings and STILL read as
+    needing narration, because `needsNarration()` keys on
+    `approved_narration_hash` and the fixture never set it. It was caught by an
+    assertion inside the fixture asserting it had produced the state it claims —
+    which is the practice this file arrived at after `queueDepthIs()`, applied
+    ahead of the failure this time rather than after it.
+  - `test_a_simulated_synthesizer_is_never_refused_for_its_voice` was written
+    with `narrator-us-01`, which is ON the fake's voice list — so it passed
+    whether or not the simulated skip existed. The drill proved it: removing the
+    skip left that test green while a neighbouring case went red. **Suspect the
+    drill, and then suspect the fixture.** It uses a real ElevenLabs id now, and
+    asserts that id is absent from the fake's list before relying on it.
+
+  Seven drills, each confirmed red against the shape it names.
+
+- **A NULL DEFAULT IS NOT NEUTRAL. `providers.default_voice_id` IS BRIAN.**
+  The narrower half of the story-23 finding, and it has now been wrong in both
+  directions, which is why both are on the record.
+
+  It was `narrator-us-01`, hard-coded — a string `FakeSpeechSynthesizer`
+  invented so it had something to record, on no vendor, carried by every story
+  in the database, with no picker anywhere to disagree with it. The fix for that
+  was NULL, on the argument that a narrator should be a deliberate pick.
+
+  **Correct about the placeholder and wrong about null.** This file's own
+  sentence is that a channel keeps ONE narrator across every video — so "no
+  narrator" is not a state a story is ever meant to rest in. It is a trap laid
+  on every new story, defused by hand or not at all, and story 23 is what it
+  looks like when it is not: a paid dispatch with 256 stills already bought and
+  no voice to narrate them with.
+
+  Brian, `nPczCjzI2devNBz1zQrb`, because it is the only voice on the account
+  with a measured reading rate at all — 197.00 wpm on en-US and 199.49 on en-CN
+  — so it is also the only default that does not put a new story on the 160 wpm
+  fallback the sizing correction exists to escape.
+
+  Three things it deliberately does NOT do:
+
+  - **It does not backfill.** `CreateStory` reads the config at insert and
+    nothing re-reads it. Every existing story keeps whatever it was given;
+    `voices:list --set` moves one.
+  - **It does not become a picker.** A dropdown on the new-story form would
+    invite a per-story choice on the one axis meant to be constant, before there
+    is a script to choose for.
+  - **It is not written silently.** The new-story form prints the narrator the
+    story will be created with, its measured rate on the chosen setting, and
+    that it can be changed until the narration is bought. A default nobody chose
+    and nobody can find later is how `narrator-us-01` survived a phase.
+
+  **If the configured id is not on the account.** Nothing validates it in
+  config — a config file cannot ask a vendor anything — and before this change
+  that would have been WORSE than null: null refuses in `GenerateSceneNarration`
+  with a sentence naming the fix, while a wrong id reaches ElevenLabs and comes
+  back 422 per scene, three times each under `--tries=3`, reading like an outage.
+  It now refuses at the dispatch instead, once, against the account's real list.
+  **The two changes are coupled on purpose: this default is safe to set because
+  that guard exists, and it would not have been before.** The form also says it
+  cannot tell from where it stands whether the id is on the account, rather than
+  printing the raw value as though it were fine.
+
+  **Changing a story's voice stays cheap until it is not.** `voices:list --set`
+  validates against the real list, and warns and asks for confirmation only when
+  PAID narration already exists — checked on `narration_simulated` provenance
+  rather than on "any audio", so a story narrated end to end by a stand-in moves
+  freely. After a real narration run, switching makes every paid scene stale and
+  re-bills it, which is correct: a story must not be narrated by two people.
+
+- **THE PANEL'S RESTART ADVICE NAMED A BINARY THAT IS NOT ON PATH, IN THE ONE
+  PLACE IT IS READ: WHILE THE PIPELINE IS STOPPED.** It printed `nssm start
+  NarraText`, and `nssm` is not on PATH on this machine. It failed on the
+  operator mid-incident.
+
+  **The app already knew.** `scripts/install-worker-services.ps1` resolves nssm
+  three ways — `Get-Command`, then a vendored copy under `tools`, then a
+  download from nssm.cc — precisely because it is not assumed to be there. The
+  panel did none of the three. That is the same shape as the truncation message
+  naming `ANTHROPIC_MAX_TOKENS`, a variable this app does not read: **a remedy
+  that is confident, specific and does nothing**, which is worse than no remedy
+  because it spends the reader's attention and returns an error about the wrong
+  thing.
+
+  **`start` was also the wrong VERB for half the states offering it**, and that
+  is the sharper half. A worker that is polling and taking nothing is a service
+  that is RUNNING; `nssm start` reports it already running and changes nothing.
+  So the command was about to be printed as the fix for a state it cannot fix.
+  `Restart-Service` is correct in both directions, is a PowerShell builtin so
+  there is no PATH question at all, and is what actually unblocked the one
+  observed instance.
+
+  **The mapping was written out twice and the copies were not equal.** Both
+  `components/worker-health.blade.php` and `livewire/dashboard.blade.php` held
+  the same three-row queue-to-service map, and the dashboard's additionally
+  invented a name for anything it did not hold:
+
+  ```php
+  'Narra'.ucfirst($queue)
+  ```
+
+  **That fallback is the worst of the options available, and not because it is
+  usually wrong — it is usually RIGHT.** The three services really are
+  `NarraText`, `NarraAssets`, `NarraRender`. Rename a queue in config, or add a
+  fourth, and the band prints a confident pasteable command naming a service
+  that does not exist. A plausible name that happens to be right today is a
+  guess wearing the clothes of a fact — the same substitution as `updated_at`
+  standing in for a publication date, which was also the right TYPE and also
+  right-looking on the day.
+
+  `App\Support\WorkerServices` owns it now, keyed by ROLE and resolved through
+  `render.queues.*` in one direction so a renamed queue keeps matching its
+  service instead of falling off the map. **An unmapped queue gets NO command**
+  — the state is still reported in full, only the fix is withheld, because there
+  is not one to give. Rendered through one `x-worker-restart` component rather
+  than a literal per surface, which is what let the two copies disagree.
+
+  **The no-command branch is DEFENSIVE and cannot currently be reached, and
+  that is written down rather than left as a green test reading like coverage.**
+  `WorkerHealth::all()` builds its three rows from the three role keys, so no
+  fourth queue can appear there, and renaming one keeps its service by
+  construction — the map is keyed by role and resolved through config in one
+  direction. The branch is therefore tested at COMPONENT level, not page level.
+  The first attempt tested it by renaming `render.queues.assets` and expecting
+  the page to lose its command, which is exactly backwards and would have been
+  a passing test about a state the page cannot enter.
+
+  The copy that is NOT consolidated is named rather than left to be discovered:
+  the installer is PowerShell, creates the services, and cannot read a PHP
+  class. If a service is renamed, both move.
+
+- **AN ESCAPE CONSUMED IN TRANSIT: FOUR INSTANCES, ONE CAUSE. READ THE CAUSE,
+  NOT THE SCANNER.**
+
+  ---------------------------------------------------------------------------
+  THE CAUSE, WHICH IS THE ONLY PART THAT GENERALISES
+  ---------------------------------------------------------------------------
+
+  **When source is generated through a substitution layer, a backslash escape
+  can be consumed BEFORE the file is written. What lands is valid, compiles, and
+  is wrong in a way no reader can see.**
+
+  Measured directly rather than reasoned about. Writing a PHP fixture through a
+  `python3 <<'PY'` heredoc, the correct way to emit a literal backslash is
+  `"\\b"` — and what the interpreter received was `\b`, which it then parsed as
+  the BACKSPACE control character:
+
+  ```
+  "x\\b y"  ->  repr 'x\x08 y'
+  ```
+
+  So the doubled backslash was collapsed by a layer between the author and the
+  interpreter, and the interpreter then did the obvious thing with what was left.
+  Every instance below is that one mechanism. **The byte is the symptom; the
+  generated-source pipeline is the defect.**
+
+  Two rules follow, and they are worth more than the scanner:
+
+  1. **Prefer an exact-match editor over a generated patch for any source line
+     containing a backslash.** Every failed patch in this area was a generated
+     one; every successful fix was an exact string match. This is not a
+     preference — the generated form is a different program from the one written.
+  2. **Build the character from `chr(92)` when a fixture must CONTAIN a literal
+     backslash.** The byte-scan fixtures do exactly this, which is why they are
+     correct by construction rather than by inspection — the first draft of the
+     "clean" fixture had a 0x08 in it, put there by the very mechanism it was
+     written to demonstrate.
+
+  ---------------------------------------------------------------------------
+  THE FOUR INSTANCES
+  ---------------------------------------------------------------------------
+
+  | # | where | what it broke |
+  |---|---|---|
+  | 1 | `tools/blade-php-scan.php`, widening a rule to blade directives in foreign comments | matched nothing; the known-answer count went 2 -> 1 and named it |
+  | 2 | `app/Actions/ValidateSceneDrafts.php`, the close-frame setting advisory | matched nothing, which for THAT check means EVERY close frame reported as naming no setting — an over-report in the loudest direction |
+  | 3 | the "clean" half of the byte-scan fixture itself | the fixture written to prove the tool's negative case contained the defect |
+  | 4 | `tests/Feature/Providers/NarrationProviderTest.php`, 4,800 literal NUL bytes as a fake audio payload | nothing — it WORKED, and was unreadable. Rewritten as `"\x00\x00"` |
+
+  Instance 2 happened AFTER instance 1 was written down in this file, which is
+  the sharpest thing here: **a hazard recorded as a note is not a mechanism.**
+  Instance 3 happened while building the mechanism. Instance 4 was pre-existing
+  and was found by the mechanism on its first run.
+
+  **What would actually catch it, stated plainly because the honest answer is
+  "not much".**
+
+  - **A test would not.** The red/green pair was written after the fix and passes
+    either way at the RED end; only the GREEN halves would have failed, and only
+    if they existed at the time. They did not — the byte was in the file before
+    any case was written for it.
+  - **Reading the diff would not.** 0x08 renders as nothing in every editor, in
+    `git diff`, and in this file. The two versions are visually identical.
+  - **`php -l` would not.** The regex is well-formed.
+  - **What DID catch it, both times, is piping the line through `cat -A`** —
+    which renders it as `^H`. That is a habit, not a mechanism, and it only fires
+    if somebody already suspects the line.
+
+  **`tools/nonprintable-scan.php` is now that check**, and it is the one tool
+  here whose case for existing is complete rather than argued: the byte is
+  invisible to every other instrument in the toolchain, and the list above is
+  the proof. `ToolsAnswerKnownCasesTest` runs it two ways — against a paired
+  fixture, and against the whole tree with an assertion of zero.
+
+  **It found a fourth instance on its first run against the tree**, and a
+  pre-existing one: `NarrationProviderTest` carried 4,800 literal NUL bytes as a
+  fake audio payload. That one WORKED — it is a binary blob, not a broken regex
+  — which is the closest thing this tool has to a benign case, and the fix was
+  still to write it as `"\x00\x00"`. A reader of that line could not previously
+  tell what was in the string, and the escape form is identical at runtime. The
+  tool keeps no benign category as a result: there is no legitimate reason for
+  an invisible byte where a visible escape says the same thing.
+
+  The scanner is the backstop, not the lesson. What prevents a fifth instance is
+  the two rules at the top of this entry; what the scanner does is notice when
+  they were not followed.
+
+  The general form, which is the part that generalises past this byte: **an
+  escape that is consumed by a layer between the author and the file produces
+  code that is correct in the author's head, valid to the parser, and wrong in a
+  way no reader can see.** Generating source through string substitution is where
+  it happens. Prefer an exact-match editor over a generated patch for anything
+  containing a backslash.
+
 Still open, none blocking, all findable here rather than one gate at a time:
 
+- **NOTHING STOPS A GATE APPROVAL AND AN ASSET DISPATCH WHILE A DRAFT OF THOSE
+  SAME SCENES IS IN FLIGHT, AND THE DRAFT THEN DELETES THE ROWS THAT WERE PAID
+  AGAINST. Reported, not built — the shape is the decision and it belongs to
+  the operator.**
+
+  The instance, story 23, 2026-09-06. All 275 scenes were being re-drafted so
+  their prompts would carry the current expression shape. While that ran, Gate 2
+  was approved and assets were dispatched. Four stills were bought against the
+  OLD prompts at $0.14, the re-draft then deleted those scene rows, and the
+  files were left on disk referencing scene ids that no longer exist.
+
+  **The collision is visible in `render_jobs` and nothing looked.** Job 4706,
+  stage `draft_scenes`, ran 10:43:42 to 11:01:11. Jobs 4709-4712, stage
+  `images`, ran 10:53:25 to 10:58:00 — an asset stage opening and closing
+  entirely INSIDE a text stage's window, on the same story. `DraftScenes` opens
+  that row through `RenderJob::record()` at the start and heartbeats it, so a
+  live draft is an ordinary `running` row that any dispatcher could read.
+
+  **The two shapes, and they are not equivalent.**
+
+  1. **A running draft refuses the dispatch.** The check sits in
+     `PreflightAssetDispatch`, which already runs BEFORE any mutation and
+     already throws `DispatchRefusedException` rather than warning — the
+     placement this file argues for at length, and the reason `narration:
+     preflight`'s advisory version was not enough. It would read the open
+     `render_jobs` rows for `draft_scenes` and `extract_cast` and refuse while
+     one is `running` with a live heartbeat.
+
+  2. **A running draft refuses the gate APPROVAL too.** Wider, and it is a
+     different claim: approving Gate 2 is a quality decision about a scene list,
+     and approving a list that is being rewritten underneath you is meaningless
+     whether or not anybody then spends. `ApproveScenesGate` would refuse the
+     same way it already refuses an unreferenced cast.
+
+  **They stack rather than compete, and the ORDER matters.** Non-negotiable #3
+  says approving a gate and dispatching paid work are separate decisions with
+  separate buttons, so a guard on only the approval leaves the money path open
+  on a story already past Gate 2 — which is the more expensive half and is the
+  half that actually bought something here. A guard on only the dispatch leaves
+  a gate crossing standing on a scene list that no longer exists, and a gate
+  crossing cannot be re-crossed.
+
+  **My recommendation is to build the dispatch guard first and the approval
+  guard second**, because the dispatch one is where the money is, it is a read
+  of a table the preflight is already positioned in front of, and it needs no
+  new state. But this is the operator's call and the shape is what was asked
+  for, so neither is built.
+
+  **What NOT to do: a lock.** The obvious version is a claim in the cache, like
+  `SheetClaim`. It is the wrong instrument here — the fact is already in the
+  database, durably, with a heartbeat on it, and a second source of truth about
+  whether a draft is running is how the two come to disagree. Read the row.
+
+  **And the heartbeat is what makes it safe.** A refusal keyed on `status =
+  running` alone would jam permanently on a draft whose worker died. `RenderJob`
+  already has `staleHeartbeat()` for exactly this, and the refusal should use
+  it: a draft that has gone quiet is not a draft in flight, and refusing for
+  ever on a corpse is how a guard gets disabled within a week.
+
+  **THE THIRD DEFECT, AND THE ONE THAT LEFT A STORY LYING ABOUT ITSELF:
+  `DraftScenes::persist()` TRANSITIONS ONLY FROM `scripted`.**
+
+  ```php
+  if ($story->status === StoryStatus::Scripted) {
+      $story->transitionTo(StoryStatus::ScenesDrafted);
+  }
+  ```
+
+  Correct for every case anybody had in mind, and silent for the one that
+  happened. The story entered the draft at `scenes_drafted`, moved to
+  `scenes_approved` and then `assets_generating` while it ran, and when
+  `persist()` finished the condition was false — so it wrote 257 fresh scenes
+  and left the status saying an asset run was in flight. Story 23 sat at
+  `assets_generating` with **zero** scenes carrying an `image_path`, which reads
+  on every operator surface as a run in progress and is a run that cannot exist:
+  the rows it would have been generating for were deleted by the same
+  transaction.
+
+  It is not obvious what the right behaviour is, which is why it is here rather
+  than patched. Forcing `scenes_drafted` unconditionally would be a text stage
+  silently reversing a gate crossing — and `assets_generating` -> `scenes_drafted`
+  is a legal edge precisely so a HUMAN can take it. Refusing to persist at all
+  would throw away a completed draft that has already been billed. **The honest
+  third option is that the collision should not have been reachable**, which is
+  what the two guards above are for; the status is downstream of that.
+
+  Repaired by hand through `Story::transitionTo()` — a legal, declared edge, not
+  a raw write. The four orphaned files were deleted: nothing enumerates the
+  stills directory, every reader goes through `scenes.image_path`, and their
+  scene ids (1639-1642) can never exist again since story 23's rows now start at
+  2286. **The `cost_entries` rows stay untouched.** The ledger is write-once and
+  the $0.14 was really spent; the files were the unreachable copy, not the
+  record.
+
+- **`render:cancel` marks an in-flight draft row cancelled when it cannot cancel
+  it, and the row then lies about a stage that finished normally.** Small, real,
+  and the same "claims authority it does not have" shape as the truncation
+  remedy that named a knob its stage did not own.
+
+  `CancelRenderBatch::handle()` closes with:
+
+  ```php
+  RenderJob::query()
+      ->where('story_id', $story->id)
+      ->whereIn('status', [Queued, Running])
+      ->update(['status' => Cancelled, 'finished_at' => now()]);
+  ```
+
+  Every open row for the story, whatever its stage. But what this Action can
+  actually stop is named one screen above, in `BATCH_PREFIXES`: `scene-clips`,
+  `scene-assets`, `scene-timings`. `draft_scenes`, `extract_cast`, `outline` and
+  `act_scripts` are none of those — they run synchronously, outside any batch,
+  and cancelling has no reach into them at all.
+
+  So on story 23 the cancel marked the running `draft_scenes` row cancelled
+  while the draft carried on, finished normally at 11:01:11 and overwrote the
+  row with `succeeded`. **The row is correct now only by the accident of write
+  ordering**, which is the part worth keeping: had the draft finished a second
+  before the cancel instead of after it, the ledger of stages would permanently
+  record a completed 275-scene draft as cancelled — and `RenderProgress` reads
+  exactly that column.
+
+  The fix is to scope the update to the stages this Action can stop, and to say
+  so when a stage it cannot stop is running rather than silently relabelling it.
+  Not built: it is one `whereIn` plus a sentence, and it wants to land beside
+  whichever guard above gets built, because both are about a text stage and an
+  asset path having no idea the other exists.
+
+- **The fixture banner in `stories/gate.blade.php` is an `.alert` with no
+  `wide`.** Found by the width probe while clearing Gate 1's re-hook advisory,
+  on story 22, which is a fixture and therefore renders it on every visit. It is
+  in the SHARED gate wrapper rather than in a gate body, so no
+  `*GateLayoutTest` looks at it — `alertsWithoutTheirOwnWidth` is run over each
+  gate component's own markup, and the wrapper is not part of any of them. Two
+  lines to fix; the reason it is worth logging is the gap rather than the alert.
+  **Nothing asserts anything about the chrome every gate page renders inside.**
 - **`SplitScene` has no production caller.** A full Action with a verbatim
   recombination guard and six tests, reachable from nothing: no console command,
   no button on the Gate 2 page beside edit/move/delete. `ScenesMerge` and
@@ -2024,25 +3559,44 @@ Still open, none blocking, all findable here rather than one gate at a time:
   THE AXIS QUESTION, WHICH IS NOW A STANDING ONE
   ---------------------------------------------------------------------------
 
-  **Two axes have been named here, and neither was named on purpose.** Both
-  arrived the same way: a defect shipped, somebody looked at the sentence, and
-  the KIND of assertion it was making turned out not to be on any list.
+  **THREE axes have been named here, and not one was named on purpose.** All
+  three arrived the same way: a defect shipped, somebody looked at what was
+  being asserted, and the KIND of assertion turned out not to be on any list.
 
-  | axis | the clause asserts | named when | found by |
+  | axis | what it asserts | named when | found by |
   |---|---|---|---|
   | ACTION | that something can be done from this page | Gate 1's advisories offered three decisions that did not exist | reading the published story's page |
   | POSITION | where the story stands relative to this gate, and whether its status is the end | Gate 4 called `draft` terminal and put Gate 4 behind a story that had not been outlined | a hunt for an unrelated predicate |
+  | **PRECONDITION** | that this story can complete the stages a dispatch is about to queue | story 23 dispatched with a null `voice_id` and turned it into 257 identical per-scene failures | a narration batch failing on every scene |
 
-  **A third is likely, and nothing currently looks for one.** That is the honest
-  state: `GateVoice` holds exactly the two axes that have already gone wrong, and
-  the mechanism has no opinion about a kind of claim nobody has been bitten by
-  yet. Every guard in this file names the instance it was written for, so this is
-  consistent — but consistency is not coverage, and the pattern so far is that
-  the axis is invisible until a page is wrong on it.
+  **THE PREDICTION PAID, AND IT PAID SOMEWHERE THE LIST WAS NOT LOOKING.** The
+  paragraph below used to say a third axis was likely and that nothing looked
+  for one. It arrived — and not as a fourth kind of SENTENCE on a page, which
+  is where this section was watching. It arrived one layer over, in the GUARDS.
 
-  **The one candidate already in evidence** — recorded because it turned up in
-  the same sentence as the position defect, not because it was hunted for — is a
-  claim about a FIGURE: that a number or a date on the page is a measurement of
+  `PreflightAssetDispatch` asks three questions and every one of them is the
+  same kind: *has the environment moved since this story was prepared* — worker
+  code, aligner install, art style fingerprint. Not one asks *does this story
+  carry what the stages need*. The class was flawless on the axis it was
+  specified for while a null column walked through it, and the roster of what
+  else is in that class was there to be read the whole time: `narration:preflight`
+  has asked five such questions, for free, since it was written.
+
+  **So the widening is the finding, not the third row.** The question is not
+  "what kind of claim is this sentence making"; it is **"what kind of thing is
+  this mechanism asserting, and does anything check that kind"** — and it
+  applies to a guard exactly as it applies to a clause. A guard is a claim about
+  a state, made in code instead of in prose, and it inherits its author's axis
+  the same way.
+
+  **A FOURTH is still likely and the candidate is still unwatched** — see the
+  FIGURE case below, which has been in evidence since the position defect and
+  has nothing checking it. The pattern holds in both directions now: the axis is
+  invisible until something is wrong on it, and consistency is not coverage.
+
+  **The one candidate still in evidence and still unchecked** — recorded because
+  it turned up in the same sentence as the position defect, not because it was
+  hunted for — is a claim about a FIGURE: that a number or a date on the page is a measurement of
   the thing it is labelled as. "Published on \<date\>" was two defects, and only
   the first was position. The second was that `updated_at` was never a
   publication date — on story 9 it resolved to the second at which a STYLE
@@ -2050,13 +3604,14 @@ Still open, none blocking, all findable here rather than one gate at a time:
   that sentence true or false, so no capability could fix it: the sentence lost
   its figure instead. See "THE APP HAS NO PUBLICATION EVENT" under Conventions.
 
-  **What NOT to do about this.** Not a speculative third capability — a guard
+  **What NOT to do about this.** Not a speculative fourth capability — a guard
   written before its instance is the documented-guard shape, and this file's
   standing rule is that a check must be confirmed to fire against a real
-  failure. What is worth doing is asking the question when a clause is added or
-  a page is reviewed: **what kind of assertion is this, and does anything check
-  that kind?** A sentence whose kind has no answer is not necessarily wrong. It
-  is unchecked, and unchecked has read as covered twice now.
+  failure. What is worth doing is asking the question when a clause is added,
+  when a GUARD is added, or when either is reviewed: **what kind of assertion is
+  this, and does anything check that kind?** A sentence or a check whose kind has
+  no answer is not necessarily wrong. It is unchecked, and unchecked has read as
+  covered three times now.
 
   ---------------------------------------------------------------------------
   THE SAME QUESTION ONE LAYER DOWN: **A SHARED FIXTURE HAS AN AXIS TOO, AND
@@ -2100,6 +3655,178 @@ Still open, none blocking, all findable here rather than one gate at a time:
   factory default cannot quietly make the row contract vacuous again. That is
   the pattern to repeat per branch, not a sweep over every column.
 
+- **THE PAGE WITH THE THINNEST COVERAGE DRIFTED FURTHEST, AND IT DRIFTED BY
+  EXACTLY THE AMOUNT NOTHING WAS WATCHING.** Gates 2, 3 and 4 each had a
+  `*GateLayoutTest`. Gate 1 did not, and Gate 1 is the page that came back from a
+  rebuild least like its design.
+
+  The rebuild is what makes it measurable rather than a feeling.
+  `outline-gate.blade.php` was destroyed by a `git checkout --` on uncommitted
+  work and rebuilt from the test suite and this file. **Everything the suite
+  pinned came back**: eleven statuses, the three-state sizing panel, every
+  `GateVoice` clause, quiet-state ordering, the empty-track contract, the
+  advisories-before-premise ordering, `.twoup`. All green, 681 tests, four clean
+  audits.
+
+  **Everything the suite did not pin came back as whatever the rebuilder
+  happened to write.** The spine as one column instead of two. The acts as seven
+  full-width panels instead of a grid — three screens of scrolling on the page
+  whose one job is a single approve decision about what is on it. Premise and
+  cast age sharing a panel, so neither could carry the note that belongs to it.
+  No panel header bars, no count badge, no phase edge, no sticky decision. The
+  re-hook advisory stranded below the spine at the 96ch cap. Two hand-written
+  `style="margin-top:-6px"` workarounds standing in for an arrangement.
+
+  So it is not really a fact about Gate 1. **A rebuild from the tests is a
+  rebuild TO the tests** — it restores exactly what somebody wrote down, and the
+  shape of what is missing afterwards is a map of what nobody did. That is the
+  same finding as every fixture entry above, arrived at from the other end: a
+  fixture that cannot express a state makes the suite blind to it, and a page
+  with no layout test has no state expressed at all.
+
+  `OutlineGateLayoutTest` exists now, written against the drifted page so that
+  every assertion failed first and the failures were the specification — the
+  order `GateLayoutContractTest` was built in for Gates 1, 3 and 4. Nine
+  assertions, each drilled red against the shape it names.
+
+  **What it deliberately does not assert**, because the design is not always the
+  older witness: the advisory row's `1.05fr` track weighting, which `.gatecols`
+  rejects in its own comment on measured grounds, and the locked banner's alarm
+  gradient, which Gate 2 rejected for a reason recorded in `base-css.blade.php`
+  and still true — the console has one saturated flood and an approved gate is a
+  story going correctly.
+
+- **OVER-REPORTING IS A SECOND DIRECTION, AND EVERY DEFECT IN THIS FILE BEFORE
+  IT WENT THE OTHER WAY. THREE OF THE FOUR TOOLS HAD ONE.**
+
+  Read the two lists above and they are one shape: a check that could not see
+  the thing. `strpos` coercing false to 0, a fixture that could not express the
+  failing state, a detector defeated by a line break, a regex that wanted the
+  other quote character. Silent, vacuous, **absence read as agreement** — the
+  sentence this file repeats more than any other.
+
+  A tool can also be wrong by reporting what is not there, and the cost is not
+  symmetric with a miss. **A false positive in a SEVERE category costs more than
+  a miss in a benign one**, because the severe category is the one that gets
+  acted on: `UNDEFINED` is what found `.panel.money`, and `GONE` is what this
+  file leans on to catch one mistyped hex among two hundred token lines. Fill
+  either with findings nobody can act on and an operator learns to discount the
+  whole section — the same argument this file already makes about an alarm that
+  fires for something the reader cannot act on, pointed at an audit instead of a
+  worker. A miss leaves one defect unfound. A false positive in a severe
+  category retires the detector.
+
+  **It also masks.** Comma-merge two rules while genuinely deleting a third and
+  `theme-audit` reports three GONE entries that look alike. That is the
+  159-of-343 defect again — a real finding among false ones is
+  indistinguishable from no finding.
+
+  So all four tools were swept for it, and the result is worth stating plainly:
+
+  | tool | severe categories | over-reported? |
+  |---|---|---|
+  | `class-audit` | UNDEFINED, TAG, COMBO | **yes** — every quoted literal inside `@class([...])`, operands included |
+  | `theme-audit` | MOVED, GONE, DIVERGED, LOW CONTRAST | **yes** — a comma-merge reported as GONE |
+  | `blade-php-scan` | all four kinds | **yes** — a foreign comment inside a pass-2 uncompiled block |
+  | `scoped-override-audit` | **none** | not applicable, and that is the finding |
+
+  Three of four had one. The fourth is the one that CANNOT: it has a single
+  category, `CONDITIONAL OVERRIDES`, framed in its own output as *a judgement,
+  not automatically a defect*, and it exits 0 whatever it finds. **A tool with no
+  severe category has no severe category to be falsely loud in**, which is not an
+  accident of that tool but the property that makes its cry-wolf risk
+  survivable — and the reason its own docblock says to read the list rather than
+  count it.
+
+  What was NOT examined, so it is not read as covered: `theme-audit`'s MOVED is
+  bounded by the identity case, which would show an over-report immediately, but
+  DIVERGED and LOW CONTRAST were not probed for false positives. `blade-php-scan`
+  keeps one narrow over-report on purpose — a blade comment naming `@verbatim`
+  *inside* a verbatim block is inert, and is still reported, because the advice it
+  gives is correct in every other arrangement and no view here uses verbatim at
+  all.
+
+  **The general practice, and it is cheap.** A known-answer fixture proves a tool
+  SEES what it should. It says nothing about what the tool invents. So every
+  known-answer case now carries a negative half as close to the positive as it
+  can be made — an `@class` whose condition names four strings that are not
+  classes; a comma-merge beside a real deletion; the same CSS comment inside a
+  `style` element and inside a php block. Both halves, or the fixture only proves
+  the direction somebody happened to think of.
+
+- **`class-audit`'s `@class` parser: the instance the direction was found in.**
+  Every tool defect before it was an under-report; this was the other kind.
+
+  It took every quoted literal inside `@class([...])`, wherever it sat. That is
+  right for `@class(['warnfill' => $cond, 'panel'])` and wrong the moment a
+  condition contains a string, which is the ordinary way to write one:
+
+  ```php
+  @class(['actcard', 'leaving' => $act['phase'] === 'departure'])
+  ```
+
+  `departure` is an operand and `phase` is an array key. Neither is ever emitted
+  as a class, and both were reported UNDEFINED — the tool's most severe category,
+  the one that found `.panel.money`. Gate 1's rebuild produced **seven phantoms
+  in one pass**, the first time this project wrote a comparison inside `@class`.
+
+  **A loud section that fills with findings nobody can act on is a loud section
+  that stops being read**, which is this file's own argument about an alarm that
+  fires for something the reader cannot act on, pointed at an audit. And the
+  workaround was available and tempting — compute the booleans above the tag and
+  the phantoms go away — which would have left the tool wrong and the next person
+  to write a condition inside `@class` with seven findings and no explanation.
+
+  The array body is walked at top level now: commas inside nested brackets do not
+  split, and a literal counts only in a CLASS POSITION — the key of `'name' =>
+  expr`, or a bare `'name'`. The known-answer fixture carries an `@class` whose
+  condition names four strings that must never be reported, and the drill was run
+  with the real pre-fix parser rather than a paraphrase of it: 5 phantoms, red.
+
+- **`theme-audit` called a COMMA-MERGE a deletion, and it was live in the run
+  that found it.** Rules were keyed by the whole selector LIST — everything
+  before the `{` — so `.alpha, .beta { … }` was one rule named ".alpha, .beta".
+  Merging two identical rules into one comma-separated rule reported both
+  originals GONE and the result NEW, with nothing the page paints changed.
+
+  Measured on a two-rule sheet: **2 GONE, 0 identical** — the differ saying every
+  rule in the baseline had vanished, for a pure reformat. `GONE` increments the
+  failure count and, unlike `NEW`, carries no "not a regression" qualifier.
+
+  It was found by reading the tool's own output on the Gate 1 rebuild, which
+  merged `.advisories > .head h2` with `.alerthead h2` so that one declaration
+  block serves both surfaces. The audit called the original gone; it was not
+  gone, it was in the rule beside it. **That report was passed on as an expected
+  shape before it was checked**, which is this file's standing mistake in
+  miniature: a tidy output read as a correct one.
+
+  Selectors are keyed individually now, split bracket-aware so `:not(.a, .b)`
+  stays one selector. The same real comparison that produced the false GONE now
+  reports **0 MOVED, 0 GONE, 34 NEW, no findings**. Paired known-answer cases: a
+  merge that must be silent, and a genuine deletion that must still name `.gamma`
+  — because a differ made quiet about GONE would satisfy the first perfectly.
+
+- **`blade-php-scan` flagged a comment inside a block the compiler never
+  compiles.** `@php…@endphp` and `@verbatim…@endverbatim` are extracted by
+  `storeUncompiledBlocks` at PASS 2 — before comments are stripped and before
+  anything is compiled — so a `<x-gate-group>` named in a CSS comment inside one
+  is inert. It was reported as `COMPILED-IN-COMMENT`, which is the category for
+  the defect that takes every page in the console down.
+
+  **Verified against the compiler, not reasoned about**, which is this file's own
+  rule for any claim about pass order and the rule this very check was once
+  written in violation of. `compileString()` on the php-block case returns the
+  tag untouched; on the `<style>` case it returns a component render.
+
+  Those blocks are masked before the foreign-comment scan — with spaces, so every
+  line number still points where it did — and deliberately NOT masked for the
+  pairing walk, whose entire subject is which opener meets which closer.
+
+  One narrow over-report is kept on purpose: a blade comment naming `@verbatim`
+  *inside* a verbatim block is inert and is still reported. The advice it gives is
+  correct in every other arrangement, both realistic shapes were confirmed
+  hazardous against the compiler, and no view here uses verbatim at all.
+
 - **NO TOOL HERE HAD EVER BEEN RUN AGAINST A KNOWN ANSWER, and that is the
   pattern behind three defects in three turns.** This entry outranks the three
   it generalises.
@@ -2122,7 +3849,7 @@ Still open, none blocking, all findable here rather than one gate at a time:
 
   | tool | known-answer case |
   |---|---|
-  | `class-audit` | a fixture with one class no rule names (UNDEFINED 1), one reachable only under an ancestor (CONTEXT 1), and one unscoped rule that must NOT be called scoped |
+  | `class-audit` | a fixture with one class no rule names (UNDEFINED 1), one reachable only under an ancestor (CONTEXT 1), one unscoped rule that must NOT be called scoped, and an `@class` whose condition names four strings that must never be reported as classes |
   | `blade-php-scan` | a literal `@endphp` in a comment (UNPAIRED) and an inline `@php(...)` that swallows to a later closer (SWALLOWED); a clean file beside them reports nothing |
   | `scoped-override-audit` | a sheet with one conditional override and one scoped rule repeating the same value, which is not one |
   | `theme-audit --against` | a sheet against a COPY OF ITSELF must report every rule identical — and one mistyped token must still be reported, or the fix is a differ that reports nothing ever |
@@ -2142,8 +3869,8 @@ Still open, none blocking, all findable here rather than one gate at a time:
 - **AND NO ASSERTION HAD EITHER. Same rule, and it had cost more.** The entry
   above generalises three defects in the tools; this is the same generalisation
   one level up, and it should be read as part of it rather than as a separate
-  lesson. **Eight self-defeating checks so far, and not one was found on
-  purpose. Three of the eight were found only because something ADJACENT was
+  lesson. **Nine self-defeating checks so far, and not one was found on
+  purpose. Four of the nine were found only because something ADJACENT was
   being changed** — which is the part that should be uncomfortable, because
   there is no reason to think the adjacent change was the last one.
 
@@ -2157,6 +3884,38 @@ Still open, none blocking, all findable here rather than one gate at a time:
   | 6 | `claimsNotEntitledTo` | grepped raw HTML, so a fragment the template wrapped across a line — "which is / terminal" — was invisible to it |
   | 7 | the raw-constant anti-drift grep | required a SINGLE QUOTE, so reintroducing the defect as `config("render…")` walked straight past a guard written to catch exactly it |
   | 8 | `GateLayoutContractTest`'s claim check, on Gate 1's sizing clause | its fixture never set `sized_against_wpm`, so every non-writable status rendered the panel's UNKNOWN branch, and the clause could only appear in a state the fixture never produced |
+  | 9 | `alertsWithoutTheirOwnWidth`, on Gate 1's re-hook advisory | the Gate 1 case built ONE act, at sequence 1, and the check exempts act 1; `pageFixtureFor()` wrote a re-hook on both of its acts. **No test in the suite had ever rendered that element**, and it was live on story 22 at the 96ch cap |
+
+  | 10 | `PartialSceneRedraftTest`, six cases, on a `--acts=` re-draft that had never worked | its three acts carry a ~30-word script each, which at `words_per_scene: 30` is ONE scene per act. The collision needs TWO. **The fixture was not missing a field — it was too SMALL** |
+
+  **Number 10 is a different mechanism from the rest and that is why it is worth
+  its own paragraph.** Every earlier fixture defect here is a fixture that OMITS
+  something: a null `escalation_beat`, a null `sized_against_wpm`, a
+  `queueDepthIs()` that answers one depth for every queue. The obvious guard
+  against that family is "does the fixture set every field", and it is the guard
+  this file already gestures at.
+
+  It would not have caught number 10. That fixture sets every field it needs.
+  What it cannot do is hold enough ROWS: `DraftScenes::persist()` parks new
+  scenes at `PARK_BASE + 1 .. PARK_BASE + N` and `renumberByAct()` parked
+  everything at `PARK_BASE + $index`, so the two bands only overlap once an act
+  has more than one scene. At exactly one scene per act the bands collapse to a
+  single number, the only row assigned `PARK_BASE + 1` is the row already
+  sitting there, the update is a no-op, and six cases go green over a feature
+  that fails on every real story. Story 12 died on `Duplicate entry '12-30001'`
+  after billing two model calls for the act it then rolled back.
+
+  So the fixture question has two halves, and only one of them is about fields:
+
+  - **Does the fixture set every field the surface branches on?** (numbers 4, 8)
+  - **Is the fixture BIG enough for the failure to exist in it?** (number 10)
+
+  The second is harder to ask because there is no field to point at — the
+  quantity that mattered was "scenes per act", which appears nowhere in the code
+  under test and only emerges from `words_per_scene` dividing a script length.
+  The new case takes a `scenesPerAct` argument and asserts it produced more than
+  three scenes before it asserts anything else, so it cannot quietly collapse
+  back to the vacuous size.
 
   Numbers 4 and 7 are the sharpest, and they are the same story twice: both were
   written to catch a defect that was live at the time, both were drilled
@@ -2195,6 +3954,50 @@ Still open, none blocking, all findable here rather than one gate at a time:
   **The standing rule, for both files: a guard that cannot be shown to go red is
   indistinguishable from a guard that passed.** Adding a guard means adding its
   red/green pair in the same change, not remembering to drill it by hand.
+
+  ---------------------------------------------------------------------------
+  **HOW DEFECTS ARE ACTUALLY FOUND HERE: BY WORKING NEXT TO THEM. THIS IS THE
+  PATTERN, NOT THE EXCEPTION.**
+  ---------------------------------------------------------------------------
+
+  Every entry in the table above was found by accident, and the table records
+  that one case at a time. Said once, plainly, because it changes what to expect
+  from the instruments:
+
+  | defect | found while |
+  |---|---|
+  | `strpos` coercing false to 0 | drilling a different assertion |
+  | the scoped `.measure` cap | looking at a screenshot |
+  | `theme-audit --against` comparing light to dark | establishing a baseline for something else |
+  | the empty-track fixture's null `escalation_beat` | drilling the empty-track guard, which passed |
+  | the raw-constant grep wanting a single quote | running the drill twice with different quote characters |
+  | Gate 1's sizing clause, invisible to the claim check | drilling Gate 1's own sizing pair |
+  | `escalation_beat` missing at the SCENE call site | wiring the same field somewhere else |
+  | `--acts=` parking-band collapse | a re-draft failing during an unrelated measurement |
+  | the 0x08 recurrence | hexdumping a line on suspicion, twice |
+  | "eyes wide" classifying its own frame as a wide shot | measuring something else in the same story |
+
+  **Not one of these was found by a test, an audit or a review.** Several were
+  found while the suite was green and every audit was clean — and in three cases
+  the instrument written FOR that defect was green about it at the time.
+
+  Two things follow, and the second is the uncomfortable one.
+
+  1. **Proximity is the detector.** The cheapest thing available is to look
+     carefully at whatever sits next to the change while it is open: the other
+     consumers of a field, the other parsers of a string, the fixture's size as
+     well as its fields, the drill written the other way. Every entry above was
+     within one step of work already being done.
+  2. **The instruments are for REGRESSION, not for discovery.** 979 tests, four
+     static audits and a byte scanner are what stop a defect coming back once
+     somebody has seen it. Not one of them has ever found a new one. Treating a
+     green suite as evidence that nothing is wrong is the mistake this whole
+     file exists to correct, and it is worth restating at the top of the
+     section that catalogues it.
+
+  This is not an argument for more instruments. It is an argument for reading
+  the thing beside the thing you are fixing, and for writing down what you find
+  there even when it is not what you were looking for.
 
   **A FIFTH, and it is the worst of them: the fixture PASSED and proved the
   wrong question.** The four above are checks that failed to fire. This one
@@ -2630,12 +4433,25 @@ Still open, none blocking, all findable here rather than one gate at a time:
   that explains the difference. Worth showing at Gate 1, beside the outline the
   budget produced.
 
-- **The dispatch preflight's notes do not reach the surface built for deciding
-  to spend.** `assets:generate --estimate` prints the itemised bill and exits
-  before the preflight runs, so the pace expectation, the aligner probe and the
-  style fingerprint appear only on a real dispatch. Nothing is unsafe — they
-  still print before anything is queued — but the page whose entire job is to
-  inform a spending decision is the one that does not carry them.
+- **CLOSED IN THE CONSOLE, STILL OPEN IN THE TERMINAL: the preflight's notes
+  now reach Gate 2 and still not `--estimate`.** The original finding was that
+  `assets:generate --estimate` prints the itemised bill and exits BEFORE the
+  preflight runs, so the pace expectation, the aligner probe and the style
+  fingerprint appeared only on a real dispatch — the one surface whose entire
+  job is to inform a spending decision being the one without them.
+
+  Gate 2's **Check without spending** button closes that for the console, and
+  closes more than was originally asked: it runs the same `PreflightAssetDispatch`
+  the money press runs, so it also carries the narrator and allowance checks that
+  did not exist when this was written. The allowance figure in particular is not
+  obtainable any other way — a cost estimate answers "what will this cost", and
+  on a subscription the marginal answer is $0.00 whichever side of the limit the
+  run lands.
+
+  `--estimate` is unchanged and still exits early. Lower priority now that the
+  button exists, and worth doing for parity: the terminal path is the one used
+  for a scripted or limited run, which is exactly when a shortfall is easiest to
+  miss.
 
 - **`CostCategory::isSpendOnAssets()` has no caller.** Found while adding the
   fourth category. It is the only method on that enum nothing consults, and with
@@ -2743,7 +4559,7 @@ supposed to distrust* — and the answer is not implied by the check being right
 
 ### False success is a defect class, not a run of bad luck
 
-Eleven times now the app has reported success while something was silently wrong.
+Twelve times now the app has reported success while something was silently wrong.
 Note where the fifth and seventh live: not in the pipeline, but on the PAGE the
 operator watches instead of the pipeline.
 
@@ -2760,6 +4576,7 @@ operator watches instead of the pipeline.
 | 9 | `/renders`: three workers up, none stale, footer saying "nothing running — this page is not refreshing itself" | The panel was frozen at whenever the page loaded. Two of the pids no longer existed; the page stops refreshing exactly when workers get restarted |
 | 10 | Worker health: `assets` ABSENT, nothing listening | The worker was mid-job. `Looping` is silent during a job and `JobProcessing` fires once before it, so any job longer than the 300s TTL aged its own worker out — a 40-minute mux, or 270 image calls at ~53s each |
 | 11 | The self-restart's stated bound: "never fires while the queue holds work, so a batch cannot be split across two code versions" | The bound was evaluated per worker; the stop is a machine-wide broadcast. An idle worker on an empty queue stood a busy one down and split a 10-job batch across two code markers. The busy worker's own guard was correct and never fired — a sibling's did |
+| 12 | 943 tests, four clean audits and eight drills, green on a schema that could not write the value the code had just learned to produce | The test database's ENUM column is BUILT from the enum under test by `RefreshDatabase`, so it agreed by construction. `narra` and `narra_test` held different columns. An 87-second claude-opus-5 outline was billed, its ledger row truncated away, and its story left with no acts |
 
 The individual bugs are all different and every fix for them was correct. The
 constant is the reporting, and it has one mechanism behind it:

@@ -26,19 +26,32 @@
         $alarms = collect($troubledQueues)->filter(
             fn (array $q): bool => in_array($q['state'], [
                 \App\Support\WorkerHealth::STRANDED,
+                \App\Support\WorkerHealth::NOT_CONSUMING,
                 \App\Support\WorkerHealth::STALE,
             ], true)
         );
 
-        $services = [
-            (string) config('render.queues.text') => 'NarraText',
-            (string) config('render.queues.assets') => 'NarraAssets',
-            (string) config('render.queues.render') => 'NarraRender',
-        ];
-
-        $fix = fn (array $row): string => $row['state'] === \App\Support\WorkerHealth::STALE
+        /*
+         * The queue -> service map used to be written out here AND in
+         * components/worker-health.blade.php, and this copy additionally
+         * invented a name for anything it did not hold:
+         *
+         *     'Narra'.ucfirst($queue)
+         *
+         * Which is right for the three queues that exist, and that is what made
+         * it the worst of the options available — rename a queue and the band
+         * prints a confident pasteable command naming a service that is not
+         * there. Both copies are gone; App\Support\WorkerServices owns it and
+         * returns null rather than a guess, and the band shows no command at
+         * all for a queue nothing is mapped to.
+         *
+         * `Restart-Service` and not `nssm start`: nssm is not on PATH on this
+         * machine, and `start` does nothing to a service that is running and
+         * taking nothing.
+         */
+        $fix = fn (array $row): ?string => $row['state'] === \App\Support\WorkerHealth::STALE
             ? 'php artisan queue:restart'
-            : 'nssm start '.($services[$row['queue']] ?? 'Narra'.ucfirst($row['queue']));
+            : \App\Support\WorkerServices::restartCommand($row['queue']);
 
         // Worst first: stranded means the pipeline has stopped right now, stale
         // refuses the next dispatch, absent is a note about an empty queue.
@@ -95,6 +108,18 @@
                                     {{ $single ? 'one queue' : count($names).' queues' }} &mdash;
                                     {{ $queues->map(fn (array $q): string => $q['queue'].' ('.$q['pending'].')')->join(', ', ' and ') }}.
                                     The pipeline has stopped.
+                                @elseif ($state === \App\Support\WorkerHealth::NOT_CONSUMING)
+                                    {{-- The jobs are the count that matters here for the
+                                         same reason as stranded: it is how much work has
+                                         stopped. What differs is that somebody IS on the
+                                         queue, which is why the sentence has to say so —
+                                         the health table beside it shows a live worker
+                                         and a fresh heartbeat and looks fine. --}}
+                                    {{ number_format($queues->sum('pending')) }} job(s) waiting on
+                                    {{ $single ? 'one queue' : count($names).' queues' }} whose worker is
+                                    polling and taking nothing &mdash;
+                                    {{ $queues->map(fn (array $q): string => $q['queue'].' ('.$q['pending'].')')->join(', ', ' and ') }}.
+                                    The pipeline has stopped.
                                 @elseif ($state === \App\Support\WorkerHealth::STALE)
                                     {{ count($names) }} {{ \Illuminate\Support\Str::plural('worker', count($names)) }}
                                     {{ $single ? 'is' : 'are' }} stale &mdash; {{ implode(', ', $names) }}.
@@ -123,12 +148,26 @@
                                      without prose between them: the repetition that was
                                      worth removing was the explanation, not the fix. --}}
                                 @foreach ($queues as $row)
-                                    <code class="cmd">{{ $fix($row) }}</code>
+                                    @php($command = $fix($row))
+
+                                    @if ($command === null)
+                                        {{-- No service mapped, so no command. Said rather
+                                             than guessed: the fallback this replaces would
+                                             have printed a plausible name for a service
+                                             that does not exist. --}}
+                                        <p class="small">
+                                            Nothing is mapped to &ldquo;{{ $row['queue'] }}&rdquo;, so there is
+                                            no restart command for it here.
+                                        </p>
+                                    @else
+                                        <code class="cmd">{{ $command }}</code>
+                                    @endif
                                 @endforeach
                                 <p class="small mt-2">
-                                    Or start {{ $single ? 'it' : 'them' }} by hand &mdash; but a hand-started
-                                    worker exits at <code>--max-time</code> and does not come back, which is how
-                                    the jobs got here. See <code>docs/queue-workers.md</code> for the sized command.
+                                    Needs an elevated prompt. Or start {{ $single ? 'it' : 'them' }} by hand
+                                    &mdash; but a hand-started worker exits at <code>--max-time</code> and does
+                                    not come back, which is one way jobs get here. See
+                                    <code>docs/queue-workers.md</code> for the sized command.
                                 </p>
                             @endif
                         </div>
@@ -146,7 +185,11 @@
                         @foreach ($this->workers() as $row)
                             <tr>
                                 <td>{{ $row['queue'] }}</td>
-                                <td><span class="state">{{ $row['state'] }}</span></td>
+                                {{-- Through label(): this cell printed the constant, and
+                                     `not_consuming` is a value rather than a sentence. The
+                                     wording is shared with the badges so one state does
+                                     not read as two. --}}
+                                <td><span class="state">{{ \App\Support\WorkerHealth::label($row['state']) }}</span></td>
                                 <td>{{ $row['live'] }}{{ $row['stale'] ? ' ('.$row['stale'].' stale)' : '' }}</td>
                                 {{-- The one fact on this panel that can be checked
                                      against the machine rather than against our own
@@ -369,6 +412,12 @@
                         </span>
                         @if ($w && $w['state'] === \App\Support\WorkerHealth::STRANDED)
                             <span class="badge fail">stranded</span>
+                        @elseif ($w && $w['state'] === \App\Support\WorkerHealth::NOT_CONSUMING)
+                            {{-- Without this the chain fell through to nothing, and a
+                                 story sitting on a queue that has stopped would have lost
+                                 its badge on the way past — the one row shape where the
+                                 stall is least believable losing the only marking it had. --}}
+                            <span class="badge fail">taking nothing</span>
                         @elseif ($w && $w['state'] === \App\Support\WorkerHealth::STALE)
                             <span class="badge fail">stale</span>
                         @elseif ($w && $w['state'] === \App\Support\WorkerHealth::ABSENT)

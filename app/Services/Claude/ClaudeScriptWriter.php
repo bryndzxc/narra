@@ -121,6 +121,7 @@ class ClaudeScriptWriter implements ScriptWriter
             title: trim((string) ($decoded['title'] ?? $story->title)),
             acts: $acts,
             usage: $usage,
+            hook: trim((string) ($decoded['hook'] ?? '')),
             narratorGrievance: trim((string) ($decoded['narrator_grievance'] ?? '')),
             antagonistJustification: trim((string) ($decoded['antagonist_justification'] ?? '')),
             withheldInformation: trim((string) ($decoded['withheld_information'] ?? '')),
@@ -299,6 +300,7 @@ class ClaudeScriptWriter implements ScriptWriter
                 ))),
                 motionPreset: trim((string) ($entry['motion_preset'] ?? '')) ?: null,
                 isThumbnailCandidate: (bool) ($entry['thumbnail_candidate'] ?? false),
+                expression: trim((string) ($entry['expression'] ?? '')),
             );
         }
 
@@ -700,6 +702,13 @@ class ClaudeScriptWriter implements ScriptWriter
             ? []
             : ActPhase::planFor($actCount);
 
+        // The hook's betrayal deadline, in words rather than seconds, because
+        // that is the unit the writer is working in. It goes through the same
+        // frozen rate as the act word target, from the one place that owns the
+        // conversion: two rates in one prompt is the $2.12 / $4.24 / 42,017
+        // shape reproduced inside a single string. See ScriptSizing.
+        $hookWords = ScriptSizing::hookBetrayalWords($story);
+
         $slots = implode("\n", array_map(
             fn (int $n): string => isset($plan[$n])
                 ? sprintf('  %d. <act %d> — %s. %s', $n, $n, strtoupper($plan[$n]->value), $plan[$n]->guidance())
@@ -733,7 +742,37 @@ class ClaudeScriptWriter implements ScriptWriter
             .'- refusal: what the narrator says when they are finally found, and WHICH EARLIER '
             .'MOMENT EACH REFUSAL ANSWERS. Name that moment. The strongest version hands back the '
             ."antagonist's own sentence from act 2 or 3, in her words, from the other side of it. "
-            ."This is the PRIVATE payoff and it is what viewers stay forty minutes for.\n\n"
+            ."This is the PRIVATE payoff and it is what viewers stay forty minutes for.\n"
+            .'- hook: the first thirty seconds of the video, as five beats in this order. This is '
+            .'the highest-leverage text in the whole script, and it is the one place where writing '
+            ."the chronological beginning loses the viewer. DO NOT START AT THE BEGINNING:\n"
+            .'    1. ONE sentence of setup. One. Not a second one, and never a sentence about the '
+            .'video itself, no "I want to start there", no "to understand this you need to know". '
+            ."A second sentence of setup is the beat this most often loses.\n"
+            .sprintf(
+                '    2. The betrayal itself, stated within %s words. Not its aftermath and not a '
+                .'summary of how it turned out: the thing that was done, being done, in the room '
+                ."it happened in. That is %d seconds of narration at the rate this script is "
+                ."being written to.\n",
+                number_format($hookWords),
+                (int) round(ScriptSizing::hookBetrayalSeconds()),
+            )
+            .'    3. Evidence in EXACT WORDS. A line of dialogue, a message or a document, quoted '
+            .'rather than described. Draw on the antagonist_justification you wrote above: the '
+            .'hook is where it lands first, as the bait. THE ACT KEEPS IT. This genre plays the '
+            .'same line twice, once here in a single sentence and again in act 2 or 3 at length, '
+            .'in the room it was said in, and the second landing is stronger for the first. Do '
+            ."not spend it here, and do not paraphrase it in either place.\n"
+            .'    4. ONE small, cold action by the narrator. Not a confrontation, not a speech and '
+            .'not a threat: something quiet and exact. A spreadsheet opened and named, a bag '
+            .'packed, a flat courtesy said to somebody expecting a fight. The confrontation is '
+            ."the final act, and spending it here spends the video.\n"
+            .'    5. A closing line promising the DEPARTURE. Not revenge, not the exposure and not '
+            .'a reckoning: that the narrator is going to be GONE, and that somebody is going to '
+            .'have to look for them. Use the specific language of the departure you wrote above, '
+            .'because that is the promise this video actually pays off, and Gate 1 checks this '
+            .'line against it. A hook promising revenge on a story whose payoff is a refusal is '
+            ."selling a different video.\n\n"
             .'Then fill in every one of these %d slots. Return exactly %d act objects, in '
             ."this order:\n\n%s\n\n"
             .'Do not merge slots, do not leave one out, and do not add another. Each slot '
@@ -802,10 +841,7 @@ class ClaudeScriptWriter implements ScriptWriter
         $isLast = $act->sequence === count($fullOutline);
 
         $rehook = $act->sequence === 1
-            ? 'This act opens the video. Its first two sentences are the 15-second hook and the '
-                .'highest-leverage text in the whole script. Open in the middle of the grievance — '
-                .'the moment it became undeniable — not with background. State plainly what was '
-                .'taken and by whom. Do not open with scene-setting, weather, or a childhood memory.'
+            ? $this->hookInstruction($story)
             : sprintf(
                 'This act opens at roughly minute %d, where viewers leave. Its first two sentences '
                 .'are a re-hook: give someone about to close the tab a reason not to. Open on the '
@@ -851,6 +887,91 @@ class ClaudeScriptWriter implements ScriptWriter
         ]);
     }
 
+    /**
+     * What act 1 is told about its own first thirty seconds.
+     *
+     * -----------------------------------------------------------------------
+     * THE MEASUREMENT THIS REPLACES
+     * -----------------------------------------------------------------------
+     *
+     * The old instruction was four sentences: open in the middle of the
+     * grievance, state what was taken, do not open with scene-setting. It is
+     * not wrong and it did not work. Both shipped stories open on context —
+     * story 12 on a pot boiled black on a stove in March 2020, story 21 on the
+     * square meterage of an apartment — and neither states its betrayal inside
+     * forty scenes.
+     *
+     * **What the measurement actually found is that the beats are all there
+     * and all late.** Story 21 has the best cold action in the database, *I
+     * said, "Have a good trip. I'll take you to the airport."*, at 3:09. Story
+     * 12 opens a spreadsheet and names it MOM EXPENSES 2020 at 3:24. Neither
+     * writer failed at anything; neither was told where the opening starts, and
+     * the chronological beginning is what a writer produces by default, because
+     * context is what comes first in time.
+     *
+     * So this does not ask for better writing. It names five beats and the
+     * order they go in, and it hands over the hook the outline already wrote,
+     * so act 1 is executing a decision made at Gate 1 rather than making one.
+     *
+     * -----------------------------------------------------------------------
+     * COPYING, NOT MOVING
+     * -----------------------------------------------------------------------
+     *
+     * Beat 3 draws on the antagonist's justification and DOES NOT CONSUME IT.
+     * In this genre the same line lands twice — once here as one quoted
+     * sentence of bait, once in act 2 or 3 played out at length in the room it
+     * was said in — and the second landing is stronger for the first. A
+     * generator told to "use it in the hook" spends it and leaves the act
+     * paraphrasing itself, so the instruction says so in both directions.
+     *
+     * -----------------------------------------------------------------------
+     * THE WORD BUDGET
+     * -----------------------------------------------------------------------
+     *
+     * `ScriptSizing::hookBetrayalWords()` converts the twenty seconds at THIS
+     * STORY'S frozen sizing rate — the same rate `$targetWords` came from. A
+     * second rate in this prompt would be two beliefs about one narration in
+     * one string.
+     *
+     * A story outlined before `stories.hook` existed has none, and gets the
+     * beats without the outline's own answer to them rather than a blank where
+     * one should be. Four stories are in that position and it is the same
+     * legacy case Gate 1 reports once.
+     */
+    private function hookInstruction(Story $story): string
+    {
+        $hook = trim((string) $story->hook);
+        $words = ScriptSizing::hookBetrayalWords($story);
+
+        $beats = sprintf(
+            'THIS ACT OPENS THE VIDEO, and its opening is the highest-leverage text in the whole '
+            ."script. Five beats, in this order, before anything else happens:\n\n"
+            ."1. ONE sentence of setup. One. Do not write a second, and never write a sentence "
+            ."about the video itself.\n"
+            .'2. The betrayal itself, inside the first %s words. Not its aftermath, not a summary '
+            .'of how it turned out, not a line about what the family said afterwards — the thing '
+            ."that was done, being done, in the room it happened in.\n"
+            .'3. Evidence in EXACT WORDS: one line of dialogue, a message or a document, quoted. '
+            .'The strongest version is the antagonist\'s own justification, said in her words. '
+            .'THE LATER ACT KEEPS IT — this genre plays that line twice, once here as bait in a '
+            .'single sentence and again later at length, in the room it was said in, and the '
+            ."second landing is stronger for the first. Quote it here; do not exhaust it here.\n"
+            .'4. ONE small, cold action by the narrator. Not a confrontation, not a speech, not a '
+            .'threat: something quiet and exact that the audience understands and the antagonist '
+            ."does not. The confrontation is the final act and spending it here spends the video.\n"
+            .'5. A closing line that promises the DEPARTURE — that the narrator will be gone and '
+            .'somebody will have to look for them. NOT revenge, NOT the courtroom, NOT the '
+            ."exposure. Those are the payoff and this is the promise, and they are not the same.\n\n"
+            .'Do not open with weather, a childhood memory, a house, a room, a date, or the '
+            .'chronological beginning of events. The beginning in time is almost never the '
+            .'beginning of the video.',
+            number_format($words),
+        );
+
+        return $hook === ''
+            ? $beats
+            : $beats."\n\nTHE HOOK THIS OUTLINE ASKS FOR — write these beats as this:\n\n".$hook;
+    }
     /**
      * What this act has to do with its ending, decided by its PHASE.
      *
@@ -1225,8 +1346,20 @@ class ClaudeScriptWriter implements ScriptWriter
             - Not every scene needs a person in it. An envelope on a doormat, a driveway at
               dusk, a phone face-down on a table — cutaways are what make the people land
               when they come back.
-            - Present tense, concrete nouns. No metaphor. No emotion words as such; show the
-              expression instead.
+            - Present tense, concrete nouns. No metaphor.
+            - EVERY SCENE WITH A PERSON IN IT NEEDS AN EXPRESSION, in the `expression` field,
+              and it must name what the face is DOING. "Jaw set, eyes down." "Openly crying,
+              tears on both cheeks." "Mouth open mid-word, brows driven down." Describe the
+              face rather than labelling the emotion — "brows drawn together, mouth set hard"
+              rather than "angry" — but a plain emotional state stated as a visible fact is
+              better than nothing. Leave it empty ONLY when nobody is in the frame.
+            - NEVER HEDGE AN EXPRESSION. "Slightly", "faintly", "a little", "somewhat",
+              "barely", "almost", "subtly", "a touch", "half" applied to a face render as
+              NOTHING — the picture comes back with the neutral expression it would have had
+              if you had written no expression at all. Write the expression at the strength it
+              actually is, or leave it out and spend the words on the room. A hedged
+              expression is strictly worse than no expression: it costs words and buys a
+              blank face.
             - 25-45 words per frame.
 
             DO NOT describe the art style, the medium, the colour palette, the rendering or
@@ -1280,6 +1413,59 @@ class ClaudeScriptWriter implements ScriptWriter
     }
 
     /**
+     * Where this act sits in the story, and what it is costing whom.
+     *
+     * THE SECOND CALL SITE OF A FINDING RECORDED AS CLOSED. `escalation_beat`
+     * was required at outline, checked by ValidateOutlineSpine, editable at Gate
+     * 1, shown on the page — and never reached `GenerateActScripts`, which
+     * printed "COSTS: %s" as a blank for two phases. That was found and fixed.
+     * It was fixed AT ONE CALL SITE.
+     *
+     * This call also decides what 150-250 pictures contain, and it has been
+     * receiving `Act $act` and `Story $story` the whole time. The phase, the
+     * beat and the whole genre spine were sitting on those two objects,
+     * unasked. Nothing noticed, because nothing asks which OTHER callers read a
+     * field — the same gap that let `CostUnit::TotalTokens` be added in code
+     * while eleven migrations built their columns from the enum.
+     *
+     * Why a scene generator wants it: the frame is the picture the narration is
+     * spoken over, and what a face should be doing depends entirely on whether
+     * this act is an escalation the narrator is losing or a refusal they are
+     * winning. Without it the generator has the sentences and nothing else, and
+     * the safest picture to draw from a sentence is a neutral one.
+     *
+     * Kept short on purpose. This rides in every act's scene call, so it is
+     * input tokens on 6-7 calls per story; the spine fields are one line each
+     * and the phase is a word.
+     */
+    private function sceneContext(Story $story, Act $act): string
+    {
+        $lines = [];
+
+        if ($act->phase !== null) {
+            $lines[] = sprintf('PHASE: %s — %s', $act->phase->value, match ($act->phase->value) {
+                'escalation' => 'the narrator is losing ground and absorbing it',
+                'departure' => 'the narrator leaves, and does not announce it',
+                'search' => 'the antagonist is looking for them, and it is costing her',
+                'refusal' => 'the narrator is found and says no',
+                default => 'unstated',
+            });
+        }
+
+        foreach ([
+            'COSTS' => $act->escalation_beat,
+            'THE GRIEVANCE' => $story->narrator_grievance,
+            'THE ANTAGONIST BELIEVES' => $story->antagonist_justification,
+        ] as $label => $value) {
+            if (trim((string) $value) !== '') {
+                $lines[] = $label.': '.trim((string) $value);
+            }
+        }
+
+        return $lines === [] ? '' : "\n".implode("\n", $lines)."\n";
+    }
+
+    /**
      * @param  array<int, string>  $sentences
      * @param  array<int, CharacterProfile>  $cast
      */
@@ -1300,7 +1486,7 @@ class ClaudeScriptWriter implements ScriptWriter
         $wordsPerScene = (int) config('scenes.words_per_scene');
 
         return sprintf(
-            "ACT %d: %s\n\n"
+            "ACT %d: %s\n%s\n"
             ."Break the numbered script below into about %d scenes.\n\n"
             ."RULES FOR THE RANGES:\n"
             ."- Every sentence from 1 to %d must be in exactly one scene.\n"
@@ -1318,12 +1504,15 @@ class ClaudeScriptWriter implements ScriptWriter
             ."- frame: the composed shot. What is in the picture, not what the line says.\n"
             ."- characters_present: names from the cast who are VISIBLE. Empty if nobody is.\n"
             ."- motion_preset: zoom_in, zoom_out, pan_left, pan_right or static.\n"
+            .'- expression: what the faces are DOING, named plainly. Empty ONLY if nobody is '
+            ."in the frame.\n"
             .'- thumbnail_candidate: true for at most two scenes in this act — the ones that '
             .'would stop someone scrolling. A face mid-reaction, or an object that raises a '
             ."question. Never a wide establishing shot.\n\n"
             ."THE SCRIPT (%d sentences):\n\n%s",
             $act->sequence,
             $act->title,
+            $this->sceneContext($story, $act),
             $targetScenes,
             $total,
             $total,
@@ -1354,6 +1543,15 @@ class ClaudeScriptWriter implements ScriptWriter
             'type' => 'object',
             'properties' => [
                 'title' => ['type' => 'string'],
+
+                // The first thirty seconds. Required in the schema for the
+                // reason the other seven are — a model asked in prose for
+                // several things drops the awkward one — and this is an
+                // awkward one in a specific way: the beats it asks for are
+                // the LAST things that happen in the chronology it wants to
+                // open with. Left optional it would come back as a summary of
+                // the premise, which is what the opening already is.
+                'hook' => ['type' => 'string'],
 
                 'narrator_grievance' => ['type' => 'string'],
                 'antagonist_justification' => ['type' => 'string'],
@@ -1389,6 +1587,7 @@ class ClaudeScriptWriter implements ScriptWriter
             ],
             'required' => [
                 'title',
+                'hook',
                 'narrator_grievance',
                 'antagonist_justification',
                 'withheld_information',
@@ -1471,6 +1670,7 @@ class ClaudeScriptWriter implements ScriptWriter
                                 'type' => 'string',
                                 'enum' => ['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'static'],
                             ],
+                            'expression' => ['type' => 'string'],
                             'thumbnail_candidate' => ['type' => 'boolean'],
                         ],
                         'required' => [
@@ -1479,6 +1679,14 @@ class ClaudeScriptWriter implements ScriptWriter
                             'frame',
                             'characters_present',
                             'motion_preset',
+                            // REQUIRED, and empty only when nobody is in frame.
+                            // Asked for in prose since Phase 2 and supplied on
+                            // 22.2% of peopled frames; the other 77.8% bought a
+                            // still wearing the reference portrait's neutral
+                            // face. A required field cannot be skipped, only
+                            // answered badly, and a bad answer is visible at
+                            // Gate 2.
+                            'expression',
                             'thumbnail_candidate',
                         ],
                         'additionalProperties' => false,

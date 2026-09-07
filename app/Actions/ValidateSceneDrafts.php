@@ -5,6 +5,8 @@ namespace App\Actions;
 use App\Enums\MotionPreset;
 use App\Models\Scene;
 use App\Models\Story;
+use App\Support\ImagePromptBuilder;
+use App\Support\ThumbnailFraming;
 use Illuminate\Support\Collection;
 
 /**
@@ -54,6 +56,8 @@ class ValidateSceneDrafts
         $this->checkPromptsUseTheCast($story, $scenes, $warnings);
         $this->checkSceneLengths($scenes, $warnings);
         $this->checkMotionVariety($scenes, $warnings);
+        $this->checkCloseFramesNameTheirSetting($scenes, $warnings);
+        $this->checkExpressionsAreNotHedged($scenes, $warnings);
         $this->checkHookAndThumbnails($scenes, $warnings);
 
         return ['warnings' => $warnings, 'stats' => $this->stats($scenes)];
@@ -151,6 +155,242 @@ class ValidateSceneDrafts
                 (int) round($share * 100)
             );
         }
+    }
+
+    /**
+     * Words that put the camera somewhere.
+     *
+     * Not a list of places — that is unbounded, and a check built on one
+     * reports every frame set somewhere it had not thought of. These are the
+     * constructions a frame uses to say there is a WORLD behind the subject,
+     * plus the handful of interior nouns that carry a setting on their own.
+     *
+     * Matched whole-word for the reason CharacterTextGuard matches whole-word:
+     * "behind" must not fire inside "behindhand", and "bar" must not fire
+     * inside "barely".
+     */
+    private const SETTING_CUES = [
+        // Spatial constructions — the reliable half. A frame that puts anything
+        // behind, beyond or around the subject has stated a world.
+        'behind', 'beyond', 'background', 'around', 'past', 'through',
+        'over his shoulder', 'over her shoulder', 'over their shoulder',
+        'framed by', 'reflected', 'blurred', 'out of focus', 'in the distance',
+        'across', 'beside', 'above', 'below', 'under', 'outside', 'inside',
+
+        // Interiors and exteriors common enough to be worth naming directly.
+        'room', 'kitchen', 'bedroom', 'hallway', 'corridor', 'stairwell',
+        'doorway', 'door', 'window', 'wall', 'table', 'desk', 'counter',
+        'floor', 'ceiling', 'bed', 'chair', 'sofa', 'street', 'road',
+        'pavement', 'sidewalk', 'car', 'bus', 'train', 'platform', 'office',
+        'shop', 'store', 'market', 'restaurant', 'canteen', 'kitchenette',
+        'yard', 'garden', 'courtyard', 'balcony', 'terrace', 'lobby',
+        'station', 'terminal', 'hospital', 'church', 'temple', 'school',
+        'dorm', 'dormitory', 'library', 'field', 'sky', 'wet market',
+
+        // Light is staging. A frame that says where the light comes from has
+        // said something about the space even when it names no noun.
+        'lamp', 'lamplight', 'streetlamp', 'sunlight', 'daylight', 'moonlight',
+        'fluorescent', 'neon', 'lit', 'light', 'lights', 'glow', 'dark', 'dim',
+        'shadow', 'night', 'dusk', 'dawn', 'morning', 'afternoon', 'evening',
+
+        // Added after running the check over four real stories and reading every
+        // frame it flagged. Each of these was a genuine setting the list did not
+        // know, and each was therefore reported as an absence.
+        //
+        // They are listed rather than generalised, and that is a deliberate
+        // choice with a measurement behind it. The general version — any
+        // preposition followed by a determiner — was tried and rejected: it
+        // matches "in her fists", which clears story 21 scene 107, the one frame
+        // this check was written from and the only one confirmed against the
+        // image it produced. A rule that clears its own founding instance is not
+        // a more general rule, it is a broken one.
+        'crowd', 'patio', 'dock', 'pallet', 'reflection', 'porch', 'hall',
+        'kerb', 'curb', 'aisle', 'stall', 'booth', 'bench', 'gate', 'garage',
+    ];
+
+    /**
+     * Words that mean the frame is about somebody's face.
+     *
+     * The scope that decides whether this check is worth reading — see the
+     * measurement in checkCloseFramesNameTheirSetting().
+     */
+    private const FACE_CUES = [
+        'face', 'faces', 'eyes', 'eye', 'expression', 'mouth', 'jaw', 'brow',
+        'brows', 'cheek', 'cheeks', 'chin', 'forehead', 'head', 'smile',
+        'stare', 'staring', 'gaze', 'lips', 'profile',
+    ];
+
+    /**
+     * A close frame with a character in it and nowhere for the camera to be.
+     *
+     * The failure this catches is specific and was measured before it was
+     * written. Scene images are generated on the EDIT endpoint, conditioned on
+     * the character's reference sheet — and that sheet is deliberately the most
+     * boring image in the project: front-facing, head and shoulders, neutral,
+     * on a "plain flat mid-grey background, completely empty" (see
+     * config/characters.php). When a close frame names no setting, the model
+     * fills the gap from the only picture it was handed, and what comes back is
+     * the reference sheet with the scene's props added to it.
+     *
+     * The live instance: story 21 scene 107 asked for "Close on Wei Hongmei's
+     * face, mouth set hard, eyes fixed on Lu Wenbin, the dish towel gripped
+     * tight in her fists" and got her reference sheet holding a dish towel —
+     * same grey void, same frontal framing, same wardrobe, in a scene set in a
+     * kitchen. 20 of that story's 43 close frames name no setting.
+     *
+     * **Scoped to frames with a character in them, and that scope is what keeps
+     * it quiet.** A reference is only attached when somebody is present, so a
+     * close-up of a phone screen or a signature cannot fail this way — and
+     * object close-ups are most of the close frames that name no place. Without
+     * the scope this fires on the frames it has nothing to say about, which is
+     * how an advisory column stops being read.
+     *
+     * An advisory, never a refusal. A tight two-shot with a genuinely empty
+     * background is a legitimate picture, and judging one is the operator's job.
+     *
+     * @param  Collection<int, Scene>  $scenes
+     * @param  array<int, string>  $warnings
+     */
+    private function checkCloseFramesNameTheirSetting($scenes, array &$warnings): void
+    {
+        $framing = app(ThumbnailFraming::class);
+        $offenders = [];
+        $close = 0;
+
+        foreach ($scenes as $scene) {
+            if ($scene->characters()->doesntExist()) {
+                continue;
+            }
+
+            $frame = mb_strtolower(ImagePromptBuilder::frameFrom((string) $scene->image_prompt));
+
+            if ($frame === '' || $framing->framing($frame)['shot'] !== 'close') {
+                continue;
+            }
+
+            // A reference sheet is a HEAD-AND-SHOULDERS portrait, so it can only
+            // bleed into a frame where a head fills the picture. A close-up of a
+            // document, a phone screen or a pair of hands carries the character
+            // on its cast list — the hand is theirs — and has no face for the
+            // portrait to overwrite.
+            //
+            // Measured before this scope was added: without it the check flagged
+            // 27 frames across four stories and nine were hands and paperwork.
+            // That is the over-report direction, and an advisory column that is
+            // half noise is one nobody finishes reading.
+            if (! $this->mentions($frame, self::FACE_CUES)) {
+                continue;
+            }
+
+            $close++;
+
+            if ($this->mentions($frame, self::SETTING_CUES)) {
+                continue;
+            }
+
+            $offenders[] = $scene->sequence;
+        }
+
+        if ($offenders === []) {
+            return;
+        }
+
+        $warnings[] = sprintf(
+            '%d of %d close frame(s) on a character\'s face name no setting (%s%s). A still is '
+            .'generated conditioned on that character\'s reference sheet, which is a head-and-'
+            .'shoulders portrait on an empty grey background — so a close frame that names nowhere '
+            .'for the camera to be tends to come back as the reference sheet with the props added. '
+            .'Naming the room, the light or what is behind them is a text edit here and a re-bill '
+            .'after approval.',
+            count($offenders),
+            $close,
+            'scene '.implode(', ', array_slice($offenders, 0, 8)),
+            count($offenders) > 8 ? ', ...' : ''
+        );
+    }
+
+    /**
+     * Adverbs that make an expression render as no expression.
+     *
+     * Measured against the real generator rather than assumed. In the
+     * expression-axis run, "jaw tight, eyes narrowed SLIGHTLY" — story 21 scene
+     * 204 verbatim — came back indistinguishable from the neutral reference
+     * portrait, while "brows drawn together, mouth set hard" from scene 14 came
+     * back a hard glare. The hedge is the difference between the two.
+     */
+    private const HEDGES = [
+        'slightly', 'faintly', 'faint', 'slight', 'somewhat', 'barely',
+        'almost', 'nearly', 'subtly', 'subtle', 'mildly', 'vaguely',
+        'a little', 'a touch', 'a hint of', 'half',
+    ];
+
+    /**
+     * A hedged expression, which costs words and buys a blank face.
+     *
+     * THE REASON THIS IS A CHECK AND NOT A SENTENCE IN A PROMPT. The ban was
+     * first written as a prompt bullet — "NEVER HEDGE AN EXPRESSION" — and
+     * measured before and after across a re-drafted story:
+     *
+     *   | | hedged, as a share of peopled frames |
+     *   |---|---|
+     *   | before the rule | 3.2% |
+     *   | after the rule | 15.3% |
+     *
+     * The forbidden thing got five times more common. Some of that is the
+     * `expression` field arriving in the same change and tripling how many
+     * frames carry an expression at all — per expression-bearing frame it went
+     * 14% to 21% — but the direction is unambiguous either way: the request was
+     * ignored. **A prompt request with no mechanism reads as a guard while doing
+     * nothing**, which is this file's documented-guard defect, and it is worse
+     * than not asking because the sentence looks like coverage.
+     *
+     * So the prompt keeps the request and this is the invariant, which is the
+     * same split `CharacterTextGuard` uses against the extraction prompt.
+     *
+     * **An advisory, never a refusal, and the scope is what keeps it honest.**
+     * Only the expression block is examined — never the frame — because a hedge
+     * belongs to a face and "dust FAINT on the drawer's edge" or "gesturing
+     * SLIGHTLY as he speaks" are neither wrong nor about an expression. Scoring
+     * the whole frame was the first version of this measurement and it
+     * over-counted by 4x: 13.4% reported against a true 3.2%.
+     *
+     * @param  Collection<int, Scene>  $scenes
+     * @param  array<int, string>  $warnings
+     */
+    private function checkExpressionsAreNotHedged($scenes, array &$warnings): void
+    {
+        $offenders = [];
+        $withExpression = 0;
+
+        foreach ($scenes as $scene) {
+            $expression = ImagePromptBuilder::expressionFrom((string) $scene->image_prompt);
+
+            if ($expression === '') {
+                continue;
+            }
+
+            $withExpression++;
+
+            if ($this->mentions(mb_strtolower($expression), self::HEDGES)) {
+                $offenders[] = $scene->sequence;
+            }
+        }
+
+        if ($offenders === []) {
+            return;
+        }
+
+        $warnings[] = sprintf(
+            '%d of %d scene(s) with an expression hedge it (%s%s). "Slightly", "faintly" and '
+            .'"barely" applied to a face measure as NO expression against this generator — the '
+            .'still comes back with the neutral face of the character\'s reference portrait. '
+            .'Naming the expression at the strength it actually is, or spending the words on the '
+            .'room instead, is a text edit here and a re-bill after approval.',
+            count($offenders),
+            $withExpression,
+            'scene '.implode(', ', array_slice($offenders, 0, 8)),
+            count($offenders) > 8 ? ', ...' : ''
+        );
     }
 
     /**
@@ -267,6 +507,26 @@ class ValidateSceneDrafts
             'motion' => $scenes->countBy(fn (Scene $s): string => $s->motion_preset->value)->all(),
             'thumbnail_candidates' => $scenes->where('is_thumbnail_candidate', true)->count(),
         ];
+    }
+
+    /**
+     * Whole-word, because a substring match is how a list like this goes wrong.
+     *
+     * 'lit' inside "quality" and 'gate' inside "investigate" are the shape
+     * CharacterTextGuard had to be rescued from, where the workaround was
+     * trailing spaces that then failed at a line end.
+     *
+     * @param  array<int, string>  $cues
+     */
+    private function mentions(string $text, array $cues): bool
+    {
+        foreach ($cues as $cue) {
+            if (preg_match('/\b'.preg_quote($cue, '/').'\b/u', $text)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

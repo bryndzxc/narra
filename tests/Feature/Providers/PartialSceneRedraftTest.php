@@ -132,15 +132,76 @@ class PartialSceneRedraftTest extends TestCase
         app(DraftScenes::class)->handle($story, onlyActs: [9]);
     }
 
-    private function storyWithScenes(): Story
+    /**
+     * THE FIXTURE ABOVE CANNOT EXPRESS THE FAILURE, AND FOR A PHASE IT HID IT.
+     *
+     * `storyWithScenes()` gives each of its three acts a ~30-word script, which
+     * is one scene apiece. That is what made every case in this file green about
+     * a method that failed on every real story it was ever pointed at.
+     *
+     * The collision: persist() parks the NEW rows at PARK_BASE+1..PARK_BASE+N,
+     * then renumberByAct() parked EVERYTHING at PARK_BASE+$index — so the
+     * untouched earlier acts' scenes were assigned indices 1..N, which is the
+     * band the new rows were still occupying. At one scene per act the two
+     * bands are one number wide and the only row assigned PARK_BASE+1 is the
+     * row already sitting there, so the update is a no-op and nothing collides.
+     *
+     * Give the acts more than one scene each and it fails immediately. Story 12
+     * died on `Duplicate entry '12-30001'` after billing two model calls for the
+     * act it then rolled back — the act had 27 scenes and the two acts before it
+     * had 57.
+     *
+     * This is the fifth time in this codebase that a check was correct and the
+     * input it was handed could not contain the defect. Written as its own case
+     * rather than by widening the shared fixture, so that what it needs — MANY
+     * SCENES PER ACT — is stated where it is relied on.
+     */
+    public function test_a_partial_redraft_survives_acts_with_more_than_one_scene(): void
+    {
+        $story = $this->storyWithScenes(scenesPerAct: 6);
+
+        $before = Scene::where('story_id', $story->id)->count();
+
+        $this->assertGreaterThan(
+            3,
+            $before,
+            'This case is vacuous unless the acts carry several scenes each — that is the '
+            .'whole difference between it and the cases above.',
+        );
+
+        app(DraftScenes::class)->handle($story, onlyActs: [2]);
+
+        $sequences = Scene::where('scenes.story_id', $story->id)
+            ->join('acts', 'acts.id', '=', 'scenes.act_id')
+            ->orderBy('acts.sequence')
+            ->orderBy('scenes.sequence')
+            ->pluck('scenes.sequence')
+            ->all();
+
+        $this->assertSame(
+            range(1, count($sequences)),
+            $sequences,
+            'After a partial re-draft the story must be numbered 1..n in act order.',
+        );
+    }
+
+    private function storyWithScenes(int $scenesPerAct = 1): Story
     {
         $story = Story::factory()->status(StoryStatus::Scripted)->create(['slug' => 'partial-redraft']);
+
+        // `scenes.words_per_scene` is 30, and the target is words/30 — so the
+        // script is grown in whole 30-word blocks to ask for a known number of
+        // scenes per act. The default of 1 preserves every case written against
+        // this fixture before the multi-scene one existed.
+        $block = 'Erin sat at the table and said the number out loud to Kyle across the '
+            .'spreadsheet while nobody in the room answered her for a long while afterwards. ';
 
         foreach ([1, 2, 3] as $sequence) {
             Act::factory()->for($story)->atSequence($sequence)->create([
                 'script' => "Erin sat at the table in act {$sequence}. Kyle would not look at her. "
                     .'The spreadsheet lay between them. She said the number out loud. '
-                    .'Nobody answered her for a while.',
+                    .'Nobody answered her for a while. '
+                    .str_repeat($block, max(0, $scenesPerAct - 1)),
             ]);
         }
 

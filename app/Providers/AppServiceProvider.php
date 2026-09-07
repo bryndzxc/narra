@@ -75,6 +75,13 @@ class AppServiceProvider extends ServiceProvider
      * `WorkerStopping` removes the entry on a clean exit so a restarted worker
      * does not appear twice.
      *
+     * **`Looping` fires on the EMPTY polls too, and that is what the panel was
+     * reading as health.** Three beats keep one `seen_at` fresh, so a fresh
+     * heartbeat proves the process exists and says nothing whatever about
+     * whether it is consuming. The two events therefore write two separate
+     * clocks — see `WorkerRegistry` — and the pair is what lets a page tell a
+     * worker doing a long job from a worker taking nothing.
+     *
      * The fingerprint is deliberately NOT story-specific here — a worker serves
      * every story on the queue. RunFingerprint::for() reads the per-story fields
      * off the story it is given; the preflight compares the shared fields, which
@@ -85,9 +92,9 @@ class AppServiceProvider extends ServiceProvider
         // Fingerprint per queue, resolved lazily inside the listener: config is
         // fully loaded by the time a worker loops, and a throw here would take
         // down the whole worker for a bookkeeping concern.
-        $announce = function (string $queue): void {
+        $announce = function (string $queue, bool $polling = false): void {
             try {
-                WorkerRegistry::heartbeat($queue, RunFingerprint::shared());
+                WorkerRegistry::heartbeat($queue, RunFingerprint::shared(), polling: $polling);
             } catch (Throwable) {
                 // A cache that is down must never stop a worker from working.
                 // The preflight reads an empty registry as "no workers", which
@@ -97,7 +104,13 @@ class AppServiceProvider extends ServiceProvider
         };
 
         Event::listen(Looping::class, function (Looping $e) use ($announce): void {
-            $announce($e->queue);
+            // `polling: true` — and this is the ONE place that may say so.
+            // `Looping` fires when the daemon asks the queue for work, which
+            // means by construction that it is not inside a job. That is the
+            // half of the signal `WorkerHealth` needs and the half `seen_at`
+            // cannot give, because `seen_at` is also ticked from inside a
+            // running job by `RenderJob::heartbeat()`.
+            $announce($e->queue, polling: true);
 
             /*
              * And, on the same beat, ask whether this process is still running
@@ -113,7 +126,32 @@ class AppServiceProvider extends ServiceProvider
              */
             StaleWorkerRestart::consider($e->queue);
         });
-        Event::listen(JobProcessing::class, fn (JobProcessing $e) => $announce($e->job->getQueue() ?? ''));
+        /*
+         * A job was TAKEN off the queue.
+         *
+         * This used to be an ordinary heartbeat, which recorded that the
+         * process existed and threw away the only fact that made the event
+         * worth listening to. `Looping` fires on every poll INCLUDING the empty
+         * ones, so `live = 1`, `state = ok` and a fresh heartbeat all mean the
+         * loop is turning — never that work is being consumed. A worker sat
+         * with 550 jobs in front of it for twenty minutes reported healthy on
+         * every one of those readings, because the panel's central signal
+         * structurally could not tell working from idling with a full queue.
+         *
+         * `jobStarted()` records the moment separately, so that question is a
+         * pure read of one snapshot rather than something a page would have to
+         * remember across requests.
+         */
+        Event::listen(JobProcessing::class, function (JobProcessing $e): void {
+            try {
+                WorkerRegistry::jobStarted($e->job->getQueue() ?? '', RunFingerprint::shared());
+            } catch (Throwable) {
+                // Same reasoning as the poll beat: a cache that is down must
+                // never stop a worker from working. What it costs is the
+                // activity reading, and an unwritten `last_job_at` is read as
+                // unknown rather than as old — see WorkerHealth.
+            }
+        });
         Event::listen(WorkerStopping::class, function (): void {
             try {
                 WorkerRegistry::deregisterEverywhere();

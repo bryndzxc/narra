@@ -329,6 +329,21 @@ return [
         'measured_act_words' => (int) env('SCRIPT_MEASURED_ACT_WORDS', 1123),
         'measured_act_words_on' => 'one act, en-US, 6-act plan, asked 985 (2026-09-05)',
         'target_response_slope' => 0.30,
+
+        /*
+        | How long the hook has to get to the betrayal.
+        |
+        | Measured against both shipped stories, whose openings spend it on
+        | context: story 12 is still describing a pot on a stove in March 2020
+        | at 00:57, and story 21 is quoting the square meterage of an apartment
+        | at 00:44. Neither has stated its actual betrayal by scene 40.
+        |
+        | Seconds rather than words BECAUSE the word budget is per story: it is
+        | converted at that story's own frozen sizing rate, in exactly one place
+        | — ScriptSizing::wordsForSeconds(). At 160 that is 53 words and at 197
+        | it is 66, and both are the same twenty seconds of narration.
+        */
+        'hook_betrayal_seconds' => 20,
     ],
 
     'audio' => [
@@ -513,6 +528,44 @@ return [
         | on the next pass, but there is no reason to invite it.
         */
         'restart_when_stale' => (bool) env('WORKER_RESTART_WHEN_STALE', true),
+
+        /*
+        |----------------------------------------------------------------------
+        | Taking nothing: how old is old
+        |----------------------------------------------------------------------
+        |
+        | The state these two numbers name is a worker that is polling the queue,
+        | has work waiting in front of it, and has not started a job in a long
+        | time. It was observed once - an `assets` worker sat with 550 jobs
+        | queued and consumed none of them for about twenty minutes - and the
+        | reason it was invisible is that every reading the panel had was a
+        | LEVEL: a heartbeat age, a queue depth, an uptime. None of them can say
+        | "listening and taking nothing", so the panel reported healthy.
+        |
+        | WHY IT STOPPED CONSUMING IS STILL UNKNOWN. The process was restarted to
+        | unblock the pipeline and the evidence went with it. These thresholds
+        | therefore describe an OBSERVATION and are not tuned against a cause; if
+        | the cause is ever found, the numbers may want revisiting and the state
+        | name should not, because the name is of the thing that was seen.
+        |
+        | `poll_fresh` - a `looped_at` newer than this means the worker polled
+        | recently, so it is between jobs rather than inside one. Comfortably
+        | above the registry's 15-second write throttle, so an ordinary beat
+        | never reads as "stopped polling".
+        |
+        | `job_idle` - a `last_job_at` older than this, with work waiting, is the
+        | alarm. Generous on purpose: the slowest thing this pipeline queues is
+        | an image call at ~53s, so two minutes is more than two of them, and a
+        | worker between jobs picks the next one up within one 3-second poll. A
+        | false positive here would land in the loudest category on the page,
+        | which is the category that stops being read if it fills with findings
+        | nobody can act on.
+        |
+        | Tunable so the state can be REHEARSED rather than believed - an alarm
+        | nobody can trigger on purpose is not an alarm.
+        */
+        'poll_fresh_seconds' => (int) env('WORKER_POLL_FRESH_SECONDS', 60),
+        'job_idle_seconds' => (int) env('WORKER_JOB_IDLE_SECONDS', 120),
     ],
 
     /*

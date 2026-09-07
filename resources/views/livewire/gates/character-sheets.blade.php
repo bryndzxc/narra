@@ -134,13 +134,64 @@
                                 <div class="muted mb-2">
                                     Every candidate is billed, including ones you discard.
                                 </div>
-                                <button class="gate" wire:click="generate({{ $character->id }})">
-                                    Yes &mdash; spend it
+                                {{--
+                                    THE ACKNOWLEDGEMENT. A sheet is about 144
+                                    seconds of synchronous work at the measured
+                                    rate (36s per candidate across 62 real
+                                    images), and this button used to stay live
+                                    and silent for all of it -- which is
+                                    indistinguishable from a click that never
+                                    landed, so the natural response is to press
+                                    again, and every press is four billed
+                                    images.
+
+                                    `wire:target` is named rather than bare: a
+                                    bare wire:loading fires on ANY request this
+                                    component makes, so picking a candidate
+                                    elsewhere on the page would grey out a spend
+                                    button that is not running.
+
+                                    This makes a second press unlikely. What
+                                    makes it impossible is the claim taken in
+                                    GenerateCharacterSheet, which is the only
+                                    thing that can see a second tab or the
+                                    console command.
+                                --}}
+                                <button class="gate"
+                                        wire:click="generate({{ $character->id }})"
+                                        wire:target="generate({{ $character->id }})"
+                                        wire:loading.attr="disabled">
+                                    <span wire:loading.remove wire:target="generate({{ $character->id }})">
+                                        Yes &mdash; spend it
+                                    </span>
+                                    <span wire:loading wire:target="generate({{ $character->id }})">
+                                        Generating &hellip;
+                                    </span>
                                 </button>
-                                <button wire:click="cancel">Cancel</button>
+                                <button wire:click="cancel"
+                                        wire:target="generate({{ $character->id }})"
+                                        wire:loading.attr="disabled">Cancel</button>
+
+                                {{--
+                                    Louder than the button, because the button
+                                    going grey says "not now" and this says
+                                    what is happening and roughly how long.
+                                    Nothing on this screen gets quieter.
+                                --}}
+                                <div class="alert run small mt-2 wide"
+                                     wire:loading wire:target="generate({{ $character->id }})">
+                                    <strong>Generating {{ $character->name }}'s sheet.</strong>
+                                    {{ $this->estimate()->imagesPerSheet() }} candidates, about
+                                    <span class="mono">{{ $this->estimate()->imagesPerSheet() * 36 }}s</span>
+                                    &mdash; the page waits for the images. Do not press again: this
+                                    is already billing and a second press is refused.
+                                </div>
                             </div>
                         @else
-                            <button class="gate" wire:click="askToGenerate({{ $character->id }})">
+                            <button class="gate"
+                                    wire:click="askToGenerate({{ $character->id }})"
+                                    wire:target="askToGenerate({{ $character->id }})"
+                                    wire:loading.attr="disabled">
                                 {{ $character->references->isEmpty() ? 'Generate sheet' : 'Regenerate' }}
                             </button>
                         @endif

@@ -39,12 +39,37 @@ class ImagePromptBuilder
      * @param  Collection<int, Character>|array<int, Character>  $cast
      * @param  array<int, string>  $present  Character names in this frame.
      */
-    public function build(string $frame, iterable $cast, array $present): string
+    public function build(string $frame, iterable $cast, array $present, string $expression = ''): string
     {
         $frame = trim((string) preg_replace('/\s+/u', ' ', $frame));
+        $expression = trim((string) preg_replace('/\s+/u', ' ', $expression));
 
+        // ITS OWN SECTION, AND THIS REVERSES THE FIRST DESIGN, WHICH WAS
+        // MEASURED AND WRONG.
+        //
+        // The expression was first joined INTO the frame section, on the
+        // reasoning that everything reading "how was this picture framed" reads
+        // the frame — ThumbnailFraming's shot scale, the narration-overlap
+        // check, the close-frame setting advisory — so hiding it from all three
+        // would be a loss. The opposite turned out to be true: those readers do
+        // not want it, and one of them is actively broken by it.
+        //
+        // `ThumbnailFraming::WIDE_MARKERS` contains 'wide', matched whole-word.
+        // An expression saying "eyes wide" or "mouth wide open" therefore
+        // classified its own frame as a WIDE ESTABLISHING SHOT. Measured on
+        // story 12: 6 of 98 peopled frames, and they were the best reaction
+        // shots in the story — "Beaming, eyes crinkled", "her hand pressed over
+        // her mouth, eyes wide" — each scoring -25 for a thumbnail instead of
+        // +30. Exactly backwards, on the frames the feature exists to find.
+        //
+        // That is the "a rule reused for a different question" trap, and the
+        // frame section is the shared input that made it possible. The
+        // expression is a fact about the SUBJECT, not about the SHOT, so it
+        // gets its own block and `frameFrom()` returns a clean composed shot
+        // again.
         $sections = array_filter([
             $frame,
+            $this->expressionBlock($expression),
             $this->castBlock($cast, $present),
             trim((string) config('scenes.art_style')),
             trim((string) config('scenes.constraints')),
@@ -81,6 +106,36 @@ class ImagePromptBuilder
         return trim(explode('
 
 ', $prompt, 2)[0]);
+    }
+
+    /** The label the expression block is written behind. Stated once. */
+    private const EXPRESSION_LABEL = 'The expression on the faces in this image: ';
+
+    /**
+     * The expression back out of an assembled prompt, or '' if it carries none.
+     *
+     * Here for the same reason `frameFrom()` is: this class decides how the
+     * sections are joined and how the block is labelled, so it is the only place
+     * entitled to take them apart. A caller matching the label itself would be a
+     * second copy of a string only one method writes, and the two would disagree
+     * the first time the wording changed.
+     *
+     * Empty is the honest answer for a cutaway, for a wide shot whose expression
+     * was suppressed at draft time, and for every prompt written before the
+     * field existed — all three are "no expression here", and none of them is a
+     * defect this can distinguish.
+     */
+    public static function expressionFrom(string $prompt): string
+    {
+        foreach (explode("\n\n", str_replace("\r\n", "\n", $prompt)) as $section) {
+            $section = trim($section);
+
+            if (str_starts_with($section, self::EXPRESSION_LABEL)) {
+                return trim(substr($section, strlen(self::EXPRESSION_LABEL)));
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -143,6 +198,30 @@ class ImagePromptBuilder
         return implode('
 
 ', $sections);
+    }
+
+    /**
+     * What the faces in this frame are doing, as its own labelled block.
+     *
+     * Labelled rather than left as a bare fragment for the same reason the cast
+     * block is: the generator returns "jaw tight, eyes fixed and unblinking"
+     * with no subject, no leading capital and no terminal stop, and an
+     * unattached fragment in a prompt is read as more scene. The label says
+     * what it is; the normalisation makes it a sentence.
+     */
+    private function expressionBlock(string $expression): string
+    {
+        if ($expression === '') {
+            return '';
+        }
+
+        $expression = mb_strtoupper(mb_substr($expression, 0, 1)).mb_substr($expression, 1);
+
+        if (! in_array(mb_substr($expression, -1), ['.', '!', '?'], true)) {
+            $expression .= '.';
+        }
+
+        return self::EXPRESSION_LABEL.$expression;
     }
 
     /**

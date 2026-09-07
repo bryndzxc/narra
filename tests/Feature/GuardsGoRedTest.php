@@ -4,10 +4,20 @@ namespace Tests\Feature;
 
 use App\Actions\GenerateActScripts;
 use App\Actions\ValidateOutlineSpine;
+use App\Actions\DraftScenes;
+use App\Actions\ValidateSceneDrafts;
+use App\Contracts\ScriptWriter;
+use App\Enums\ActPhase;
 use App\Enums\Gate;
 use App\Enums\StoryStatus;
+use App\Models\Act;
+use App\Models\Character;
+use App\Models\Scene;
+use App\Models\Story;
 use App\Support\GateVoice;
+use App\Support\ImagePromptBuilder;
 use App\Support\SlotContent;
+use Faker\Generator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Gates\GateLayoutContractTest;
@@ -373,6 +383,440 @@ class GuardsGoRedTest extends TestCase
             app(GenerateActScripts::class)->localeWarnings($story),
             'The locale group must have a finding, or the row has one group and no shape to test.',
         );
+    }
+
+    // -- The genre guards ----------------------------------------------------
+
+    /**
+     * The hook's promise, checked against the departure.
+     *
+     * RED is a hook that closes on the reckoning — the narrator standing up at
+     * the reception and reading out the receipts — on a story whose payoff is a
+     * refusal three acts later. GREEN is the same hook with the same first four
+     * beats and a closing line that promises the leaving.
+     *
+     * **The pairing is the whole assertion here and not ceremony.** A rule that
+     * warned on every hook would satisfy RED, and this rule is one `>= 2` away
+     * from being that: the departure and the exposure are paragraphs about the
+     * same family, in the same words, and a check that counted one shared word
+     * would fire on both halves. GREEN is what says it does not.
+     */
+    public function test_the_hook_promise_check_goes_red(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        $story->update(['hook' => self::HOOK_BEATS.self::PROMISES_THE_EXPOSURE]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame(
+            'weak',
+            $review['spine']['hook']['state'],
+            'A hook closing on the exposure of a story whose payoff is a refusal is selling a '
+            .'different video, and the check did not say so.',
+        );
+        $this->assertStringContainsString(
+            'closes on the exposure rather than the departure',
+            implode(' ', $review['warnings']),
+        );
+    }
+
+    public function test_the_hook_promise_check_passes_a_hook_that_promises_the_leaving(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        $story->update(['hook' => self::HOOK_BEATS.self::PROMISES_THE_DEPARTURE]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('ok', $review['spine']['hook']['state']);
+        $this->assertNotEmpty(
+            $review['spine']['hook']['promises'] ?? '',
+            'A hook that promises the departure must name WHICH part of it. "It promises '
+            .'something" is worth less at Gate 1 than the sentence it promises.',
+        );
+    }
+
+    /**
+     * THE FIXTURE CAN EXPRESS THE FAILING STATE, asserted rather than assumed.
+     *
+     * This is the case `pageFixtureFor()` had to learn twice, applied before
+     * the third time rather than after it. Every earlier instance was the same
+     * sentence: the detector was right and the input it was handed could not
+     * contain the defect — a null `escalation_beat` that removed the void an
+     * empty-track drill was looking for, a null `sized_against_wpm` that hid a
+     * whole panel from the claim check, a `queueDepthIs()` that could not
+     * describe one queue busy and its neighbour idle.
+     *
+     * A hook mismatch needs THREE things present at once, and the obvious
+     * fixture to reach for has none of them:
+     *
+     *   1. a DEPARTURE, or there is nothing for a promise to be measured
+     *      against and `checkHook()` returns before it looks at anything;
+     *   2. an EXPOSURE distinct from it, or the wrong-payoff branch cannot be
+     *      told apart from the promises-nothing branch;
+     *   3. a REFUSAL, because the mismatch this is named for is a hook selling
+     *      a reckoning on a story that pays off in a private no.
+     *
+     * `GateLayoutContractTest::pageFixtureFor()` is deliberately a PRE-PHASE
+     * story — no departure, no refusal — so it cannot hold any of this, and a
+     * pair built on it would have been green in both halves. That is asserted
+     * below too, so nobody later "simplifies" this onto the shared fixture and
+     * quietly makes both halves vacuous.
+     */
+    public function test_the_hook_fixture_can_express_the_mismatch(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        foreach (['departure', 'exposure_moment', 'refusal'] as $field) {
+            $this->assertNotSame(
+                '',
+                trim((string) $story->{$field}),
+                "The hook pair needs a {$field}: without all three the RED half cannot be a "
+                .'mismatch, only an absence.',
+            );
+        }
+
+        // RED and GREEN differ in the closing line and in nothing else. A pair
+        // that also rewrote the setup would prove that some hook somewhere
+        // warns, which is not the claim.
+        $this->assertSame(
+            self::HOOK_BEATS,
+            substr(self::HOOK_BEATS.self::PROMISES_THE_EXPOSURE, 0, strlen(self::HOOK_BEATS)),
+        );
+        $this->assertNotSame(self::PROMISES_THE_EXPOSURE, self::PROMISES_THE_DEPARTURE);
+
+        // And the shared page fixture cannot hold this, on purpose.
+        $shared = GateLayoutContractTest::pageFixtureFor(StoryStatus::Outlined);
+
+        $this->assertSame(
+            '',
+            trim((string) $shared->departure),
+            'pageFixtureFor() is the pre-phase story, so a hook pair built on it would be green '
+            .'in both halves. This pair keeps its own fixture for that reason.',
+        );
+    }
+
+    /** Beats 1-4: setup, betrayal, evidence in exact words, a cold action. */
+    private const HOOK_BEATS =
+        'My older sister Dana got married in June and I paid for all of it. '
+        .'The first invoice arrived eleven days after she asked me to stand up with her, and '
+        .'there were nine more behind it, and I had never once said that I would pay. '
+        .'When I said as much she told me, "You have no kids and no mortgage, and family helps '
+        .'family." I opened a spreadsheet that night and named it DANA WEDDING. ';
+
+    /** Beat 5, wrong: the public payoff, which is what the title promises. */
+    private const PROMISES_THE_EXPOSURE =
+        'At the reception, in front of eighty guests and both families, I stood up and read out '
+        .'every receipt.';
+
+    /** Beat 5, right: the gap, which is what the middle third of this is. */
+    private const PROMISES_THE_DEPARTURE =
+        'Two weeks after the reception I moved out of the apartment and left no address, and '
+        .'Dana did not find out that I was gone for three weeks.';
+
+    /**
+     * A story with a departure, an exposure and a refusal, and acts phased.
+     *
+     * Phased deliberately: an unphased outline takes the legacy path, where the
+     * whole reversal is reported once as absent and `checkHook()` never runs.
+     * A fixture that fell into that branch would make both halves of the pair
+     * green without either of them being about the hook.
+     */
+    private function storyWithBothPayoffs(): Story
+    {
+        $story = Story::factory()->status(StoryStatus::Outlined)->single()->create([
+            'slug' => 'hook-promise-pair',
+            'narrator_grievance' => 'My sister Dana billed me for her wedding over eleven months.',
+            'antagonist_justification' => 'She says I have no kids and no mortgage, and that '
+                .'family helps family, and she believes every word of it.',
+            'withheld_information' => 'I had been paying our mother\'s care home fees out of the '
+                .'same account the whole time.',
+            'exposure_moment' => 'At the reception, in front of eighty guests and both families, '
+                .'when Dana stood up to thank everyone who had helped and named everyone but me.',
+            'departure' => 'I moved out of the apartment two weeks after the reception and did '
+                .'not say where I was going. Nobody was given an address and my number changed '
+                .'the same afternoon. Dana found out that I was gone three weeks later.',
+            'reversal_beats' => 'She called every relative we have in common, and two of them '
+                .'stopped taking her calls. Then she paid a man to look for me.',
+            'refusal' => 'When Dana finally found me she asked me to come back, because family '
+                .'helps family. I said her own sentence back to her and then I said no.',
+        ]);
+
+        app(Generator::class)->unique(reset: true);
+
+        $phases = ActPhase::planFor(6);
+
+        foreach (range(1, 6) as $sequence) {
+            Act::factory()->for($story)->atSequence($sequence)->inPhase($phases[$sequence])->create([
+                'is_rehook_written' => true,
+                'escalation_beat' => "Act {$sequence} costs somebody something they cannot get back.",
+            ]);
+        }
+
+        return $story->refresh();
+    }
+
+    // -- The close-frame setting advisory ------------------------------------
+
+    /**
+     * RED, and the input is the real instance rather than one written for it.
+     *
+     * Story 21 scene 107 asked for "Close on Wei Hongmei's face, mouth set
+     * hard, eyes fixed on Lu Wenbin, the dish towel gripped tight in her
+     * fists" and came back as her reference sheet holding a dish towel — same
+     * flat grey void, same frontal head-and-shoulders framing, same wardrobe,
+     * in a scene set in a kitchen. That frame is used verbatim here, so the
+     * guard is drilled against the picture it was written from and not against
+     * a paraphrase of it.
+     */
+    public function test_the_close_frame_setting_check_goes_red(): void
+    {
+        $warnings = $this->warningsForFrame(
+            "Close on Wei Hongmei's face, mouth set hard, eyes fixed on Lu Wenbin, "
+            .'the dish towel gripped tight in her fists.',
+        );
+
+        $this->assertStringContainsString(
+            'name no setting',
+            implode(' ', $warnings),
+            'A close frame on a face with nowhere for the camera to be is the frame that comes '
+            .'back as the reference sheet with props added, and the check did not say so.',
+        );
+    }
+
+    /**
+     * GREEN, one clause away from RED.
+     *
+     * The same frame, the same face, the same props — with the kitchen it was
+     * always set in actually written down. If this half goes red the advisory
+     * fires on the fix, and a guard that fires on its own remedy can only be
+     * made quiet by turning it off.
+     */
+    public function test_the_close_frame_setting_check_passes_a_frame_that_names_its_room(): void
+    {
+        $warnings = $this->warningsForFrame(
+            "Close on Wei Hongmei's face, mouth set hard, eyes fixed on Lu Wenbin, the dish "
+            .'towel gripped tight in her fists, the kitchen dark behind her.',
+        );
+
+        $this->assertStringNotContainsString('name no setting', implode(' ', $warnings));
+    }
+
+    /**
+     * GREEN on the SCOPE, which is the half that keeps the advisory readable.
+     *
+     * A close-up of a document has the character on its cast list — the hand is
+     * theirs — and no face for a head-and-shoulders portrait to overwrite.
+     * Without this scope the check flagged 27 frames across four real stories
+     * and nine of them were hands and paperwork; with it, 12. An advisory
+     * column that is half noise is one nobody finishes reading, and that is the
+     * over-report direction this whole class of tool has to be held to.
+     */
+    public function test_the_close_frame_setting_check_ignores_a_close_up_of_an_object(): void
+    {
+        $warnings = $this->warningsForFrame(
+            "Close on a single printed page held in Lu Wenbin's hands, a signature line at the "
+            ."bottom. His thumb presses against the paper's edge, knuckles pale.",
+        );
+
+        $this->assertStringNotContainsString('name no setting', implode(' ', $warnings));
+    }
+
+    /**
+     * THE DRILL WRITTEN THE OTHER WAY, which is the one that has paid three
+     * times in this file's history.
+     *
+     * The setting cues are matched whole-word, and the standing rule is that a
+     * text guard is drilled with the input spelled the way the author did NOT
+     * have in mind. 'gate' is a cue; "investigating" contains it; 'lit' is a
+     * cue and "quality" contains it. A substring matcher would read this frame
+     * as having named a setting and clear it silently — which is exactly how
+     * CharacterTextGuard ended up carrying 'mic ' with a trailing space until
+     * it was moved onto boundaries.
+     *
+     * This frame names no setting at all, so it must still be reported.
+     */
+    public function test_the_close_frame_setting_check_is_not_fooled_by_a_cue_inside_another_word(): void
+    {
+        $warnings = $this->warningsForFrame(
+            "Close on Lin Zhaoyang's face, eyes narrowed, investigating the quality of what he "
+            .'has just been told, delegating nothing.',
+        );
+
+        $this->assertStringContainsString(
+            'name no setting',
+            implode(' ', $warnings),
+            "'gate' inside \"investigating\" and 'lit' inside \"quality\" are not settings. A "
+            .'substring matcher clears this frame and the guard goes quiet on half its subject.',
+        );
+    }
+
+    // -- The hedged-expression advisory --------------------------------------
+
+    /**
+     * RED, in the wording that was measured to render nothing.
+     *
+     * "Jaw tight, eyes narrowed slightly" is story 21 scene 204 verbatim, and in
+     * the expression-axis run it came back indistinguishable from the neutral
+     * reference portrait while the unhedged rung came back a hard glare.
+     */
+    public function test_the_hedged_expression_check_goes_red(): void
+    {
+        $warnings = $this->warningsForFrame(
+            'Close on Erin at the kitchen table, the window dark behind her.',
+            'jaw tight, eyes narrowed slightly',
+        );
+
+        $this->assertStringContainsString('hedge it', implode(' ', $warnings));
+    }
+
+    /** GREEN: the same expression at the strength it actually is. */
+    public function test_the_hedged_expression_check_passes_a_plain_expression(): void
+    {
+        $warnings = $this->warningsForFrame(
+            'Close on Erin at the kitchen table, the window dark behind her.',
+            'jaw tight, brows drawn together, mouth set hard',
+        );
+
+        $this->assertStringNotContainsString('hedge it', implode(' ', $warnings));
+    }
+
+    /**
+     * GREEN, and the half that keeps the advisory from being noise.
+     *
+     * A hedge belongs to a FACE. "Dust faint on the drawer's edge" and
+     * "gesturing slightly as he speaks" are neither wrong nor about an
+     * expression, and the first version of this measurement scored the whole
+     * frame and over-counted by 4x — 13.4% reported against a true 3.2%. The
+     * check reads the expression block and nothing else, and this asserts it.
+     */
+    public function test_the_hedged_expression_check_ignores_a_hedge_in_the_frame(): void
+    {
+        $warnings = $this->warningsForFrame(
+            'Erin kneels at an open drawer, dust faint on its edge, gesturing slightly as she speaks.',
+            'jaw tight, mouth set hard',
+        );
+
+        $this->assertStringNotContainsString('hedge it', implode(' ', $warnings));
+    }
+
+    // -- Expression is not spent on a shot that cannot show it ----------------
+
+    /**
+     * RED-equivalent: a wide establishing shot naming no face loses it.
+     *
+     * The live instance, from story 12's re-draft: *"A modest single-story house
+     * on Ridgeline Drive seen from the street … brows drawn together"* — an
+     * expression on a building, inside a 25-45 word budget.
+     */
+    public function test_an_expression_is_dropped_from_a_wide_shot_with_no_face_in_it(): void
+    {
+        $prompts = $this->promptsFromDraft(
+            'A modest single-story house on Ridgeline Drive seen from the street, a car in the drive.',
+            'brows drawn together, mouth set hard',
+        );
+
+        $this->assertNotEmpty($prompts);
+
+        foreach ($prompts as $prompt) {
+            $this->assertSame(
+                '',
+                ImagePromptBuilder::expressionFrom($prompt),
+                'A wide shot of a house cannot show an expression, and the words are budgeted.',
+            );
+        }
+    }
+
+    /**
+     * GREEN, and it is the conservative half.
+     *
+     * A wide marker plus a named face keeps the expression. `WIDE_MARKERS` is
+     * tuned for thumbnail ranking, where a false `wide` costs only a ranking; if
+     * it were trusted alone HERE it would silently delete a real expression from
+     * a real close-up. 'empty' matched a print-shop counter and 'the street'
+     * matched a frame whose subject stands in it, both in real data.
+     */
+    public function test_an_expression_survives_a_wide_marker_when_a_face_is_named(): void
+    {
+        $prompts = $this->promptsFromDraft(
+            'Erin alone in an empty parking lot at dusk, close on her face, keys in one hand.',
+            'brows drawn together, mouth set hard',
+        );
+
+        $kept = array_filter(array_map(
+            fn (string $p): string => ImagePromptBuilder::expressionFrom($p),
+            $prompts,
+        ));
+
+        $this->assertNotEmpty(
+            $kept,
+            'The frame names a face, so the expression is kept whatever the shot markers say.',
+        );
+    }
+
+    /**
+     * Every prompt a drafted story produces from one controlled frame.
+     *
+     * @return array<int, string>
+     */
+    private function promptsFromDraft(string $frame, string $expression): array
+    {
+        $writer = app(ScriptWriter::class);
+        $writer->frameOverride = $frame;
+        $writer->expressionOverride = $expression;
+
+        $story = Story::factory()->status(StoryStatus::Scripted)->create();
+        Act::factory()->for($story)->atSequence(1)->create([
+            'script' => 'Erin sat at the table. Kyle would not look at her. She said the number '
+                .'out loud. Nobody answered her for a while at all.',
+        ]);
+        Character::factory()->for($story)->create(['name' => 'Erin Whitfield']);
+
+        app(DraftScenes::class)->handle($story);
+
+        // Only the peopled scenes. The fake makes every third scene a cutaway,
+        // which loses its expression for a different and already-tested reason.
+        return $story->refresh()->scenes()->with('characters')->get()
+            ->filter(fn (Scene $scene): bool => $scene->characters->isNotEmpty())
+            ->map(fn (Scene $scene): string => (string) $scene->image_prompt)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * One drafted scene carrying one frame, with a character in it.
+     *
+     * The character is attached because the check is scoped to frames a
+     * reference sheet can bleed into, and a scene with an empty cast is
+     * skipped before anything else is looked at — so a fixture without one
+     * would make every case above vacuously green.
+     *
+     * @return array<int, string>
+     */
+    private function warningsForFrame(string $frame, string $expression = ''): array
+    {
+        $story = Story::factory()->create(['status' => StoryStatus::ScenesDrafted]);
+        $act = Act::factory()->for($story)->atSequence(1)->create();
+        $character = Character::factory()->for($story)->create([
+            'name' => 'Wei Hongmei',
+            'description' => 'Sixty-nine years old, steel-gray hair permed into tight short curls.',
+        ]);
+
+        $scene = Scene::factory()->forAct($act)->create([
+            'sequence' => 1,
+            'is_hook' => true,
+            'is_thumbnail_candidate' => true,
+            // Assembled by the builder rather than hand-written, so these cases
+            // read the same section layout production does. A hand-built prompt
+            // would pass its own label check and prove nothing about the join.
+            'image_prompt' => app(ImagePromptBuilder::class)
+                ->build($frame, [$character], ['Wei Hongmei'], $expression),
+        ]);
+
+        $scene->characters()->attach($character);
+
+        return app(ValidateSceneDrafts::class)->handle($story->refresh())['warnings'];
     }
 
     /** @return array<string, array{0: StoryStatus}> */

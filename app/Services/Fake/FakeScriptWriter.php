@@ -98,6 +98,20 @@ class FakeScriptWriter implements ScriptWriter
     /** Flag nothing as a thumbnail, so the hook has to become the default. */
     public bool $suppressThumbnails = false;
 
+    /**
+     * One frame for every scene, replacing the rotation.
+     *
+     * Exists so a test can put the drafter in front of a KNOWN shot scale. The
+     * expression is suppressed on a wide establishing shot with no face in it,
+     * and that branch is unreachable through the fixed rotation — which is the
+     * "a fixture that cannot express the failing state" problem, so the fixture
+     * is given a way to express it rather than the branch left undrilled.
+     */
+    public ?string $frameOverride = null;
+
+    /** One expression for every scene, replacing the rotation. */
+    public ?string $expressionOverride = null;
+
     public function outline(Story $story, int $actCount): OutlineDraft
     {
         $this->calls[] = ['method' => 'outline', 'story_id' => $story->id, 'act_count' => $actCount];
@@ -144,6 +158,24 @@ class FakeScriptWriter implements ScriptWriter
             title: 'My Sister Billed Me For Her Wedding - So At The Reception I Read Out The Receipts',
             acts: $acts,
             usage: ProviderUsage::free('fake', 'generate_outline', CostCategory::Text),
+            // The five beats, in order, because a fake that merely filled the
+            // column would let a healthy outline pass the hook check without
+            // the check ever having something hook-shaped to look at.
+            //
+            // The last sentence is the one Gate 1 measures, and it is written
+            // to promise the DEPARTURE in the departure's own words — moved,
+            // apartment, address, reception. A closing line about the
+            // reception's receipts would promise the exposure instead, which is
+            // the mismatch the check exists for, and is what the RED half of
+            // GuardsGoRedTest's pair is built from.
+            hook: 'My older sister Dana got married in June and I paid for all of it. '
+                .'The first invoice arrived eleven days after she asked me to stand up with her, '
+                .'and there were nine more behind it, and I had never once said that I would pay. '
+                .'When I said as much on the phone she told me, "You have no kids and no mortgage, '
+                .'and family helps family." I opened a spreadsheet that night and named it DANA '
+                .'WEDDING, and I kept it for eleven months without telling a single person. '
+                .'Two weeks after the reception I moved out of the apartment and left no address, '
+                .'and Dana did not find out that I was gone for three weeks.',
             narratorGrievance: 'My older sister Dana told our whole family I had promised to pay for '
                 .'her wedding, then billed me for it piece by piece over eleven months, and every time '
                 .'I said I had not agreed she told me I was embarrassing her.',
@@ -323,6 +355,20 @@ class FakeScriptWriter implements ScriptWriter
         array $cast,
         int $targetScenes,
     ): SceneDraftSet {
+        // RECORDED SO A TEST CAN ASSERT THEY ARRIVED, exactly as actScript()
+        // does — and for the same reason, one call site later.
+        //
+        // `escalation_beat` was required at outline, checked at Gate 1, shown on
+        // the page, and silently absent from the act generator for two phases.
+        // That was found and fixed there. It was still absent HERE, in the call
+        // that decides what 150-250 pictures contain, and nothing could see it
+        // because this fake never looked at what it was handed.
+        //
+        // The general defect is that NOTHING ASKS WHICH OTHER CALLERS READ A
+        // FIELD. It has now cost twice: this, and `CostUnit::TotalTokens` added
+        // in code while eleven migrations built their columns from the enum. A
+        // fake that records its inputs is the cheapest thing that turns the
+        // third instance into a red test instead of a shipped video.
         $this->calls[] = [
             'method' => 'scenes',
             'story_id' => $story->id,
@@ -330,6 +376,10 @@ class FakeScriptWriter implements ScriptWriter
             'sentences' => count($sentences),
             'cast' => count($cast),
             'target' => $targetScenes,
+            'phase' => $act->phase?->value,
+            'escalation_beat' => $act->escalation_beat,
+            'narrator_grievance' => $story->narrator_grievance,
+            'antagonist_justification' => $story->antagonist_justification,
         ];
 
         $total = count($sentences);
@@ -358,12 +408,18 @@ class FakeScriptWriter implements ScriptWriter
                 // overlap check at Gate 2 runs over whatever this returns.
                 frame: trim(sprintf(
                     '%s %s',
-                    self::FRAMES[$index % count(self::FRAMES)],
+                    $this->frameOverride ?? self::FRAMES[$index % count(self::FRAMES)],
                     $this->injectIntoScenes ?? ''
                 )),
                 charactersPresent: $index % 3 === 2 ? [] : $names,
                 motionPreset: $this->motionOverride ?? self::MOTIONS[$index % count(self::MOTIONS)],
                 isThumbnailCandidate: ! $this->suppressThumbnails && $index === 1,
+                // Empty on the cutaways this fake produces every third scene,
+                // so a fixture run exercises both branches of the builder's
+                // expression handling rather than only the peopled one.
+                expression: $index % 3 === 2
+                    ? ''
+                    : ($this->expressionOverride ?? self::EXPRESSIONS[$index % count(self::EXPRESSIONS)]),
             );
 
             $index++;
@@ -518,6 +574,22 @@ class FakeScriptWriter implements ScriptWriter
      * The Gate 2 overlap check runs over these, so a fake that transcribed its
      * own narration would let a broken check through.
      */
+    /**
+     * Plain, unhedged, and naming what the face is doing.
+     *
+     * Written to satisfy the rules the real prompt states, so that a fixture run
+     * cannot pass a story whose expressions a live check would refuse. Note
+     * there is no "slightly" or "faintly" here: those measure as no expression
+     * at all against the real generator, and a fake that produced them would be
+     * modelling the defect rather than the behaviour.
+     */
+    private const EXPRESSIONS = [
+        'Jaw set, eyes down, mouth closed hard.',
+        'Brows drawn together, mouth open mid-word.',
+        'Openly crying, tears on both cheeks.',
+        'Eyes wide and fixed, lips parted.',
+    ];
+
     private const FRAMES = [
         'A kitchen table at night lit by one overhead lamp, a laptop open on a banking screen, '
             .'a coffee mug gone cold beside it, the rest of the house dark behind.',
