@@ -85,8 +85,15 @@ class Story extends Model
      * `sized_against_wpm` too, and for the reason `locale_profile` is frozen:
      * the act scripts are generated against it, so a value that could be
      * reassigned would describe a script that no longer exists. It is written
-     * once by GenerateActScripts and never again — see
-     * `sizedAgainstWpm()` there, and the migration that added the column.
+     * once by `ScriptSizing::freezeFor()` and never again — see that method,
+     * and the migration that added the column.
+     *
+     * `locale_guidance_fingerprint` is the third of the same kind, and the
+     * argument transfers exactly: the outline, the acts, the cast and the
+     * scenes are all generated against the locale guidance, so a digest that
+     * could be reassigned would describe prose that no longer exists. Written
+     * once by `LocaleGuard::freezeFingerprintFor()` at the outline, which is
+     * where the names and the setting are actually decided.
      *
      * @return array<string, string>
      */
@@ -102,6 +109,7 @@ class Story extends Model
             'target_duration_min' => 'integer',
             'target_duration_max' => 'integer',
             'sized_against_wpm' => 'integer',
+            'locale_guidance_fingerprint' => 'string',
         ];
     }
 

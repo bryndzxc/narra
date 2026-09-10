@@ -5,8 +5,12 @@ namespace App\Services\Claude;
 use Anthropic\Client;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Models\RenderJob;
+use App\Support\ModelText;
 use App\Support\Providers\ProviderUsage;
 use App\Support\Providers\ScriptWriterException;
+use App\Support\ResponseArchive;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -294,8 +298,35 @@ trait TalksToClaude
     /**
      * @return array<mixed>
      */
+    /**
+     * The one place model text enters this application.
+     *
+     * -----------------------------------------------------------------------
+     * THE BOUNDARY, AND WHY IT IS HERE RATHER THAN AT FOUR STAGES
+     * -----------------------------------------------------------------------
+     *
+     * A doubled escape from one act-script call walked through the outline, the
+     * Gate 1 page an operator read and approved, six act calls, the scene draft,
+     * 250 paid stills, a narration run and an alignment — six stages and $16.64
+     * — and was stopped at the render step by `GenerateAssSubtitles::
+     * assertPlain()`, a guard about ASS override markup that caught it only
+     * because a backslash happens to mean something in both JSON and ASS.
+     *
+     * The fix for that is not a fifth guard. Four guards at four stages would
+     * still leave stage five uncovered, and each one would be a second copy of
+     * the same rule — the shape this codebase has paid for repeatedly. Every
+     * string the model sends arrives through this method, so this is where it
+     * gets cleaned, once.
+     *
+     * See `ModelText` for what is undone and, more importantly, what is not.
+     */
     private function decodeJson(string $content, string $what): array
     {
+        // Before the decode, not after: a response that fails to parse is
+        // exactly the one worth keeping, and archiving on success only would
+        // retain every payload except the interesting ones.
+        ResponseArchive::store($what, $content);
+
         $decoded = json_decode($content, true);
 
         if (! is_array($decoded)) {
@@ -304,6 +335,31 @@ trait TalksToClaude
                 $what,
                 Str::limit($content, 300)
             ));
+        }
+
+        [$decoded, $undoubled] = ModelText::undouble($decoded);
+
+        /*
+         * Reported, never silent.
+         *
+         * The whole finding behind this boundary is that the defect ran for six
+         * days without anything saying a word. A boundary that quietly repaired
+         * it would mean nobody ever learns the model is doing this, and the next
+         * variant — a doubled ampersand, a stray BOM — would arrive with the
+         * pipeline looking healthy and this line reading as coverage.
+         */
+        if ($undoubled > 0) {
+            RenderJob::noteOnCurrent(sprintf(
+                'Undoubled %d escape(s) the model emitted in the %s response. '
+                .'The stored text is correct; the raw payload is archived.',
+                $undoubled,
+                $what,
+            ));
+
+            Log::warning('Model emitted doubled escapes.', [
+                'operation' => $what,
+                'count' => $undoubled,
+            ]);
         }
 
         return $decoded;

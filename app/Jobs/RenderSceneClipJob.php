@@ -34,10 +34,6 @@ class RenderSceneClipJob extends RenderStageJob
         /** @var Scene $scene */
         $scene = Scene::query()->findOrFail($this->sceneId);
 
-        if ($scene->duration_ms === null) {
-            throw new RuntimeException("Scene {$scene->sequence} has no audio duration, so its frame count is unknowable.");
-        }
-
         $output = $workspace->clipPath($scene);
         $ffmpeg = app(Ffmpeg::class);
 
@@ -46,9 +42,41 @@ class RenderSceneClipJob extends RenderStageJob
         // probe to hand. Without it framesAt() falls back to milliseconds and a
         // scene whose duration lands on a frame boundary comes out one frame
         // short of its own audio — story 21 scene 201, four samples over.
+        //
+        // Ahead of the guard below, deliberately. It can answer the question
+        // the guard asks, from the file, whenever a path is present — so
+        // running it second meant rejecting rows this stage could have
+        // repaired itself.
         $this->backfillSampleCount($ffmpeg, $workspace, $scene);
 
         $expected = $scene->framesAt();
+
+        /*
+         * ASK THE QUESTION THE MESSAGE STATES.
+         *
+         * This used to be `$scene->duration_ms === null`, checked before the
+         * backfill above. That is ONE of the two inputs a frame count can come
+         * from, and it is the FALLBACK one: `framesAt()` prefers
+         * `scene_audio.samples` and only reaches `scenes.duration_ms` when the
+         * sample count is absent, because a millisecond cannot represent where
+         * audio ends.
+         *
+         * So the guard rejected on a field the arithmetic would not have read.
+         * Story 25 scenes 169, 180, 193 and 201 had 587,372 / 235,172 / 353,315
+         * / 672,078 samples at 24 kHz sitting in the row — 735, 294, 442 and
+         * 841 frames, computable exactly — and were refused because a repair
+         * had restored `scene_audio.duration_ms` and not the copy on `scenes`.
+         *
+         * `framesAt()` returns `?int` and is null precisely when the count is
+         * unknowable, which is what the sentence below has always claimed to
+         * be about. A guard whose message names a question its check never asks
+         * is the proxy-for-the-real-thing shape this project keeps finding.
+         */
+        if ($expected === null) {
+            throw new RuntimeException(
+                "Scene {$scene->sequence} has no audio duration, so its frame count is unknowable."
+            );
+        }
 
         // Idempotent, exactly as the CLI is: a clip that already holds the right
         // number of frames is not re-encoded. Re-running a completed stage must

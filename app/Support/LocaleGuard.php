@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Exceptions\LocaleViolationException;
+use App\Models\Story;
 
 /**
  * Checks generated prose against a locale profile's denylist.
@@ -98,6 +99,82 @@ class LocaleGuard
         }
 
         return trim((string) ($profile['guidance'] ?? ''));
+    }
+
+    /**
+     * A digest of the guidance a story would be generated against right now.
+     *
+     * -----------------------------------------------------------------------
+     * WHY A GENERATION INPUT NEEDS PROVENANCE
+     * -----------------------------------------------------------------------
+     *
+     * `guidanceFor()` answers "what do we believe now". Nothing answered "what
+     * was THIS story written against", and the guidance is about to move — the
+     * en-CN naming convention changes, so every story outlined before it
+     * becomes unreconstructable the moment it does.
+     *
+     * That is exactly `sized_against_wpm`'s situation and it is recorded the
+     * same way, in the same order: **the column first, the backfill second, the
+     * guidance third.** Steps one and two are recoverable and step three is
+     * not. Stories 21 and 23 are the "before" here, and without this nothing in
+     * the record would mark them as such — the guidance is a string in a config
+     * file, not a value on a row, so an edit leaves no trace at all.
+     *
+     * A DIGEST rather than the text, matching `StyleFingerprint`: the guidance
+     * runs to a couple of thousand characters and a row does not want a copy of
+     * it. What the digest can answer is the question that matters — *was this
+     * story written against what we have now* — and it cannot answer *what did
+     * it say*, which is what git is for.
+     *
+     * Normalised the way a style block is, and for the same reason: prose that
+     * is edited wraps differently every time it is touched, and a fingerprint
+     * that moved on a reflow would report every story as stale and be ignored
+     * within a week.
+     *
+     * **Not in `StyleFingerprint` and not in `RunFingerprint`.** Checked, not
+     * assumed: `StyleFingerprint::current()` reads exactly four keys —
+     * `scenes.art_style`, `scenes.constraints`, `characters.reference_frame`,
+     * `characters.inherit_scene_style` — and none of them is this. So editing
+     * the guidance stales no reference sheet, refuses no dispatch and stands no
+     * worker down, which is the property that makes a naming change cheap. This
+     * digest is provenance and nothing branches on it.
+     */
+    public function fingerprintFor(string $localeProfile): string
+    {
+        $guidance = (string) preg_replace('/\s+/u', ' ', $this->guidanceFor($localeProfile));
+
+        return substr(hash('sha256', $localeProfile.'|'.mb_strtolower(trim($guidance))), 0, 16);
+    }
+
+    /**
+     * The same, recorded on the story if it was not already.
+     *
+     * Only the generator calls this, exactly as with
+     * `ScriptSizing::freezeFor()`. Everything else asks `fingerprintFor()`,
+     * which answers the identical question without writing — a page rendering
+     * the guidance must not freeze provenance as a side effect of being looked
+     * at.
+     *
+     * **Frozen once, never re-read.** A story keeps the digest its outline was
+     * written against, so an act re-drafted after a guidance edit cannot
+     * silently reattribute the whole story to text that only half of it saw.
+     * That is the same reasoning `locale_profile` is frozen for, and the reason
+     * a partial re-draft is the case that makes it earn its place.
+     */
+    public function freezeFingerprintFor(Story $story): string
+    {
+        if ($story->locale_guidance_fingerprint !== null) {
+            return (string) $story->locale_guidance_fingerprint;
+        }
+
+        $fingerprint = $this->fingerprintFor((string) $story->locale_profile);
+
+        // forceFill, like the sizing freeze: this is provenance rather than an
+        // attribute anybody assigns, so it is not fillable and must not be able
+        // to arrive from a form.
+        $story->forceFill(['locale_guidance_fingerprint' => $fingerprint])->save();
+
+        return $fingerprint;
     }
 
     /**

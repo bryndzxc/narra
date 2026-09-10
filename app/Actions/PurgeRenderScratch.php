@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Services\Ffmpeg;
+use App\Support\ResponseArchive;
 use RuntimeException;
 
 /**
@@ -44,7 +45,7 @@ class PurgeRenderScratch
      *     dry_run: bool
      * }
      */
-    public function handle(string $renderRoot, bool $dryRun = false): array
+    public function handle(string $renderRoot, bool $dryRun = false, ?int $storyId = null): array
     {
         $final = $renderRoot.'/final.mp4';
 
@@ -132,6 +133,33 @@ class PurgeRenderScratch
         ));
 
         $after = $this->directorySize($renderRoot);
+
+        /*
+         * The archived raw model responses go with the scratch, and under this
+         * Action's guard rather than a second one of their own.
+         *
+         * That placement is the decision. Everything above has already proved
+         * the render succeeded — `final.mp4` exists, declares frames and decodes
+         * at the tail — and a story that FAILED is precisely when somebody wants
+         * to read what the model actually sent. A separate purge on a timer
+         * would delete the evidence for exactly the runs that need it.
+         *
+         * Only when a story is named. `render:purge` can be pointed at a bare
+         * directory, and guessing a story id from a path would be the kind of
+         * plausible inference this codebase keeps paying for.
+         */
+        if ($storyId !== null) {
+            $responses = ResponseArchive::purge($storyId, $dryRun);
+
+            if ($responses['files'] > 0) {
+                $purged[] = sprintf(
+                    'responses/%d/ (%d files, %s)',
+                    $storyId,
+                    $responses['files'],
+                    $this->human($responses['bytes']),
+                );
+            }
+        }
 
         return [
             'purged' => $purged,

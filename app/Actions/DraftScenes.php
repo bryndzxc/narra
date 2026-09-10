@@ -51,6 +51,24 @@ use RuntimeException;
 class DraftScenes
 {
     /**
+     * Frames whose named characters could not be resolved to the stored cast.
+     *
+     * Collected during `persist()` and written to the draft's own `render_jobs`
+     * row afterwards, NOT inside the transaction — `RenderJob::note()` saves a
+     * different model, so a note written inside would be rolled back by the
+     * very failure it was describing.
+     *
+     * A property rather than a return value because `persist()` already returns
+     * the scene count through a transaction closure, and threading a second
+     * value out of it would mean changing that shape for a report. Cleared at
+     * the top of every draft so a reused instance cannot carry a previous run's
+     * findings into this one's log.
+     *
+     * @var array<int, string>
+     */
+    private array $nameProblems = [];
+
+    /**
      * Where a partial re-draft parks its new rows before renumbering.
      *
      * `(story_id, sequence)` is unique and the acts NOT being re-drafted still
@@ -132,6 +150,11 @@ class DraftScenes
         array $onlyActs,
         RenderJob $job,
     ): array {
+        // A previous run's findings must not appear in this run's log. The
+        // container may hand back the same instance, and a stale finding
+        // attached to the wrong draft is worse than none.
+        $this->nameProblems = [];
+
         $cast = $story->characters()->get();
 
         if ($cast->isEmpty()) {
@@ -223,6 +246,33 @@ class DraftScenes
 
         $job->note(sprintf('%d scenes written across %d act(s).', $total, $acts->count()));
 
+        /*
+         * NAMES THE FRAME USED THAT THE CAST COULD NOT ANSWER.
+         *
+         * Written after `persist()` rather than inside it, because `note()`
+         * saves a row and a note written inside the transaction would be rolled
+         * back by exactly the failure worth recording.
+         *
+         * This used to be nothing at all: an unresolvable name was dropped in
+         * silence, and on `en-CN` that was every given name in the story. The
+         * count leads so the line is scannable at a glance on a 270-scene
+         * draft, and each finding is printed in full underneath because
+         * "3 unresolved names" is not something an operator can act on and
+         * "Song could be any of five Songs" is.
+         */
+        if ($this->nameProblems !== []) {
+            $job->note(sprintf(
+                '%d frame(s) named a character the cast could not answer for. Their descriptions are '
+                .'missing from those prompts, which is a still generated without the reference it '
+                .'should have had:',
+                count($this->nameProblems),
+            ));
+
+            foreach ($this->nameProblems as $problem) {
+                $job->note('  '.$problem);
+            }
+        }
+
         // The camera, assigned by code from the frame text rather than asked
         // for per scene.
         //
@@ -287,7 +337,7 @@ class DraftScenes
             $maxThumbnails = (int) config('scenes.thumbnail_candidates.max');
 
             foreach ($drafted as $entry) {
-                foreach ($entry['scenes'] as $draft) {
+                foreach ($entry['scenes'] as $index => $draft) {
                     $sequence++;
 
                     $narration = $this->splitter->join(array_slice(
@@ -296,7 +346,19 @@ class DraftScenes
                         $draft->sentenceCount()
                     ));
 
-                    $present = $this->resolvePresent($draft, $cast);
+                    /*
+                     * Located by ACT and position within it, never by
+                     * `$sequence`. On a partial re-draft that counter starts at
+                     * PARK_BASE and is renumbered afterwards, so quoting it
+                     * here would report "scene 30001" — a number that is true
+                     * for a few milliseconds inside a transaction and matches
+                     * nothing the operator can look at.
+                     */
+                    $present = $this->resolvePresent(
+                        $draft,
+                        $cast,
+                        sprintf('act %d, scene %d of that act', $entry['act']->sequence, $index + 1),
+                    );
 
                     $isThumbnail = $draft->isThumbnailCandidate && $thumbnails < $maxThumbnails;
                     $thumbnails += $isThumbnail ? 1 : 0;
@@ -484,22 +546,53 @@ class DraftScenes
     }
 
     /**
+     * Which stored characters a frame's name list actually refers to.
+     *
+     * **The drop is reported now instead of being silent, and that is the whole
+     * change.** This method used to resolve each name and quietly discard
+     * anything that came back null, on the reasoning — correct as far as it
+     * went — that a frame naming somebody outside the cast is the generator
+     * inventing a person, and pasting no description beats pasting an invented
+     * one.
+     *
+     * What it could not see is that `resolve()` answered the same null for a
+     * REAL cast member it simply could not parse. On `en-CN`, where the family
+     * name comes first, that was every given name in the story: "Yiran" matched
+     * nothing, and Song Yiran's description silently went missing from a frame
+     * about to be paid for. The matcher is fixed, and a name that still cannot
+     * be resolved is now recorded rather than assumed to be an invention.
+     *
+     * An AMBIGUOUS name is the sharper case and it is new. It used to be
+     * answered with whichever character came first — "Lu" returned Lu Jianguo
+     * on a story whose Lu Wenbin carries 105 scenes — so the failure was not a
+     * missing description but a confidently wrong one. It refuses now, which
+     * means a frame loses a description it should have had, and that is
+     * strictly better than a still bought with the wrong face conditioning it
+     * — but ONLY if somebody is told. Hence the collection.
+     *
      * @param  Collection<int, Character>  $cast
+     * @param  string  $where  Act and position, for the report. Never a sequence — see the call site.
      * @return array<int, string>
      */
-    private function resolvePresent(SceneDraft $draft, Collection $cast): array
+    private function resolvePresent(SceneDraft $draft, Collection $cast, string $where): array
     {
         $resolved = [];
 
         foreach ($draft->charactersPresent as $name) {
-            // Resolved against the stored cast rather than trusted. A frame
-            // naming somebody who is not in the cast is usually the generator
-            // inventing a person, and pasting no description for them is
-            // better than pasting one it made up.
-            $character = $this->prompts->resolve($name, $cast);
+            $match = $this->prompts->explain($name, $cast);
 
-            if ($character !== null && ! in_array($character->name, $resolved, true)) {
-                $resolved[] = $character->name;
+            if ($match->character !== null) {
+                if (! in_array($match->character->name, $resolved, true)) {
+                    $resolved[] = $match->character->name;
+                }
+
+                continue;
+            }
+
+            $problem = $match->problem();
+
+            if ($problem !== null) {
+                $this->nameProblems[] = sprintf('%s: %s', $where, $problem);
             }
         }
 

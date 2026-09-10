@@ -111,7 +111,7 @@ class ApproveScenesGate
             $scene->forceFill(['image_path' => null])->save();
         }
 
-        foreach ($changes->needsNarration->filter(fn (Scene $scene): bool => $scene->narrationChanged()) as $scene) {
+        foreach ($changes->needsNarration->filter(fn (Scene $scene): bool => $this->narrationIsStale($scene)) as $scene) {
             /** @var Scene $scene */
             // duration_ms goes with the audio: it IS the audio's length, and a
             // frame count derived from the old narration would size the new
@@ -119,10 +119,45 @@ class ApproveScenesGate
             $scene->forceFill(['duration_ms' => null])->save();
 
             $scene->sceneAudio()->get()->each(function (SceneAudio $audio): void {
+                /*
+                 * CLEAR ALL, not some — and this used to clear some.
+                 *
+                 * It nulled the pointer, the timings and the derived lengths
+                 * and left `samples`, `sample_rate` and the narration
+                 * provenance standing. That is a row describing a file it no
+                 * longer claims to have, and `samples` is not decorative:
+                 * `AudioFrames` treats it as the AUTHORITATIVE input to frame
+                 * arithmetic, over `duration_ms`, precisely because a
+                 * millisecond cannot represent where audio ends. So a
+                 * half-cleared row is one another reader can compute a frame
+                 * count from.
+                 *
+                 * The surviving `samples` is what let the four discarded files
+                 * be identified and re-pointed for nothing, which is a real
+                 * argument and still the wrong instrument: evidence belongs in
+                 * a backup, not in a live row that other code reads as fact. A
+                 * row that can be half-believed is worse than one that is
+                 * plainly empty.
+                 *
+                 * The list mirrors what `GenerateSceneNarration` WRITES, so the
+                 * two stay symmetric: everything generation sets is cleared
+                 * here, and everything generation already nulls stays null.
+                 */
                 $audio->forceFill([
                     'audio_path' => null,
                     'timings_json' => null,
+                    'timings_provider' => null,
+                    'timings_simulated' => null,
                     'duration_ms' => null,
+                    'samples' => null,
+                    'sample_rate' => null,
+                    // Provenance of a file that no longer exists describes
+                    // nothing. Generation rewrites every one of these.
+                    'narration_provider' => null,
+                    'narration_voice_id' => null,
+                    'narration_speed' => null,
+                    'narration_simulated' => null,
+                    'narration_text_hash' => null,
                     'padded_duration_ms' => null,
                     'frames' => null,
                     // Offsets are cumulative, so one scene changing length puts
@@ -140,6 +175,58 @@ class ApproveScenesGate
         // when the timings are missing outright, which the asset stage fills in.
         // Nothing to clear in that case — but a row holding timings for audio
         // that is about to be replaced is handled above.
+    }
+
+    /**
+     * Does this scene's audio provably disagree with its current narration?
+     *
+     * -----------------------------------------------------------------------
+     * ASK THE ARTIFACT, NOT THE RECORD
+     * -----------------------------------------------------------------------
+     *
+     * `narrationChanged()` compares `approved_narration_hash` against the text.
+     * That answers "has the text changed since the operator last approved it",
+     * which is a fact about the RECORD, and it was standing in for a fact about
+     * the ARTIFACT: "was this audio made from this text".
+     *
+     * They agree until the two go out of order. Story 25: the narration text
+     * was repaired, the four affected scenes were re-narrated from the repaired
+     * text for $0.1274, and Gate 2 was re-approved afterwards. At that moment
+     * the approval record still described the PRE-repair text, so
+     * `narrationChanged()` was true and four files that were exactly right were
+     * discarded for being stale. The audio was current; the approval was not.
+     *
+     * `scene_audio.narration_text_hash` is written by GenerateSceneNarration at
+     * the moment of synthesis, so it can answer the artifact question directly
+     * and the ORDER STOPS MATTERING. Repair-then-narrate-then-approve and
+     * repair-then-approve-then-narrate now both keep the audio, because both
+     * end with a file made from the current text.
+     *
+     * **UNKNOWN IS NOT DISCARD, AND IT IS NOT KEEP EITHER.** A null hash is
+     * audio made before this column existed. It falls through to exactly the
+     * predicate that governed it before, so adding the column discards nothing
+     * that would not already have been discarded and keeps nothing that would
+     * not already have been kept — the backfill's absence changes no behaviour
+     * at all. Reading null as "matches" would make every legacy edit at Gate 2
+     * silently keep audio for text that no longer exists, which is a false
+     * success traded for a false purge.
+     *
+     * The trap therefore closes for all future audio the first time a scene is
+     * narrated, and stays open for pre-column rows until they are.
+     */
+    private function narrationIsStale(Scene $scene): bool
+    {
+        $audio = $scene->sceneAudio->first(
+            fn (SceneAudio $a): bool => $a->narration_text_hash !== null
+        );
+
+        if ($audio !== null) {
+            // A positive reading: this file was made from words we can name,
+            // and they are not these words.
+            return $audio->narration_text_hash !== $scene->narrationFingerprint();
+        }
+
+        return $scene->narrationChanged();
     }
 
     /**

@@ -238,6 +238,54 @@ class ExtractCharacters
      * table is for. crc32 is not a security decision here; it just needs to be
      * spread out and repeatable.
      */
+    /**
+     * The locked seed for a character, derived from the story and the NAME.
+     *
+     * -----------------------------------------------------------------------
+     * A NAME IS A GENERATION INPUT HERE, NOT A LABEL. READ THIS BEFORE ADDING A
+     * WAY TO RENAME A CHARACTER.
+     * -----------------------------------------------------------------------
+     *
+     * `crc32(slug|name)` is deterministic on purpose — a rebuild of the same
+     * cast lands on the same seeds rather than quietly re-rolling every face,
+     * which is the property the comment at the call site is about.
+     *
+     * The consequence is the part with no guard on it: **the seed is a pure
+     * function of the name, so changing a character's name changes their
+     * face.** A locked seed is half the consistency mechanism; the reference
+     * sheet is the other half, and a new seed means the next still of that
+     * character is generated from a different starting point than the 30-90
+     * that came before it.
+     *
+     * **This is inert today, and only because nothing can rename a character.**
+     * There is no rename in any Livewire component, no console command, and no
+     * form — `name` arrives once, from `ExtractCharacters`, and a cast rebuild
+     * re-reads it from the same act scripts. So the seed cannot move without
+     * the scripts moving, and if the scripts moved the faces should change.
+     *
+     * If a rename is ever added, it is not a cosmetic edit and must not be
+     * built as one. Three options, none of them free, and the choice belongs to
+     * whoever needs the feature:
+     *
+     *  1. **Keep the seed, rename the row.** Stop deriving from the name and
+     *     store the seed as an ordinary column, seeded once at extraction. The
+     *     face survives a rename. It costs the rebuild property above — two
+     *     extractions of the same cast would no longer agree — unless the
+     *     column is preserved across a rebuild by matching on something else,
+     *     which is the same identity problem one level along.
+     *  2. **Let the seed move, and say so.** A rename becomes a face change,
+     *     stated at the point of renaming, and every existing still of that
+     *     character is stale in the way a retuned art style makes a reference
+     *     sheet stale. `Character::referenceStyleState()` is the shape to copy.
+     *  3. **Refuse a rename once stills exist.** Cheapest and probably right
+     *     for this pipeline: the name is decided at the outline and frozen at
+     *     extraction, and by the time anybody wants to change it there are
+     *     150-250 paid stills conditioned on the face it produced.
+     *
+     * What must NOT happen is a rename that silently changes the seed, because
+     * the cost is invisible until every still has been paid for — which is the
+     * exact shape of the drift the reference mechanism exists to prevent.
+     */
     private function seedFor(Story $story, CharacterProfile $profile): int
     {
         return crc32($story->slug.'|'.mb_strtolower(trim($profile->name)));

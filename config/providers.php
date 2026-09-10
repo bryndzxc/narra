@@ -21,6 +21,21 @@ return [
     'script_writer' => env('PROVIDER_SCRIPT_WRITER', 'anthropic'),
 
     /*
+    | Keep the exact bytes each model response arrived as.
+    |
+    | On by default, because the question it answers cannot be answered any
+    | other way: a doubled escape in one act script took four separate
+    | measurements to diagnose and the conclusion was still an inference, purely
+    | because the app stored decoded values only. Measured across the whole
+    | database history — 132 calls, eight stories — this is 1.7 MB raw and about
+    | 0.3 MB gzipped, a mean of 44 KB per story against a ~3 GB scratch budget.
+    |
+    | Purged with the render scratch, under that Action's guard, so a story that
+    | failed keeps the payloads somebody is going to want to read.
+    */
+    'archive_responses' => (bool) env('ARCHIVE_MODEL_RESPONSES', true),
+
+    /*
     | The publish sheet. Same vendor, same rate cards, same category as the
     | script writer, and defaulted the same way for the same reason: this is
     | text an operator reads at a gate, it costs cents, and leaving it faked

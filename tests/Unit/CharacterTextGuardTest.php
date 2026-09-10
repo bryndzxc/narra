@@ -139,6 +139,77 @@ class CharacterTextGuardTest extends TestCase
         }
     }
 
+    /**
+     * GREEN half: a listed object read as part of a garment or a hairstyle.
+     *
+     * "Tailored blazers over fitted blouses, knee-length pencil skirts, minimal
+     * jewelry" is story 25's Amy Sun, verbatim. It was refused twice at
+     * extraction — $0.0869 of billed calls, both on `pencil` — for a sentence
+     * that is exactly what `style_notes` is for.
+     *
+     * `mop` and `bowl` land on hair rather than clothing, which is why they are
+     * in the same change: idealised faces converge, so hair carries more of the
+     * identification than it did, and "a mop of dark hair" is ordinary phrasing
+     * here.
+     */
+    public function test_a_garment_or_a_hairstyle_is_not_a_handheld_object(): void
+    {
+        foreach ([
+            'Tailored blazers over fitted blouses, knee-length pencil skirts, minimal jewelry.',
+            'Simple pencil dresses in navy and charcoal.',
+            'A mop of dark hair over a square face.',
+            'Black hair in a blunt bowl cut.',
+            'A bottle-green wool coat over grey trousers.',
+            'Box-pleated skirts with plain knit tops.',
+            'Cigarette trousers and flat leather shoes.',
+            'Knife-pleat skirts in navy.',
+            'A cream teddy coat in winter.',
+            'Dark suits with a dog collar.',
+        ] as $notes) {
+            $this->assertTrue(
+                $this->guard->isClean($notes),
+                "False positive on: {$notes} — ".implode(', ', $this->guard->violations($notes))
+            );
+        }
+    }
+
+    /**
+     * RED half, and the reason the exception counts occurrences rather than
+     * setting a flag.
+     *
+     * A garment must not excuse a prop standing beside it. If the first
+     * innocent phrase suppressed the term, this sentence would pass while
+     * putting a pencil in that character's hand in every scene she appears in.
+     */
+    public function test_a_garment_does_not_excuse_a_real_prop_beside_it(): void
+    {
+        $notes = 'Knee-length pencil skirts, and always a pencil behind one ear.';
+
+        $this->assertFalse($this->guard->isClean($notes));
+        $this->assertContains('handheld object "pencil"', $this->guard->violations($notes));
+    }
+
+    /**
+     * The exception is scoped to the phrase, not to the word. Each of these is
+     * the object itself, and none of them may be excused.
+     */
+    public function test_the_objects_themselves_still_fire(): void
+    {
+        foreach ([
+            'Always carries a pencil case.' => 'pencil',
+            'Never without a bowl of soup.' => 'bowl',
+            'Holding a bottle at every family dinner.' => 'bottle',
+            'Carries a cardboard box under one arm.' => 'box',
+            'A kitchen knife in one hand.' => 'knife',
+        ] as $notes => $term) {
+            $this->assertContains(
+                sprintf('handheld object "%s"', $term),
+                $this->guard->violations($notes),
+                "Wrongly excused: {$notes}"
+            );
+        }
+    }
+
     // -- description: the field this guard could not see for two phases -------
 
     /**

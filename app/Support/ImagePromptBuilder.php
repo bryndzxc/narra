@@ -273,55 +273,169 @@ class ImagePromptBuilder
     }
 
     /**
-     * Names are matched loosely on purpose.
+     * Names are matched on TOKENS, and a tie is refused rather than guessed.
      *
-     * The cast is stored as "Kyle Bennett" and a frame will reasonably say
-     * "Kyle". Failing to match would silently drop the one description the
-     * whole consistency mechanism depends on, so first-name and case-folded
-     * matches both resolve.
+     * -----------------------------------------------------------------------
+     * WHAT THIS REPLACED, AND WHY IT WAS WRONG IN A WAY NOTHING REPORTED
+     * -----------------------------------------------------------------------
+     *
+     * The previous version matched exactly, then fell back to the FIRST TOKEN
+     * of the name being looked up:
+     *
+     *     $first = explode(' ', $wanted)[0];
+     *     if ($stored === $first || str_starts_with($stored.' ', $first.' ')) …
+     *
+     * Its docblock said, correctly, that the cast is stored as "Kyle Bennett"
+     * and a frame will reasonably say "Kyle". That is a rule about WESTERN name
+     * order — given name first — and it was written when every story in the
+     * database was en-US.
+     *
+     * On `en-CN`, where the locale profile asks for family name first, it is
+     * inverted. Probed against both live Chinese casts:
+     *
+     *     Song Yiran  -> Song Yiran        Yiran   -> NULL
+     *     Lu Wenbin   -> Lu Wenbin         Wenbin  -> NULL
+     *     Wang Suhua  -> Wang Suhua        Suhua   -> NULL
+     *     Song        -> Song Anan     (the cast holds FIVE Songs)
+     *     Lu          -> Lu Jianguo    (not Lu Wenbin, the 105-scene lead)
+     *
+     * **Every given name resolved to nothing, and every family name resolved to
+     * whichever holder the collection happened to yield first.** The second is
+     * the worse half: it is not a miss, it is a confident wrong answer, and it
+     * pastes one character's description into another character's frame on a
+     * still that is about to be paid for.
+     *
+     * -----------------------------------------------------------------------
+     * THE RULE NOW
+     * -----------------------------------------------------------------------
+     *
+     * 1. **Exact, case-folded.** Unchanged, and it still wins first. Both live
+     *    Chinese stories use full names in every frame, so this is the path
+     *    that actually runs today and its behaviour is deliberately untouched.
+     * 2. **Most shared tokens.** Order-free, so "Kevin" finds Kevin Lin and
+     *    "Suhua" finds Wang Suhua. "Bennett" now finds Kyle Bennett too, which
+     *    the old first-token rule could not do in either name order.
+     * 3. **A tie is AMBIGUOUS and resolves to nobody.** Not the first match,
+     *    not the longest, not the one with the most scenes. Any of those is a
+     *    rule for picking between people the generator did not distinguish, and
+     *    the honest answer is that this name does not identify anybody.
+     *
+     * **Most-tokens rather than any-token is what keeps step 3 from firing on
+     * ordinary input.** "Yiran Song" written the Western way round shares two
+     * tokens with Song Yiran and one with Song Anan, so it resolves cleanly;
+     * only a genuine tie at the top is refused.
+     *
+     * -----------------------------------------------------------------------
+     * A REFUSAL YOU CAN SEE BEATS A DROP YOU CANNOT
+     * -----------------------------------------------------------------------
+     *
+     * `resolve()` still answers `?Character` and every existing caller keeps
+     * working. What is new is `explain()`, which says WHY — because the
+     * previous null conflated "nobody is called that" with "five people are",
+     * and `DraftScenes::resolvePresent()` discarded both silently. The cost of
+     * the silence is a still bought without the description that the whole
+     * reference mechanism exists to attach.
+     *
+     * @param  Collection<int, Character>|array<int, Character>  $cast
+     */
+    public function resolve(string $name, iterable $cast): ?Character
+    {
+        return $this->explain($name, $cast)->character;
+    }
+
+    /**
+     * The same match, with the reason attached. See `resolve()`.
+     *
+     * @param  Collection<int, Character>|array<int, Character>  $cast
+     */
+    public function explain(string $name, iterable $cast): NameMatch
+    {
+        $asked = trim($name);
+        $wanted = $this->key($name);
+
+        if ($wanted === '') {
+            return NameMatch::unknown($asked);
+        }
+
+        // Materialised once. The cast arrives as a Collection or an array
+        // today, and walking an iterable twice is the kind of thing that works
+        // until somebody passes a generator.
+        $characters = [];
+
+        foreach ($cast as $character) {
+            $characters[] = $character;
+        }
+
+        foreach ($characters as $character) {
+            if ($this->key($character->name) === $wanted) {
+                return NameMatch::exact($character, $asked);
+            }
+        }
+
+        $wantedTokens = $this->tokens($wanted);
+
+        if ($wantedTokens === []) {
+            return NameMatch::unknown($asked);
+        }
+
+        $best = 0;
+
+        /** @var array<int, Character> $tied */
+        $tied = [];
+
+        foreach ($characters as $character) {
+            $shared = count(array_intersect($wantedTokens, $this->tokens($this->key($character->name))));
+
+            if ($shared === 0 || $shared < $best) {
+                continue;
+            }
+
+            if ($shared > $best) {
+                $best = $shared;
+                $tied = [];
+            }
+
+            $tied[] = $character;
+        }
+
+        if ($tied === []) {
+            return NameMatch::unknown($asked);
+        }
+
+        if (count($tied) === 1) {
+            return NameMatch::token($tied[0], $asked);
+        }
+
+        return NameMatch::ambiguous(
+            $asked,
+            array_map(static fn (Character $c): string => (string) $c->name, $tied),
+        );
+    }
+
+    /**
+     * The words of a name, deduplicated.
+     *
+     * Deduplicated because a repeated token must not let one character out-score
+     * another on the same evidence twice — "Sun Sun" sharing "sun" twice with
+     * "Sun Yaqin" would beat a genuine two-token match.
+     *
+     * @return array<int, string>
+     */
+    private function tokens(string $key): array
+    {
+        return array_values(array_unique(array_filter(explode(' ', $key), static fn (string $t): bool => $t !== '')));
+    }
+
+    /**
+     * Case-folded, punctuation-stripped, for comparison only.
+     *
+     * The stripping is why "Sun Yaqin's grandmother" keys as
+     * "sun yaqins grandmother" and still matches itself exactly.
      */
     private function key(string $name): string
     {
         $name = mb_strtolower(trim($name));
 
         return (string) preg_replace('/[^a-z ]/', '', $name);
-    }
-
-    /**
-     * Resolve a name the generator used against the stored cast.
-     *
-     * Exposed so the drafting Action can record which characters a scene
-     * actually resolved to, and warn about a frame naming somebody who is not
-     * in the cast — usually a sign the generator invented a person.
-     *
-     * @param  Collection<int, Character>|array<int, Character>  $cast
-     */
-    public function resolve(string $name, iterable $cast): ?Character
-    {
-        $wanted = $this->key($name);
-
-        if ($wanted === '') {
-            return null;
-        }
-
-        $first = explode(' ', $wanted)[0];
-
-        foreach ($cast as $character) {
-            $stored = $this->key($character->name);
-
-            if ($stored === $wanted) {
-                return $character;
-            }
-        }
-
-        foreach ($cast as $character) {
-            $stored = $this->key($character->name);
-
-            if ($stored === $first || str_starts_with($stored.' ', $first.' ')) {
-                return $character;
-            }
-        }
-
-        return null;
     }
 }

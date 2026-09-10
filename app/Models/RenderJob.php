@@ -134,6 +134,8 @@ class RenderJob extends Model
     {
         $job = self::open($storyId, $stage);
 
+        self::$open[] = $job;
+
         try {
             $result = $work($job);
         } catch (Throwable $e) {
@@ -143,11 +145,62 @@ class RenderJob extends Model
             $job->fail($e);
 
             throw $e;
+        } finally {
+            array_pop(self::$open);
         }
 
         $job->succeed(null, $job->log);
 
         return $result;
+    }
+
+    /**
+     * The stage currently being recorded in this process, if any.
+     *
+     * ---------------------------------------------------------------------
+     * WHY THIS EXISTS RATHER THAN A PARAMETER
+     * ---------------------------------------------------------------------
+     *
+     * Something several layers below an Action sometimes has a fact the
+     * operator needs on the row — the provider boundary counting escapes it
+     * had to undo, and the response archive naming the file it wrote. Neither
+     * is worth a new field on five DTOs and a read at five call sites: "a fix
+     * applied at one call site reads as covered" is the most repeated finding
+     * in CLAUDE.md, and five is worse than one.
+     *
+     * A stack rather than a single slot. Nothing nests `record()` today —
+     * `ExtractCharacters` and `DraftScenes` are sequential inside
+     * `DraftSceneListJob`, not nested — but a stack costs nothing and a single
+     * slot would silently lose the outer row the first time one did.
+     *
+     * Popped in a `finally`, so a stage that throws cannot leave a stale entry
+     * behind for the next job this worker picks up. That matters more here than
+     * it looks: a queue worker lives for hours across hundreds of jobs, and a
+     * leaked static would attach one story's notes to another story's row.
+     *
+     * @var array<int, self>
+     */
+    private static array $open = [];
+
+    public static function current(): ?self
+    {
+        return self::$open === [] ? null : self::$open[array_key_last(self::$open)];
+    }
+
+    /**
+     * Note something onto the stage being recorded, if one is being recorded.
+     *
+     * Silent when there is none — a console command running an Action outside
+     * `record()`, or a test. The caller is reporting something incidental; it
+     * must never be the reason a stage fails.
+     */
+    public static function noteOnCurrent(string $line): void
+    {
+        try {
+            self::current()?->note($line);
+        } catch (Throwable) {
+            // A bookkeeping note must never take down the work it describes.
+        }
     }
 
     /**

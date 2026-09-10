@@ -206,8 +206,24 @@ return [
                 - Chinese settings and geography: a provincial city, a county town, an
                   ancestral village, a Beijing or Shanghai apartment block, a hospital ward,
                   a company office.
-                - Chinese names, family name first — Chen Wei, Li Xiuying, Zhang Ming. Use
-                  the same form for a character every time they are named.
+                - Names split by generation, because this is how the people in this world
+                  actually introduce themselves in English.
+                  - Characters in their twenties: an English given name with a Chinese
+                    family name, given name first — Kevin Lin, Amy Sun, Grace Zhou,
+                    Leo Xu. This is the generation that picked an English name at
+                    university or at work, and using it marks them as the ones who have
+                    one foot outside the family.
+                  - Parents, grandparents, in-laws and anyone of that generation: a full
+                    Chinese name, family name first — Wang Suhua, Chen Wei, Li Xiuying,
+                    Zhang Ming. They do not have an English name and would not use one.
+                  - Never Tito, Lola, Ate or Po as a given name. They read as English
+                    names but each is also a Filipino honorific, and the narration is
+                    checked for those.
+                - ONE form per character, everywhere, for the whole story. If a character
+                  is Kevin Lin, he is Kevin or Kevin Lin and never a second Chinese given
+                  name as well — not in narration, not in dialogue, not when an elder is
+                  speaking to him. A character with two names is a character the audience
+                  has to keep reconciling while listening.
                 - Family structure with real authority in it. Parents, parents-in-law and
                   elder relatives make decisions that bind adult children, and refusing them
                   has a cost. This is the engine of the genre and it must not be softened

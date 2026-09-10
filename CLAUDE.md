@@ -384,6 +384,18 @@ are all generated against it. Two profiles exist and neither replaces the other
   Yuan, metric units. It also suits the anime style better than American
   suburbia does.
 
+  **Names split by generation**, which is a deliberate part of the register
+  rather than a concession to English-speaking viewers: an English given name
+  with a Chinese family name for the twenties cast — Kevin Lin, Amy Sun — and a
+  full Chinese name, family name first, for parents, grandparents and in-laws.
+  Young urban Chinese adopting an English name at university or at work is
+  real, and the split marks the generation with one foot outside the family,
+  which is the fault line the genre runs on. The authority machinery is
+  unaffected: it runs through address by relationship — Mother, Second Uncle,
+  Eldest Brother — and not through given names at all. What it costs, and the
+  provenance column that went in before it moved, is under "Where bugs actually
+  live".
+
 Adding it needed no code in `LocaleGuard`, which is what the profiles being data
 was for. What it did need was a producer: `locale_profile` had no input anywhere,
 so a second profile would have been a column value no story could hold.
@@ -1729,6 +1741,29 @@ Closed since:
   this checkable is that each consumer gets an arrival assertion at the moment it
   is wired.
 
+  **THE SAME QUESTION WITH THE ARROW REVERSED: WHEN A FIELD IS RESTORED IN ONE
+  PLACE, ASK WHO ELSE HOLDS A COPY.**
+
+  `duration_ms` lives in two tables on purpose. `scene_audio.duration_ms` is the
+  audio file's length; `scenes.duration_ms` is what the clip's frame count falls
+  back to. A repair of story 25's four re-narrated scenes restored the first and
+  not the second, and `RenderSceneClipJob` — which reads the second — failed all
+  four.
+
+  **The answer was in a docblock I had read in the same session.**
+  `GenerateSceneNarration::writeAudioRow()` says it in as many words: *"`duration_ms`
+  lands in two places on purpose and they are not duplicates: `scene_audio.
+  duration_ms` is this file's length, and `scenes.duration_ms` is what the clip's
+  frame count is computed from."* It was on screen while the write payload was
+  being read to decide what the full clear should mirror.
+
+  That is the migration lesson's exact shape — the finding written down, in the
+  right place, correct and complete, applied to `category` and not to `unit` —
+  with the reader being the author this time. **Being the person who read it is
+  no protection.** A fact in prose fires once, at the moment somebody happens to
+  be looking at it for a different reason; the question has to be asked out loud
+  during the change, or a mechanism has to ask it.
+
 - **A PARTIAL SCENE RE-DRAFT COLLIDED WITH ITSELF, AND ITS OWN TEST FILE COULD
   NOT EXPRESS THE FAILURE.** `story:scenes --acts=` had never worked on a real
   story. `DraftScenes::persist()` parks the NEW rows at `PARK_BASE + 1 ..
@@ -2580,6 +2615,212 @@ Closed since:
   unexplained is worth more than a plausible name**, because the name is what
   the next person will test instead of looking.
 
+- **THE NAME MATCHER WAS DOCUMENTED FOR WESTERN NAME ORDER AND `en-CN` PUTS THE
+  FAMILY NAME FIRST. EVERY GIVEN NAME MISSED; EVERY FAMILY NAME RETURNED THE
+  WRONG PERSON.** Found by reading the code next to a naming question, not by
+  any check — the suite, four audits and both shipped Chinese stories were green
+  throughout.
+
+  `ImagePromptBuilder::resolve()` matched exactly, then fell back to the FIRST
+  token of the name being looked up. Its own docblock said why, and was right
+  about the case it named: *"the cast is stored as 'Kyle Bennett' and a frame
+  will reasonably say 'Kyle'"*. That is a rule about given-name-first order,
+  written when every story in the database was `en-US`.
+
+  Probed against both live Chinese casts:
+
+  ```
+  Song Yiran -> Song Yiran      Yiran  -> NULL
+  Wang Suhua -> Wang Suhua      Suhua  -> NULL
+  Song       -> Song Anan   (story 21's cast holds FIVE Songs)
+  Lu         -> Lu Jianguo  (not Lu Wenbin, who carries 105 scenes)
+  ```
+
+  **The family-name half is the worse one and it is not a miss.** A miss drops a
+  description; this pasted one specific character's description into another
+  character's frame, on a still about to be bought, with nothing anywhere
+  recording that a choice had been made. `DraftScenes::resolvePresent()` then
+  discarded the misses in silence, on a comment that was correct about the case
+  it was written for — *"a frame naming somebody who is not in the cast is
+  usually the generator inventing a person"* — and could not tell that from a
+  real cast member the matcher could not parse. **One null carried both
+  meanings.**
+
+  **THE MEASUREMENT THAT LOOKED LIKE EXONERATION AND PROVED NOTHING.** The first
+  attempt to see whether this was live counted name forms in the stored cast
+  blocks and found **0 unresolvable out of 540**. That number is worthless:
+  `ImagePromptBuilder` WRITES those blocks from the stored names, so it could
+  only ever have agreed with itself — the fake-TTS-deriving-its-duration-from-
+  the-constant shape, in a probe. The second attempt compared narration against
+  the pivot and was genuinely inconclusive: 22 given-name-only cases in story
+  21, against **42 full-name cases** that resolve fine and are therefore just
+  "mentioned, not in frame". Comparable rates, so nothing can be concluded, and
+  that is what was reported.
+
+  So: **the hazard is structural and confirmed by direct probe; a live instance
+  is not demonstrated.** What has been holding it off is the guidance line
+  *"use the same form for a character every time they are named"*, which makes
+  every frame take the exact path — and the naming change below is what puts
+  that line under more pressure.
+
+  **The rule now**, in `resolve()` / `explain()`:
+
+  1. **Exact, case-folded.** Unchanged and still first, so the path both shipped
+     stories actually run is byte-for-byte the same behaviour.
+  2. **Most shared tokens.** Order-free: "Kevin" finds Kevin Lin and "Suhua"
+     finds Wang Suhua. "Bennett" now finds Kyle Bennett too, which the old
+     first-token rule could not do in EITHER order — so this is not the old rule
+     flipped, and there is a test asserting the identical thing in both orders.
+  3. **A tie is AMBIGUOUS and resolves to nobody.** Not the first, not the
+     longest, not the one with the most scenes: any of those is a rule for
+     picking between people the generator did not distinguish.
+
+  **Most-tokens rather than any-token is what stops (3) firing on ordinary
+  input.** "Yiran Song" shares two tokens with Song Yiran and one with Song
+  Anan, so it resolves cleanly rather than tying — a guard that refused a name
+  plainly identifying somebody would be ignored within a week.
+
+  **A REFUSAL YOU CAN SEE BEATS A DROP YOU CANNOT**, which is the other half and
+  the reason `NameMatch` exists rather than a nullable Character. AMBIGUOUS and
+  UNKNOWN both resolve to nobody and want opposite reactions — one is a person
+  who is not in the story, the other is a person who is, and a description
+  missing from a frame that needed it. `DraftScenes` writes them to the
+  `draft_scenes` job log, after the transaction rather than inside it, because
+  `RenderJob::note()` saves a row and a note written inside would be rolled back
+  by the failure worth recording. Located by ACT and position, never by
+  `$sequence`, which during a partial re-draft is a parked number in the 30,000s
+  that matches nothing an operator can look at.
+
+  Both other call sites moved with it — `RecordSceneCast::backfill()` reports an
+  ambiguous name where it previously could not even see one — because a fix
+  applied to one caller out of several is this file's most-repeated finding.
+
+  **Six drills, each confirmed red**, including restoring the original matcher
+  verbatim (8 cases red) and swapping most-tokens for any-token (the reversed
+  full name goes ambiguous).
+
+- **`en-CN` NAMES SPLIT BY GENERATION, AND THE PROVENANCE COLUMN WENT IN
+  BEFORE THE GUIDANCE MOVED.**
+
+  English given name with a Chinese family name for characters in their
+  twenties — Kevin Lin, Amy Sun — and full Chinese names, family name first, for
+  parents, grandparents and in-laws. Wang Suhua stays Wang Suhua.
+
+  **It is register-consistent rather than a compromise**, and the reason is that
+  the split IS the genre's fault line: young urban Chinese adopting an English
+  name at university or work is real, and it marks the generation with one foot
+  outside the family. The authority machinery does not run through given names
+  anyway — *"characters address each other by relationship as often as by name:
+  Mother, Second Uncle, Eldest Brother"* is what carries filial hierarchy and it
+  is untouched.
+
+  Three costs, named because they are real:
+
+  - **The surname link weakens for a listening audience.** "Sun Yaqin" and "Sun
+    Yaqin's grandmother" read as one family instantly; "Amy Sun" and "Wang
+    Suhua" do not — and the reason they don't (Chinese women keep their natal
+    surname) is more accurate, not less. In a 40-minute video with no
+    scrollback, kinship that cannot be reconstructed has to be stated.
+  - **It multiplies name forms in play**, which is exactly what the matcher
+    above is least good at. "Kevin Lin" has a natural short form; "Wang Suhua"
+    does not. The guidance now says ONE form per character for the whole story
+    — including when an elder is speaking — because a character with a second
+    Chinese given name is a character the resolver and the audience both have
+    to reconcile.
+  - **Four English given names are unusable**: Tito, Lola, Ate and Po are in the
+    shared operator-leak WARN list, because each is also a Filipino honorific.
+    That list is shared by every profile deliberately — it is about where the
+    OPERATOR sits, not where the story is set — so moving to China does not make
+    "Lola" safe. The guidance names them as forbidden, and a test asserts both
+    that the guidance's own example names are clear of the list and that those
+    four still collide, so the instruction cannot outlive the collision.
+
+  **`stories.locale_guidance_fingerprint`, added and backfilled BEFORE the
+  guidance moved.** The guidance is a string in a config file rather than a
+  value on a row, so an edit leaves **no trace whatsoever** — a worse starting
+  point than `sized_against_wpm`, where at least the constant was readable in
+  one place. Same three steps in the same order, for the same reason: column,
+  backfill, edit. One and two are recoverable and three is not.
+
+  **The backfill is split by what the evidence supports, and story 21 is left
+  NULL.** `config/locale.php` has been touched by exactly two commits. The
+  guidance blocks were extracted from both and compared byte for byte:
+
+  | profile | e336a3e | a3d64c7 | working tree |
+  |---|---|---|---|
+  | en-US | 902 chars | identical | identical |
+  | en-CN | **absent** | 2415 chars | identical |
+
+  **A commit date is an upper bound on when a change existed and never a lower
+  one**, and this repository commits in batches well after the work. Story 21 is
+  the proof: it is `en-CN`, created a full day BEFORE the commit that first
+  records the `en-CN` profile existing at all. The profile was plainly in the
+  working tree already; what cannot be shown is that its TEXT was what
+  `a3d64c7` later captured.
+
+  So en-US stories take the current digest (identical in every commit the file
+  has ever had — the same strength of claim the 160 backfill made), story 23
+  takes it (created after the commit, and the file is provably unchanged from
+  there to now), and **story 21 is left unknown**. Marking it with the current
+  digest was the comfortable answer and a false one: it would assert that its
+  acts were generated against text nobody can show was in place, which is
+  precisely the assumption this column exists to stop being frozen into a row.
+  It costs nothing that matters — after the edit, 21 reads unknown, 23 reads the
+  old en-CN digest and new stories read the new one, so 21 is still
+  distinguishable from anything written afterwards.
+
+  **Not in `StyleFingerprint`, and that was checked rather than assumed.** That
+  method reads exactly four keys — `scenes.art_style`, `scenes.constraints`,
+  `characters.reference_frame`, `characters.inherit_scene_style` — and none is
+  this; `RunFingerprint` records `locale_profile`, the story's VALUE, and never
+  the guidance text. So a naming edit stales no reference sheet, refuses no
+  dispatch and stands no worker down. That is what makes it cheap, and it is the
+  property most worth not losing later.
+
+  Frozen at the OUTLINE, inside the transaction that writes the acts — because
+  that is where the names, the setting and the spine are actually decided, and
+  because a failed outline leaves no acts and must not attribute the story to
+  guidance that produced nothing.
+
+  **A drill passed, and the test was wrong rather than the guard.** The
+  "scoped per profile" case removed the profile key from the hash entirely and
+  stayed GREEN, because en-US and en-CN carry different guidance TEXT so their
+  digests differ either way. The assertion was true for a reason other than the
+  one it named. The state that makes the key load-bearing is two profiles whose
+  guidance reads the same — a real possibility the moment one is forked from
+  another — so there is now a case that builds exactly that. **Suspect the
+  drill first, and then suspect the fixture.**
+
+- **A CHARACTER'S NAME IS A GENERATION INPUT, NOT A LABEL: THE SEED IS DERIVED
+  FROM IT. Inert today, and the reason it is inert is the thing that could be
+  removed by accident.**
+
+  ```php
+  'seed' => crc32($story->slug.'|'.mb_strtolower(trim($profile->name)))
+  ```
+
+  Deterministic on purpose, and the call site says why: a cast rebuild lands on
+  the same seeds rather than quietly re-rolling every face. The consequence has
+  nothing guarding it — **changing a character's name changes their face.** A
+  locked seed is half the consistency mechanism and the reference sheet is the
+  other half, so a new seed means the next still of that character starts from a
+  different point than the 30-90 before it.
+
+  **It cannot fire today because nothing can rename a character.** There is no
+  rename in any Livewire component, no console command and no form; `name`
+  arrives once from `ExtractCharacters`, and a rebuild re-reads it from the same
+  act scripts. The seed cannot move unless the scripts move, and if the scripts
+  moved the faces should change.
+
+  So this is written at `seedFor()` rather than only here, because the person
+  who needs it is the one adding a rename, and they will be reading that file
+  and not this one. Three options are set out there — store the seed instead of
+  deriving it, let the rename stale the stills the way a retuned style stales a
+  reference sheet, or refuse a rename once stills exist. **What must not happen
+  is a rename that silently moves the seed**, because the cost is invisible
+  until every still has been paid for, which is the exact drift the reference
+  mechanism exists to prevent.
+
 - **THE GUARD THAT WOULD HAVE CAUGHT IT EXISTS, ASKS EXACTLY THE RIGHT FIVE
   QUESTIONS, AND NOTHING CALLED IT. THE CONSOLE-AUDIT SHAPE LANDING ON THE MONEY
   BUTTON.** This is the sharper of the two findings from story 23 and it leads,
@@ -2951,6 +3192,448 @@ Closed since:
   way no reader can see.** Generating source through string substitution is where
   it happens. Prefer an exact-match editor over a generated patch for anything
   containing a backslash.
+
+- **THE WORD WAS RIGHT AND THE READING WAS WRONG: `pencil` FIRED ON A PENCIL
+  SKIRT.** `CharacterTextGuard` matches `\b<word>\b` with no head noun behind
+  it, so a garment in the field that is FOR garments was refused as a handheld
+  object — twice on story 25, $0.0869 of billed extraction, both attempts on
+  the same word, because the repair loop re-asks the whole cast rather than the
+  clause.
+
+  **The fix is not to drop the words.** `pencil` is a real prop and story 12
+  has a man carrying a leather folder; a list that removed every noun with a
+  second sense would stop catching what it exists for. `NOT_AN_OBJECT` scopes
+  the exception to the PHRASE, and **counts occurrences rather than setting a
+  flag** — "carries a pencil and wears pencil skirts" must still fire, and a
+  flag would let a real prop hide behind a garment in the same sentence. Both
+  halves drilled red.
+
+  Swept before touching anything: 60 stored characters across 6 stories, **zero
+  garment false positives** — every live finding was a true positive, and
+  `pencil` fired on nothing stored. The only instance was the extraction being
+  refused in flight, which is invisible in stored data precisely because the
+  guard refuses before persist. `mop` and `bowl` went in the same change and
+  rank above `pencil`: they land on HAIR, and since idealised faces converge
+  hair carries more of the identification than it used to.
+
+- **TWO DEFECTS CANCELLED AND THE RESULT LOOKED LIKE A GUARD WORKING. IT IS NOT
+  A FINDING ABOUT EITHER DEFECT, WHICH IS WHY IT IS ITS OWN ENTRY.**
+
+  Story 25, 2026-09-09. Its act-script job was killed mid-run by a manual
+  worker restart, leaving four of six acts written. `ExtractCharacters` then
+  ran on the incomplete story and nothing stopped it — see the precondition
+  entry below. It produced a four-act cast and was refused, twice, by
+  `CharacterTextGuard`, for the word `pencil` in *"knee-length pencil
+  skirts"* — a garment, in the field that is for garments, read as a handheld
+  object.
+
+  So the state on disk was: story 25 with zero characters. Which is the
+  CORRECT state, arrived at for no correct reason. **The only thing standing
+  between the operator and a four-act cast frozen onto a six-act story was an
+  unrelated false positive on a skirt.**
+
+  Neither defect knows the other exists. The guard was refusing a garment, not
+  protecting a precondition; the missing precondition check was not made
+  narrower by the guard firing. Change either one alone — fix the false
+  positive first, or write the acts without noticing the cast — and the
+  partial cast persists. **The order in which two unrelated bugs are repaired
+  decided whether a bad cast was frozen**, and nothing in the codebase or in
+  this file would have said so.
+
+  Worth stating as a class rather than as this instance: **a system with
+  enough guards in it will sometimes be saved by the wrong one, and the saving
+  is invisible.** A green outcome is evidence about the outcome and not about
+  the mechanism — the same sentence as a passing test that cannot fail, one
+  level up, and with the same remedy: ask WHICH check produced the good state,
+  not whether the state is good. Had the four-act cast persisted here, nothing
+  would have reported it either; it would have been thirteen plausible
+  characters described from two thirds of the story.
+
+  The repair order used was acts -> cast -> guard, chosen for exactly this
+  reason and recorded because the reasoning is the reusable part: the
+  false positive was load-bearing until the thing it was accidentally
+  blocking had been fixed properly.
+
+- **I NAMED THIS TRAP, AND WALKED INTO ITS MIRROR IMAGE AN HOUR LATER. THAT IS
+  THE ENTRY — NOT THE ORDERING.**
+
+  The trap, as written at the end of the entry above: repairing scene text on a
+  story past Gate 2 leaves the four scenes flagged, because
+  `approved_narration_hash` is written at Gate 2 approval and nowhere else. The
+  remedy given was to re-approve Gate 2. The warning given was "a second
+  `assets:generate` would re-buy audio that is already correct".
+
+  What happened next, with that paragraph already written down:
+
+  1. Repaired the stored text.
+  2. **Re-narrated the four scenes — $0.1274.**
+  3. Re-approved Gate 2.
+
+  At step 3 the approval record still described the PRE-repair text, so
+  `narrationChanged()` was true, and `ApproveScenesGate::clearStalePaidAssets()`
+  discarded all four files it had just been paid to make. Correctly, by its own
+  rule — *"an asset is discarded because it demonstrably changed, never because
+  we cannot prove it did not"* — and on evidence that was one step out of date.
+  **The audio was current; the approval was the stale thing.**
+
+  The recovery was free only by accident: the clear nulled `duration_ms` and the
+  pointer but left `samples` standing, and 235,172 samples at 24 kHz is 9,799 ms
+  — the post-repair length, not the 9,474 ms before it. ffprobe agreed with the
+  row on all four. So a HALF-CLEARED ROW is what saved $0.1274, which is not an
+  argument for half-clearing; it is the second time in two entries that a defect
+  was rescued by an unrelated one.
+
+  ---------------------------------------------------------------------------
+  **A RULE YOU CAN ONLY FOLLOW BY REMEMBERING IT IS NOT A RULE.**
+  ---------------------------------------------------------------------------
+
+  This is the finding, and it outranks the ordering it is about.
+
+  "Re-approve before you re-narrate" is true, was derivable from what was
+  already on the page, and would have prevented this. It is also worthless as a
+  safeguard: it lives in prose, it fires once per situation, it has no
+  mechanism, and the person best placed to apply it had written the adjacent
+  paragraph sixty minutes earlier. This file already says a prompt request with
+  no mechanism reads as a guard while doing nothing — **the same is true of a
+  procedure**, and the reader being the author is no protection at all.
+
+  Three options existed and only one of them removes the need to remember:
+
+  | | closes it? | why |
+  |---|---|---|
+  | re-point the files by hand | no | fixes this instance; the next reordering repeats it |
+  | re-narrate again | no | pays twice for the same lesson |
+  | **record what text the audio was made from** | **yes** | the order stops being a thing anyone has to get right |
+
+  `scene_audio` recorded provider, voice, speed and simulated — WHO made the
+  audio — and never WHAT WORDS were sent. So the only thing that could speak to
+  staleness was a record of what the OPERATOR approved, standing in for a fact
+  about the ARTIFACT. **Same axis distinction as `assertReady()` and the
+  `updated_at` publication date, one layer down**: a claim about the record
+  substituted for a claim about the thing.
+
+  `narration_text_hash` is written at synthesis by `GenerateSceneNarration` and
+  read by `narrationIsStale()`. Repair-then-narrate-then-approve and
+  repair-then-approve-then-narrate now both keep the audio, because both end
+  with a file made from the current text. There is no longer an order to get
+  right.
+
+  **NULL is UNKNOWN and falls through to the previous predicate**, deliberately.
+  Reading it as "matches" would silently keep audio for text that no longer
+  exists on all 971 pre-column rows; reading it as "differs" would make the
+  backfill's absence a purge. Falling back changes nothing for a legacy row —
+  the same discards happen as before, no more — and the trap closes for every
+  row the first time it is narrated. Four rows are backfilled, the only four
+  whose audio could be PROVEN to match, by ffprobe agreeing with the surviving
+  sample counts.
+
+  **And the half-clear is now a full clear**, mirroring exactly what
+  `GenerateSceneNarration` writes. `samples` is what `AudioFrames` treats as
+  authoritative for frame arithmetic — over `duration_ms`, deliberately — so a
+  row with a null pointer and a live sample count is one another reader can
+  compute frames from. Evidence belongs in a backup, not in a live row that
+  other code reads as fact. **A row that can be half-believed is worse than one
+  that is plainly empty**, and the fact that this instance was rescued by the
+  half-belief is exactly the kind of luck the entry above says not to bank.
+
+  Drilled: restoring `narrationChanged()` at the call site turns three of the
+  four cases red, including the one that reproduces the shipped bug, while the
+  unknown-provenance case stays green because that path is untouched.
+
+- **A REPAIR VERIFIED THREE WAYS, AND ALL THREE WERE THE SAME CHECK. COMPLETE ON
+  THE WRONG SUBJECT.**
+
+  The four re-pointed scenes then failed the clip stage: *"has no audio duration,
+  so its frame count is unknowable."* The re-point had been verified three times
+  before it was declared done:
+
+  | # | check | subject |
+  |---|---|---|
+  | 1 | ffprobe against the WAV | the artifact |
+  | 2 | ffprobe's sample count against `scene_audio.samples` | the row describing the artifact |
+  | 3 | `assets:generate --estimate` showing 0 pending, $0.00 | the asset stage |
+
+  Three passes, three green, and **not one asked whether the next stage could use
+  what was there.**
+
+  **The fourth check shared the blind spot by construction, which is the detail
+  that makes this land.** `assets:generate` looked like a consumer check and was
+  not one: it reads `needsNarration()`, which reads `scene_audio`, which is the
+  same table checks 1 and 2 were already about. It could only ever agree with
+  them. Three checks that were really one, plus a fourth that inherited the same
+  subject — and the appearance of independent confirmation is precisely what
+  made it feel finished.
+
+  What was actually missing was `scenes.duration_ms`, nulled one line ABOVE the
+  `scene_audio` block in `clearStalePaidAssets()`. The repair was scoped to the
+  table the damage had been observed in.
+
+  **And the encoder never needed it anyway.** `Scene::framesAt()` prefers
+  `scene_audio.samples`, which was populated and correct: 735, 294, 442 and 841
+  frames, computable exactly. The guard tested `scenes.duration_ms` — the
+  FALLBACK input — and refused rows whose authoritative input was sitting right
+  there. Its own message says "its frame count is unknowable", a question
+  `framesAt()` answers directly by returning null; the check never asked it.
+  **A guard whose message names a question its check does not ask** is the
+  proxy-for-the-real-thing shape, and it is now `if ($expected === null)`, with
+  `backfillSampleCount()` moved AHEAD of it so a row this stage could repair
+  from the file is not refused before it tries.
+
+  **The drill is the part worth keeping.** Five behavioural cases were written
+  for the new guard and every one of them reflected into `framesAt()`. Restoring
+  the old `$scene->duration_ms === null` in the job left all of them GREEN — 8
+  tests, 98 assertions, passing over the exact defect they existed for. That is
+  `truncationMessage()` again: a builder that is correct, well covered, and no
+  longer reachable from its call site. The delegation is asserted at the call
+  site now, and drilled both ways — the old condition, and the backfill moved
+  back after the guard.
+
+  **That assertion then failed on the correct code**, because the docblock beside
+  the guard QUOTES the old condition to explain the change. A source scan that
+  cannot tell code from comment reports the explanation as the defect — the same
+  class as blade-php-scan flagging a tag inside a block the compiler never
+  compiles. It strips comments with `token_get_all` now.
+
+  The general form, and it generalises past this repair: **counting checks is not
+  counting coverage.** Three green results are one green result if all three
+  interrogate the same object. When a repair is declared done, the question is
+  not "how many ways did I verify it" but "which SUBJECTS did I verify, and is
+  the consumer one of them" — and a check that reaches the consumer through the
+  same table as the others has not left the first subject at all.
+
+- **SECOND INSTANCE, AND IT IS THE SAME SHAPE FROM FURTHER AWAY: THE ONLY THING
+  IN SIX STAGES THAT NOTICED A CORRUPT STRING WAS A GUARD ABOUT SUBTITLE
+  MARKUP, WHICH CAUGHT IT BECAUSE BACKSLASH HAPPENS TO MEAN SOMETHING IN BOTH
+  FORMATS.**
+
+  The defect: on some calls the model emits a DOUBLED backslash inside its
+  structured-output JSON, so `json_decode` faithfully produces the six literal
+  characters `—` where an em dash was meant. The app decodes exactly once
+  and correctly — this is not a missing decode, and the proof is that real em
+  dashes and literal escapes coexist in the same story (story 25: 42 literal
+  against 1,512 real; story 23: zero literal against 1,553 real). It is
+  per-CALL: no single field value in the database has ever contained both
+  forms, and an act's `script` and `summary`, which come from one call, always
+  agree.
+
+  100 occurrences, 23 rows, three stories. First appearance **story 21,
+  2026-09-03**; story 23 is clean; stories 2-20 are clean. Same model
+  throughout, both locales, so it is generation variance and nothing in this
+  repo changed to cause it.
+
+  **What it walked through untouched:** the outline call, the Gate 1 page an
+  operator read and approved, six act-script calls, the scene draft, 250 paid
+  stills, an ElevenLabs narration run and a WhisperX alignment — six stages and
+  $16.64 on story 25 alone. It was stopped at the render step by
+  `GenerateAssSubtitles::assertPlain()`, which refuses `[{}\r\n]` because
+  braces and backslashes are ASS override markup and a stray one would corrupt
+  the `{\k}` karaoke timing the whole format rests on.
+
+  **That guard is correct and is about something else entirely.** It has no
+  opinion about JSON, about model output or about text integrity; it caught
+  this because `\` is both a JSON escape lead-in and an ASS control character.
+  Change the corrupt character to almost anything else — a doubled `&amp;`, a
+  stray BOM, a smart quote that should have been straight — and nothing in the
+  pipeline would have said a word.
+
+  **The catch reads as coverage, and that is the trap.** "The subtitle stage
+  caught it" invites the conclusion that corrupt text gets caught. What
+  actually happened is that one corruption happened to collide with one
+  unrelated format's metacharacter, six stages downstream of where it entered
+  and after every paid call had already been made. `tools/nonprintable-scan.php`
+  could not have helped: it scans the repo tree, and this lives in the
+  database.
+
+  **Two asymmetries worth keeping.** The stills were untouched — `image_prompt`
+  carried zero escapes across all 1,150 scenes in the database — but not
+  because anything protects it; the frame sentence in those calls simply came
+  back clean. The narration was NOT untouched: four scenes were synthesised
+  from text containing the literal characters, and the aligner is what says so.
+  A real em dash gets a 20 ms span, the aligner's floor for something unvoiced;
+  the literal escapes got **401, 420, 421, 520 and 1,182 ms**. Something was
+  spoken. The stored text is repaired and those four scenes are re-narrated for
+  about $0.06.
+
+  The fix is a boundary, not a fifth guard: `ModelText::undouble()`, applied
+  once in `decodeJson()`, where every string the model sends enters this
+  application. Four guards at four stages is the shape this file already
+  rejects, and it would still leave stage five uncovered. It REPORTS — a count
+  and the operation onto the open `render_jobs` row — because a boundary that
+  silently repaired this would mean nobody ever learns the model is doing it,
+  and the next variant would arrive with the pipeline looking healthy. The raw
+  wire text is archived by `ResponseArchive` from the same method, before the
+  decode, so the next question of this kind is a grep rather than an inference.
+
+  ---------------------------------------------------------------------------
+  **TWO MEASUREMENT FAILURES DURING THE INVESTIGATION, AND THE SECOND IS THE
+  ONE TO KEEP.**
+  ---------------------------------------------------------------------------
+
+  **One: the sweep counted the wrong thing and under-reported.** The first
+  scans looked for `\u`, found 100 occurrences and called that the population.
+  Sweeping for BACKSLASH instead found seven more in story 21's act summaries —
+  `entirely \"guardian one Song Yiran\"` — the same defect on a different
+  character. A search shaped like the first instance finds the first instance;
+  the class was "an escape the model doubled", and `\u` was one member of it.
+
+  **Two: a probe read keys that did not exist, and the resulting silence was
+  reported as a measurement.** The question was whether the corrupt text had
+  been VOICED. The probe read `start` and `end` from the WhisperX timings; the
+  keys are `start_ms` and `end_ms`. Every lookup returned null, and null was
+  written up as "the aligner assigned no time range, so probably nothing was
+  spoken" — a conclusion with the sign inverted, handed over as evidence.
+
+  Reading the right keys reverses it. There is a free control in the same
+  story: scenes whose narration holds a REAL em dash.
+
+  | | token | aligned span |
+  |---|---|---|
+  | real em dash, 4 instances | `—` | **20 ms** every time — the aligner's floor for something unvoiced |
+  | literal escape, 5 instances | `—` | **401, 420, 421, 520, 1182 ms** |
+
+  Twenty to sixty times the control — which was reported as "something was
+  spoken", and **that is wrong too.**
+
+  **THE OPERATOR LISTENED. IT IS A CLEAN PAUSE: NOTHING WAS SPOKEN.** The
+  escape never reached the audio, and this was a subtitles-only defect from
+  start to finish.
+
+  So the alignment data did not settle the question in EITHER direction. The
+  aligner attributes a span to every token it is given, and for a token with no
+  acoustic match it borrows from the silence on both sides — 401 to 1182 ms of
+  pause, handed to the escape because the escape was in the text it was told to
+  align. The 20 ms control does not rescue the reasoning either: a real em dash
+  sits inside a normally-paced sentence with speech on both sides, so there is
+  no silence for it to absorb. The two numbers differ because the SURROUNDING
+  AUDIO differs, not because one was voiced and the other was not.
+
+  **Three readings of one measurement, two of them confidently wrong and
+  offered as evidence:**
+
+  | reading | conclusion | why it failed |
+  |---|---|---|
+  | `start`/`end` returned null | "nothing was spoken" | the keys are `start_ms`/`end_ms`; absence read as agreement |
+  | spans are 20x the control | "something was spoken" | right keys, real numbers, and the quantity does not mean what it was taken to mean |
+  | the operator listened | **nothing was spoken** | settled it |
+
+  The second failure is the more instructive one, because the first looks like
+  carelessness and the second does not. The keys were right, the control was
+  well chosen, the arithmetic was correct, and the ratio was real. What was
+  wrong was the assumption underneath — that a forced aligner's span length is
+  a proxy for whether a token was voiced. It is not, and nothing in the data
+  says it is. **A measurement can be accurate, controlled, and still be
+  answering a different question than the one asked**, and no amount of
+  additional rigour inside the wrong frame corrects it.
+
+  What was cheap and skipped, both times: nine seconds of listening.
+
+  **That is absence read as agreement, inside the check written to settle the
+  question** — this file's most repeated sentence, committed by the
+  investigation rather than by the code, which is the version that is hardest
+  to notice. A missing FIELD reads as a missing VALUE, and a missing value
+  reads as zero, and zero was the answer that happened to fit the comfortable
+  hypothesis. Nothing failed; the probe ran clean and printed NULL in a neat
+  column.
+
+  The practice that catches it costs one line: **a probe that reports an
+  absence must prove it can report a presence.** Here that was free and sitting
+  in the same table — the real em dashes are the known-answer case, and had the
+  probe been pointed at them first it would have printed NULL for those too,
+  which is impossible for text that is definitely there. Same rule as a guard
+  that must be shown to go red, applied to a measurement instead of a check.
+
+- **`ExtractCharacters::assertReady()` ASKS A POSITION QUESTION WHERE A
+  PRECONDITION QUESTION IS NEEDED, AND THE FACT IT NEEDS IS ALREADY COMPUTED
+  CORRECTLY IN TWO OTHER PLACES. Third instance of the precondition axis.**
+
+  ```php
+  if ($story->status->rank() < StoryStatus::Scripted->rank()) { throw ... }
+  ```
+
+  `scripted` says Gate 1 is behind this story. It cannot say the story carries
+  six scripts, and story 25 was at `scripted` with four. It passed.
+
+  This is the axis table's PRECONDITION row again and it is a sharper instance
+  than the `voice_id` one, because here the guard is in the RIGHT PLACE —
+  upstream, before the billed call, in the Action rather than the component —
+  and still asks the wrong KIND of question. Placement was never the defect.
+  A guard can be perfectly positioned and be checking the wrong axis, which is
+  what makes the axis question worth asking separately from "is this guard
+  early enough".
+
+  **The fact is not missing. It is computed correctly twice, and neither
+  copy is where the money is spent:**
+
+  | | asks | verdict on story 25 | runs |
+  |---|---|---|---|
+  | `ExtractCharacters::assertReady()` | is the status >= scripted | passes | **first, and bills** |
+  | `DraftScenes` (line ~190) | does THIS act have a script | throws, per act | second |
+  | `OutlineGate::unwrittenActs()` | which acts have no script | reports acts 5, 6 | at Gate 1 |
+
+  So the stage that spends money has neither, and the stage that throws runs
+  after it. Rule 1 — a guard must be upstream of the thing it distrusts — with
+  the guard and the thing in the right order and the WRONG STAGE holding the
+  guard. `DraftSceneListJob` calls `ExtractCharacters` first by design (the
+  cast feeds the scenes), so the billed stage is structurally ahead of the
+  only completeness check in the pipeline.
+
+  Not built. The repair is to ask `unwrittenActs()`'s question in
+  `assertReady()` — free, one query, no new state — and it should refuse
+  rather than warn, because a cast harvested from a partial story is wrong in
+  a way no later stage inspects.
+
+- **AND THE FILTER IS WHAT MAKES IT SILENT. `->filter(fn ($script) => trim($script)
+  !== '')` TURNS "TWO ACTS ARE MISSING" INTO "HERE ARE FOUR SCRIPTS".**
+
+  `ExtractCharacters` line ~83 drops the empty scripts on the way to the
+  model, and the only presence check behind it is `if ($scripts === [])` —
+  which asks whether there is ANYTHING, never whether there is EVERYTHING. Two
+  missing acts and zero missing acts produce the same code path, the same
+  prompt shape and the same success.
+
+  **Absence read as agreement, inside a stage that spends money.** That
+  sentence is the most repeated finding in this file and this is its most
+  expensive placement so far: the filter is not a bug in isolation — dropping
+  empty scripts is reasonable — it is that nothing counts what it dropped. A
+  filter that discarded two acts and said so would have made the precondition
+  gap visible without any new check at all.
+
+  What story 25 escaped, measured after the acts were written: no character
+  appears ONLY in acts 5-6, so the four-act cast would not have been missing a
+  person outright. Four of thirteen — Cindy Hu, Grace Zhou, Sun Jianmin, Sun
+  Jianping — have most of their named appearances in those two acts, so they
+  would have been described from a minority of their material. **The hazard is
+  structural and this instance did not realise its worst form**, which is
+  worth recording precisely so the next reading of it is not "we checked and
+  it was fine".
+
+- **A REFUSAL MESSAGE STATED A PRECONDITION AS A FACT, HAVING CHECKED ONLY A
+  STATUS. Found by being refused by it.** `OperatorAction::WriteScript` at
+  `scripted`:
+
+  > Gate 1 has been approved and **every act carries a script written against
+  > this outline**. Reopen Gate 1 — that returns the story to "outlined"…
+
+  Story 25 had four of six. `permittedAt($status)` is purely positional, so
+  the clause after the "and" is an assertion nothing computed — the same
+  substitution as `assertReady()` one layer out, except that here it is
+  SPOKEN. A position check is at least honest about what it knows; a position
+  check narrating a precondition tells the operator something false in the one
+  sentence they were given to act on.
+
+  It is the axis question's own FIGURE case, which this file lists as the
+  fourth candidate and unwatched: a claim about the CONTENTS of a story, where
+  no capability makes it true or false. `updated_at` standing in for a
+  publication date is the same shape — right type, right-looking, never
+  measured.
+
+  Not built. The honest repairs are to drop the clause, or to compute it —
+  `unwrittenActs()` is the same query the section above wants.
+
+  Worth knowing while it stands: `story:write --acts-only=5,6` is deliberately
+  scoped PAST this refusal (`$refusal !== null && $this->parseActsOnly() === []`),
+  so a partial re-write is available and touches no gate state. That is the
+  path story 25's acts 5 and 6 were written through.
 
 Still open, none blocking, all findable here rather than one gate at a time:
 
@@ -3954,6 +4637,47 @@ Still open, none blocking, all findable here rather than one gate at a time:
   **The standing rule, for both files: a guard that cannot be shown to go red is
   indistinguishable from a guard that passed.** Adding a guard means adding its
   red/green pair in the same change, not remembering to drill it by hand.
+
+  ---------------------------------------------------------------------------
+  **AND ITS TWIN, WHICH IS THE SAME RULE POINTED AT A MEASUREMENT: A PROBE THAT
+  REPORTS AN ABSENCE MUST FIRST BE SHOWN TO REPORT A PRESENCE.**
+  ---------------------------------------------------------------------------
+
+  These two belong side by side rather than one inside the other. Everything
+  above is about CHECKS — a guard, an assertion, a tool — and every lesson in it
+  applies unchanged to the ad-hoc probe somebody writes to answer a question
+  during an investigation. That probe is never committed, never reviewed, and
+  its output is handed over as evidence, which makes it the least scrutinised
+  instrument in the project and the one most likely to decide something.
+
+  The instance: a probe read `start` and `end` from WhisperX word timings. The
+  keys are `start_ms` and `end_ms`. Every lookup returned null, the probe ran
+  clean, printed NULL in a neat column, and the null was written up as "the
+  aligner assigned no time range, so nothing was spoken" — a conclusion with
+  the sign inverted, offered as a finding. **A missing FIELD read as a missing
+  VALUE, and a missing value read as zero**, and zero happened to fit the
+  comfortable hypothesis.
+
+  The check was free and was sitting in the same table: point the probe at
+  something that is definitely there. Real em dashes in the same story would
+  have printed NULL too — impossible for text that exists — and the defect
+  would have been visible in one run.
+
+  **Both rules are the same shape and both were skipped in the same week.** A
+  guard nobody drills and a probe nobody calibrates are both instruments whose
+  silence is indistinguishable from a pass, and both produced a confident wrong
+  answer that went into a report as fact.
+
+  **The corollary, learned when the SECOND reading of that same measurement was
+  also wrong:** calibrating the probe is necessary and not sufficient. The
+  corrected probe read the right keys, used a well-chosen control and produced
+  real numbers — and the conclusion drawn from them ("the spans are 20x the
+  control, so something was spoken") was still false, because a forced aligner
+  borrows silence for tokens it cannot match. **A measurement can be accurate,
+  controlled and still be answering a different question than the one asked.**
+  When the answer matters and a direct observation is cheap, take the direct
+  observation: nine seconds of listening settled what two rounds of alignment
+  arithmetic could not.
 
   ---------------------------------------------------------------------------
   **HOW DEFECTS ARE ACTUALLY FOUND HERE: BY WORKING NEXT TO THEM. THIS IS THE

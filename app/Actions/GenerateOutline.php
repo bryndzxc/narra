@@ -200,6 +200,21 @@ class GenerateOutline
         );
 
         DB::transaction(function () use ($story, $draft): void {
+            /*
+             * The guidance this outline was written against, frozen now.
+             *
+             * Inside the transaction on purpose: a failed outline leaves the
+             * story with no acts and will be re-run, so a fingerprint written
+             * before the acts landed would attribute a story to guidance that
+             * produced nothing.
+             *
+             * Here rather than at the act or scene call because THIS is where
+             * the names, the setting and the spine are decided — every later
+             * stage is handed the outline as context and follows it. See
+             * `LocaleGuard::fingerprintFor()` for why the column exists.
+             */
+            $this->locale->freezeFingerprintFor($story);
+
             // Re-running replaces the outline rather than appending to it.
             // Nothing downstream exists yet — the story is at `draft` or
             // `outlined`, so no act has a script and no scene references one.

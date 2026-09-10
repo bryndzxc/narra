@@ -313,6 +313,21 @@ class GenerateSceneNarration
                 // narrators and invisible to every other check.
                 'narration_speed' => NarrationPace::configuredSpeed(),
                 'narration_simulated' => $this->speech->isSimulated(),
+                /*
+                 * The WORDS this file was made from, recorded at the moment it
+                 * was made — the one thing this row described everything about
+                 * except.
+                 *
+                 * Without it the only evidence about whether audio still
+                 * matches its scene was `scenes.approved_narration_hash`, which
+                 * records what the OPERATOR approved rather than what the
+                 * SYNTHESISER was sent. The two agree until somebody repairs
+                 * the text and regenerates before re-approving, at which point
+                 * the approval record is the stale one and Gate 2 discards four
+                 * freshly paid files for being exactly right. See
+                 * ApproveScenesGate::clearStalePaidAssets().
+                 */
+                'narration_text_hash' => Scene::fingerprint($scene->narration_text),
                 'duration_ms' => $durationMs,
                 'samples' => $samples,
                 'sample_rate' => $sampleRate,

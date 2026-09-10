@@ -43,6 +43,12 @@ class RecordSceneCast
         $ids = [];
 
         foreach ($names as $name) {
+            // `resolve()` and not `explain()` here on purpose: this method is
+            // handed names the caller has already resolved and reported on, so
+            // a second report would be the same finding twice. What matters is
+            // that it now inherits the token matcher and, in particular, that
+            // an ambiguous name links NOTHING rather than linking whichever
+            // character sorted first.
             $character = $this->prompts->resolve($name, $cast);
 
             if ($character !== null) {
@@ -136,13 +142,24 @@ class RecordSceneCast
                 continue;
             }
 
-            if ($this->prompts->resolve($name, $cast) === null) {
-                // Reported rather than dropped. A name in a prompt that matches
-                // nobody in the cast means either the cast changed after
-                // drafting or the generator invented a person, and both are
-                // things the operator should be told rather than have quietly
-                // skipped.
-                $unresolved[] = $name;
+            $match = $this->prompts->explain($name, $cast);
+
+            if (! $match->resolved()) {
+                /*
+                 * Reported rather than dropped. A name in a prompt that matches
+                 * nobody means either the cast changed after drafting or the
+                 * generator invented a person, and both are things the operator
+                 * should be told rather than have quietly skipped.
+                 *
+                 * `explain()` rather than `resolve()`, so an AMBIGUOUS name is
+                 * reported as one. It used to be neither reported NOR dropped:
+                 * the old matcher answered a family name with whichever
+                 * character came first, so "Song" on a cast holding five Songs
+                 * silently linked the pivot to one of them. That is worse than
+                 * the miss this branch was written for, and it did not reach
+                 * this branch at all.
+                 */
+                $unresolved[] = $match->problem() ?? $name;
 
                 continue;
             }

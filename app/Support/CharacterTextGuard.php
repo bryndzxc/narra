@@ -127,6 +127,61 @@ class CharacterTextGuard
     ];
 
     /**
+     * Phrases in which a listed object is not an object at all.
+     *
+     * -----------------------------------------------------------------------
+     * THE WORD IS RIGHT AND THE READING IS WRONG
+     * -----------------------------------------------------------------------
+     *
+     * Matching is a bare `\b<word>\b` with no head noun behind it, so `pencil`
+     * fires on "knee-length pencil skirts" — a garment, in the field that is
+     * FOR garments. Live instance: story 25's Amy Sun, refused twice at
+     * extraction for $0.0869 of billed calls, both times on the same word,
+     * because the repair loop re-asks the whole cast rather than the clause.
+     *
+     * **The fix is not to drop the words.** `pencil` is a real handheld object
+     * and story 12 has a man carrying a leather folder; a list that removed
+     * every noun with a second sense would stop catching the thing it exists
+     * for. What is wrong is reading two words as one, so the exception is
+     * scoped to the phrase rather than to the term.
+     *
+     * **Every occurrence must be excused, not merely one.** "Carries a pencil
+     * and wears pencil skirts" is a violation, and a rule that suppressed the
+     * term on first sight of an innocent phrase would let a real prop hide
+     * behind a garment in the same sentence. The count has to match.
+     *
+     * `mop` and `bowl` are here on the same evidence as `pencil` and rank
+     * ABOVE it: they land on HAIR, and idealised faces converge, so hair is
+     * carrying more of the identification than it used to. "A mop of dark
+     * hair" and "a blunt bowl cut" are ordinary phrasing for this register and
+     * neither is a thing a hand closes around.
+     *
+     * Deliberately narrow. "A pencil case", "a bowl of soup" and "mopping the
+     * floor" are untouched — each is either the object or a different word, and
+     * a broad exception would be the guard going quiet, which is the one
+     * direction this class must never move in.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const NOT_AN_OBJECT = [
+        // Garments. The head noun is what makes it clothing.
+        'pencil' => ['pencil skirt', 'pencil dress'],
+        'box' => ['box pleat', 'box-pleat'],
+        'knife' => ['knife pleat', 'knife-pleat'],
+        'cigarette' => ['cigarette trouser', 'cigarette pant', 'cigarette leg'],
+        'teddy' => ['teddy coat', 'teddy jacket'],
+        'dog' => ['dog collar'],
+
+        // Hair, and the reason these two were asked for by name.
+        'mop' => ['mop of'],
+        'bowl' => ['bowl cut'],
+
+        // A colour, not a thing. The hyphen is already a word boundary, so the
+        // bare match fires on "bottle-green" exactly as it does on "bottle".
+        'bottle' => ['bottle green', 'bottle-green', 'bottle blonde', 'bottle-blonde'],
+    ];
+
+    /**
      * Movement and stance. Description only.
      *
      * A gait is not a face. `walks with a noticeable stiffness in one hip` is
@@ -439,12 +494,46 @@ class CharacterTextGuard
 
         foreach ($categories as $template => $needles) {
             foreach ($needles as $needle) {
-                if (preg_match('/\b'.preg_quote($needle, '/').'\b/u', $text) === 1) {
-                    $found[] = sprintf($template, $needle);
+                $hits = preg_match_all('/\b'.preg_quote($needle, '/').'\b/u', $text);
+
+                if ($hits < 1) {
+                    continue;
                 }
+
+                // Every occurrence excused is not a violation; one left over
+                // is. See NOT_AN_OBJECT — "carries a pencil and wears pencil
+                // skirts" must still fire.
+                if ($hits - $this->excused($text, $needle) < 1) {
+                    continue;
+                }
+
+                $found[] = sprintf($template, $needle);
             }
         }
 
         return array_values(array_unique($found));
+    }
+
+    /**
+     * How many occurrences of `$needle` in `$text` are part of a phrase that
+     * makes it not an object.
+     *
+     * Counted rather than flagged, so a garment cannot excuse a prop standing
+     * beside it in the same sentence.
+     *
+     * The phrase is matched with a word boundary at the FRONT only: "pencil
+     * skirt" has to cover "pencil skirts" and "cigarette trouser" has to cover
+     * "cigarette trousers", and listing every plural separately is the
+     * hand-maintained second copy this class already refuses to keep.
+     */
+    private function excused(string $text, string $needle): int
+    {
+        $excused = 0;
+
+        foreach (self::NOT_AN_OBJECT[$needle] ?? [] as $phrase) {
+            $excused += preg_match_all('/\b'.preg_quote($phrase, '/').'/u', $text);
+        }
+
+        return $excused;
     }
 }

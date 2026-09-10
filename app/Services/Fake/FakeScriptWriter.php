@@ -109,6 +109,24 @@ class FakeScriptWriter implements ScriptWriter
      */
     public ?string $frameOverride = null;
 
+    /**
+     * Names to put in every scene's `charactersPresent`, instead of the cast.
+     *
+     * The fake names characters by their exact stored name, so every frame it
+     * produces resolves on the exact path and the matcher's fallback is never
+     * reached. That is right for the ordinary fixture and it means the suite
+     * could not express a frame naming somebody ambiguously — which is the
+     * state that made "Lu" return Lu Jianguo on a story whose Lu Wenbin carries
+     * 105 scenes.
+     *
+     * A fixture that cannot describe the failing state makes every assertion
+     * about it vacuous however carefully it is written, so this exists to
+     * describe it.
+     *
+     * @var array<int, string>|null
+     */
+    public ?array $charactersPresentOverride = null;
+
     /** One expression for every scene, replacing the rotation. */
     public ?string $expressionOverride = null;
 
@@ -411,7 +429,7 @@ class FakeScriptWriter implements ScriptWriter
                     $this->frameOverride ?? self::FRAMES[$index % count(self::FRAMES)],
                     $this->injectIntoScenes ?? ''
                 )),
-                charactersPresent: $index % 3 === 2 ? [] : $names,
+                charactersPresent: $this->charactersPresentOverride ?? ($index % 3 === 2 ? [] : $names),
                 motionPreset: $this->motionOverride ?? self::MOTIONS[$index % count(self::MOTIONS)],
                 isThumbnailCandidate: ! $this->suppressThumbnails && $index === 1,
                 // Empty on the cutaways this fake produces every third scene,

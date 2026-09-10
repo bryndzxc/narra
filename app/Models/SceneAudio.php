@@ -35,6 +35,7 @@ class SceneAudio extends Model
         'narration_voice_id',
         'narration_speed',
         'narration_simulated',
+        'narration_text_hash',
         'timings_json',
         'timings_provider',
         'timings_simulated',

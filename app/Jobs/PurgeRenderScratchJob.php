@@ -47,7 +47,7 @@ class PurgeRenderScratchJob extends RenderStageJob
     {
         // The guard lives in the Action: it refuses to run unless final.mp4
         // exists AND its tail decodes, because existence is not success.
-        $result = app(PurgeRenderScratch::class)->handle($workspace->renderRoot, $this->dryRun);
+        $result = app(PurgeRenderScratch::class)->handle($workspace->renderRoot, $this->dryRun, $story->id);
 
         return [$workspace->path('final.mp4'), sprintf(
             '%s%s freed, kept: %s',
