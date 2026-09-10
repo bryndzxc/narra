@@ -3817,6 +3817,73 @@ Closed since:
   absence has to be shown able to report a presence, and here the presence was
   one `ls -R` away.
 
+- **DOES THIS RECORD SURVIVE ITS SUBJECT BEING REGENERATED? A STANDING
+  QUESTION FOR ANY STORED OPERATOR DECISION.** Two defects this week were the
+  same defect one field apart, and neither is about the field it was found in.
+
+  | | the choice | what the row recorded | what it stood for | what moved underneath |
+  |---|---|---|---|---|
+  | 1 | Gate 2 approval of a scene's narration | the approved TEXT, on the approval | the audio file | the text was repaired, the audio re-made, and the approval re-done in the wrong order — `scene_audio` knew WHO made the file and never WHAT WORDS it was made from |
+  | 2 | Gate 4 pick of a thumbnail | a SLOT, `thumb-4` | a pair of stills | a re-compose put a different pair in slot four; the row went on saying `thumb-4` |
+
+  In both, the record described a POSITION or a STATE — a place in a list, a
+  gate crossing — rather than the artifact the operator actually chose, and in
+  both it was correct for exactly as long as nothing was regenerated. That is
+  why neither could be found by reading it: a slot number and the pair it holds
+  agree on the day the pick is made, and the disagreement only exists after a
+  second run, in a row that has not changed.
+
+  **The question, asked of every column that holds an operator's decision:
+  if the thing this decision is ABOUT were regenerated tomorrow, would this row
+  still mean what the operator meant — or would it silently mean something
+  else?** A record that names the artifact (its text, its scene ids, a hash of
+  its bytes) survives; one that names where the artifact sat, or what state
+  the story was in when it was chosen, does not. The repair is the same both
+  times: `narration_text_hash` on the audio, scene ids plus a stills
+  fingerprint on the composition — the record made to describe the thing.
+
+  **`title_selected` passes, and the passing case is what makes the rule
+  readable.** It stores the chosen TEXT, not an index into `title_options`;
+  `chooseTitle()` copies the string out of the list in the same request, and a
+  `--force` regeneration replaces the five variants and leaves the chosen
+  string standing on its own. That is not an accident of implementation: the
+  string IS the deliverable — it is what gets typed into YouTube — so the
+  record and the artifact are the same bytes and nothing can move between
+  them. Contrast `thumbnail_scene_id`, one column over on the same sheet: it
+  names a scene by id, a full re-draft deletes and recreates every scene row,
+  and the pointer dangles. That is the honest failure mode — it points at
+  nothing rather than at something else — but it is still a record that does
+  not survive its subject, and it is unchecked.
+
+  **The luck, recorded because it is the third time.** Story 25's pick
+  survived the positional re-compose because slot two happened to hold scenes
+  41 + 59 in both runs. Nothing preserved it; the two lists coincided. The
+  three rescues-by-coincidence this week:
+
+  | | what was saved | by what |
+  |---|---|---|
+  | 1 | story 25 from a four-act cast frozen onto a six-act story | an unrelated false positive on the word `pencil` |
+  | 2 | $0.1274 of re-narration from being discarded | a HALF-cleared row that left `samples` standing |
+  | 3 | story 25's thumbnail pick from silently changing meaning | slot two holding the same pair twice |
+
+  Each one made a broken mechanism look like a working one, and each was
+  visible only because a neighbouring instance of the same defect failed
+  properly at the same time. **A green outcome is evidence about the outcome
+  and not about the mechanism**; when a decision survives a regeneration, ask
+  WHAT preserved it before crediting the code.
+
+  **And when the old pick cannot be recovered, the field stays EMPTY.** Story
+  23's `thumbnail_selected` is null on purpose and stays that way. The
+  operator chose scenes 81 + 103; that composition is the delivered file and
+  is the one on YouTube; it is not in the current set. Writing any current key
+  into the row would create a record that does not match the artifact — the
+  exact defect the repair removed, reintroduced by hand so the column would
+  look populated. The repair made the row unable to lie; the right response
+  to an unrecoverable old decision is to leave it saying nothing was chosen
+  from THIS set, because that is true. A field that is empty and honest beats
+  one that is full and wrong, and "empty" is a state every reader of this
+  column already handles.
+
 Still open, none blocking, all findable here rather than one gate at a time:
 
 - **NOTHING STOPS A GATE APPROVAL AND AN ASSET DISPATCH WHILE A DRAFT OF THOSE
