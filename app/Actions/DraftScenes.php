@@ -69,6 +69,20 @@ class DraftScenes
     private array $nameProblems = [];
 
     /**
+     * Thumbnail nominations dropped for exceeding the per-act cap, by act.
+     *
+     * Same lifecycle and same reason as `$nameProblems`. Before this existed
+     * the drop was silent — a story-wide cap of six, walked in act order,
+     * discarded every nomination after the sixth with nothing said, and every
+     * story in the database had its whole pool inside acts 1-3 without any
+     * page or log line able to show it. A nomination this stage throws away
+     * is an editorial judgement the model made and the operator never saw.
+     *
+     * @var array<int, int>  act sequence => nominations dropped
+     */
+    private array $thumbnailOverflow = [];
+
+    /**
      * Where a partial re-draft parks its new rows before renumbering.
      *
      * `(story_id, sequence)` is unique and the acts NOT being re-drafted still
@@ -154,6 +168,7 @@ class DraftScenes
         // container may hand back the same instance, and a stale finding
         // attached to the wrong draft is worse than none.
         $this->nameProblems = [];
+        $this->thumbnailOverflow = [];
 
         $cast = $story->characters()->get();
 
@@ -246,6 +261,22 @@ class DraftScenes
 
         $job->note(sprintf('%d scenes written across %d act(s).', $total, $acts->count()));
 
+        // Said, not swallowed. The nominations are the model's editorial call
+        // and the cap is ours; an operator reading this row should be able to
+        // see where the two disagreed rather than infer it from a pool shape.
+        if ($this->thumbnailOverflow !== []) {
+            $job->note(sprintf(
+                'Thumbnail nominations over the per-act cap of %d were dropped: %s. Flag the '
+                .'frame you want at Gate 2 if one of the dropped ones was it.',
+                (int) config('scenes.thumbnail_candidates.per_act'),
+                implode(', ', array_map(
+                    fn (int $act, int $dropped): string => sprintf('act %d dropped %d', $act, $dropped),
+                    array_keys($this->thumbnailOverflow),
+                    $this->thumbnailOverflow,
+                )),
+            ));
+        }
+
         /*
          * NAMES THE FRAME USED THAT THE CAST COULD NOT ANSWER.
          *
@@ -334,9 +365,18 @@ class DraftScenes
             $sequence = $partial ? self::PARK_BASE : 0;
             $fallback = (array) config('scenes.motion_fallback');
             $thumbnails = 0;
-            $maxThumbnails = (int) config('scenes.thumbnail_candidates.max');
+
+            // PER ACT. A story-wide cap walked in act order filled by act 3 on
+            // every story in the database, so the departure, the search and
+            // the refusal never contributed a candidate and the thumbnail
+            // pairing could never span the reversal. The prompt asks for "at
+            // most N in this act" from the same key, so what is asked and what
+            // is kept are one number.
+            $perAct = (int) config('scenes.thumbnail_candidates.per_act');
 
             foreach ($drafted as $entry) {
+                $keptInAct = 0;
+
                 foreach ($entry['scenes'] as $index => $draft) {
                     $sequence++;
 
@@ -360,8 +400,14 @@ class DraftScenes
                         sprintf('act %d, scene %d of that act', $entry['act']->sequence, $index + 1),
                     );
 
-                    $isThumbnail = $draft->isThumbnailCandidate && $thumbnails < $maxThumbnails;
+                    $isThumbnail = $draft->isThumbnailCandidate && $keptInAct < $perAct;
+                    $keptInAct += $isThumbnail ? 1 : 0;
                     $thumbnails += $isThumbnail ? 1 : 0;
+
+                    if ($draft->isThumbnailCandidate && ! $isThumbnail) {
+                        $actSequence = (int) $entry['act']->sequence;
+                        $this->thumbnailOverflow[$actSequence] = ($this->thumbnailOverflow[$actSequence] ?? 0) + 1;
+                    }
 
                     $scene = Scene::create([
                         'story_id' => $story->id,

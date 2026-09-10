@@ -99,6 +99,18 @@ class FakeScriptWriter implements ScriptWriter
     public bool $suppressThumbnails = false;
 
     /**
+     * Nominate this many scenes per act (the 2nd, 3rd, ... of each act),
+     * instead of the default one.
+     *
+     * Exists so a test can hand DraftScenes MORE nominations than the per-act
+     * cap in EVERY act. The story-wide cap this replaced was green through
+     * every test in the suite because the fake nominated one scene per act and
+     * the fixture has three acts — three nominations against a cap of six can
+     * never overflow, so the front-loading was inexpressible.
+     */
+    public ?int $thumbnailsPerAct = null;
+
+    /**
      * One frame for every scene, replacing the rotation.
      *
      * Exists so a test can put the drafter in front of a KNOWN shot scale. The
@@ -431,7 +443,9 @@ class FakeScriptWriter implements ScriptWriter
                 )),
                 charactersPresent: $this->charactersPresentOverride ?? ($index % 3 === 2 ? [] : $names),
                 motionPreset: $this->motionOverride ?? self::MOTIONS[$index % count(self::MOTIONS)],
-                isThumbnailCandidate: ! $this->suppressThumbnails && $index === 1,
+                isThumbnailCandidate: ! $this->suppressThumbnails && ($this->thumbnailsPerAct === null
+                    ? $index === 1
+                    : ($index >= 1 && $index <= $this->thumbnailsPerAct)),
                 // Empty on the cutaways this fake produces every third scene,
                 // so a fixture run exercises both branches of the builder's
                 // expression handling rather than only the peopled one.

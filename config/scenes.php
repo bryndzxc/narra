@@ -258,14 +258,28 @@ return [
     | Thumbnail candidates
     |--------------------------------------------------------------------------
     |
-    | Flagged at draft time so Gate 4 has something to recommend. The app does
-    | not compose thumbnails; it nominates the still.
+    | Flagged at draft time; ComposeThumbnails crops the flagged stills into
+    | the split-panel candidates Gate 4 picks from, so this pool is what a
+    | thumbnail is made of.
+    |
+    | PER ACT, NOT PER STORY. The cap used to be a story-wide `max` of 6,
+    | applied in act order, and every story in the database filled it by act
+    | 3: the departure, the search and the refusal never contributed a single
+    | candidate, and the pair score's reversal bonus had never fired on real
+    | data. A story-wide cap walked front to back is biased toward the front
+    | by construction, whatever the number; a cap applied per act cannot be.
+    | It is also the number the prompt already asks for — "at most N scenes in
+    | this act" — read from here so the request and the keep cannot disagree.
+    |
+    | Nominations past the cap in an act are DROPPED, and the draft's job row
+    | says how many and from which act. They used to be dropped in silence,
+    | which is why nobody could see the pool was shaped like this.
     |
     */
 
     'thumbnail_candidates' => [
         'min' => 1,
-        'max' => (int) env('SCENE_THUMBNAIL_MAX', 6),
+        'per_act' => (int) env('SCENE_THUMBNAILS_PER_ACT', 2),
     ],
 
     /*

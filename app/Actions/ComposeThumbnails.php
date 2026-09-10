@@ -36,18 +36,34 @@ use RuntimeException;
  *     would make the Gate 2 flags look respected when they were not.
  *
  *  2. **Which pairs.** Two panels showing the same character in the same act is
- *     one still cut in half. The pair score prefers two different leads and,
- *     more importantly, the two ENDS of the arc — the humiliation on the left
- *     and the reversal on the right, which is how this niche's thumbnails
- *     actually read. Since the reversal phase exists that is a real question
- *     the data can answer: `acts.phase`. On a story outlined before it, the
- *     first third against the last third is the same idea with less to go on.
+ *     one still cut in half. The pair score penalises the same faces on both
+ *     panels — a term that this docblock claimed for a phase while nothing
+ *     implemented it, and story 25 shipped Kevin beside Kevin in the same
+ *     shirt — and, more importantly, prefers the two ENDS of the arc: the
+ *     humiliation on the left and the reversal on the right, which is how this
+ *     niche's thumbnails actually read. Since the reversal phase exists that is
+ *     a real question the data can answer: `acts.phase`. On a story outlined
+ *     before it, opposite ends of the STORY — measured against its last scene,
+ *     not against the last scene that happened to be flagged — is the same
+ *     idea with less to go on.
  *
  *  3. **Which order.** Earlier scene left, later scene right. English reads
  *     left to right and so does a before-and-after.
  *
- * Re-runnable by construction: it writes over the same four filenames and
- * replaces the stored options wholesale. There is nothing to bill twice.
+ * Re-runnable by construction: it replaces the stored options wholesale and
+ * removes any composition file the new set does not name. There is nothing to
+ * bill twice.
+ *
+ * **A composition is keyed by WHAT IT SHOWS, never by its slot.** The keys
+ * used to be `thumb-1..4`, positional, and the operator's pick was kept across
+ * a re-compose whenever its key still existed — so story 23's pick `thumb-4`
+ * survived a re-compose that put a different pair of stills in slot four, and
+ * the record said the same thing while meaning a different picture. That is
+ * the audio-provenance lesson one field over: a record has to describe the
+ * artifact, not its position. The key is now the two scene ids, the option
+ * carries a fingerprint of the two source files, and carrySelection() either
+ * finds the same pair built from the same stills or clears the pick and SAYS
+ * why.
  */
 class ComposeThumbnails
 {
@@ -81,12 +97,22 @@ class ComposeThumbnails
             ));
         }
 
-        $pairs = $this->pairs($scored, $wanted);
+        // The STORY's last scene, for the no-phase fallback. It used to be the
+        // highest sequence in the ranked pool, which on story 21 was 107 of
+        // 270 — so scene 20 against scene 107 was reported as "opposite ends
+        // of the story" at 0.81 while spanning 32% of the video.
+        $lastSequence = (int) $story->scenes()->max('sequence');
+
+        $pairs = $this->pairs($scored, $wanted, $lastSequence);
         $workspace = RenderWorkspace::for($story);
         $composed = [];
 
-        foreach ($pairs as $index => $pair) {
-            $key = sprintf('thumb-%d', $index + 1);
+        foreach ($pairs as $pair) {
+            $sceneIds = array_map(fn (array $still): int => (int) $still['scene_id'], $pair['stills']);
+
+            // What it shows, left then right. A slot number is a position in a
+            // list the next run rewrites; two scene ids are a picture.
+            $key = sprintf('s%d-s%d', $sceneIds[0], $sceneIds[1]);
             $output = $workspace->path("thumbnails/{$key}.jpg");
 
             $sources = array_map(
@@ -110,6 +136,13 @@ class ComposeThumbnails
 
             $composed[] = [
                 'key' => $key,
+                'scene_ids' => $sceneIds,
+                // The two SOURCE files, hashed. A still can be regenerated
+                // under the same scene id — a failed image retried, a Gate 2
+                // re-approval — and then the same two scene ids name a
+                // different picture. The scene pair says WHICH stills; this
+                // says whether they are the stills the operator looked at.
+                'stills_fingerprint' => $this->fingerprint($sources),
                 'path' => $output,
                 'bytes' => $bytes,
                 'score' => $pair['score'],
@@ -126,6 +159,11 @@ class ComposeThumbnails
             ];
         }
 
+        // Files the new set does not name are removed, so the workspace holds
+        // exactly the compositions the record describes and a stale file
+        // cannot be served or delivered under a key that has moved on.
+        $this->removeStaleCompositions($workspace, array_column($composed, 'key'));
+
         // Wholesale, never merged. A composition that is no longer in the list
         // must not survive as a selectable option pointing at a file the next
         // run overwrote with something else.
@@ -134,16 +172,9 @@ class ComposeThumbnails
             ['status' => MetadataStatus::Pending],
         );
 
-        $keys = array_column($composed, 'key');
-
         $metadata->update([
             'thumbnail_options' => $composed,
-            // A selection that still exists is kept — re-composing to look at
-            // the options again should not silently discard a decision. One
-            // that no longer exists is cleared rather than left dangling.
-            'thumbnail_selected' => in_array((string) $metadata->thumbnail_selected, $keys, true)
-                ? $metadata->thumbnail_selected
-                : null,
+            'thumbnail_selected' => $this->carrySelection($metadata, $composed, $notes),
         ]);
 
         return [
@@ -152,6 +183,119 @@ class ComposeThumbnails
             'pool' => count($scored),
             'widened' => $widened,
         ];
+    }
+
+    /**
+     * The operator's pick, carried across a re-compose by WHAT IT SHOWS.
+     *
+     * Three outcomes, and two of them are said in the notes:
+     *
+     *  - The same two scenes are in the new set, built from the same two files
+     *    (or from files whose fingerprint the old record never held — NULL is
+     *    unknown, and a pick is cleared because it demonstrably changed, never
+     *    because we cannot prove it did not). Kept, under the new key.
+     *  - The same two scenes are in the new set but a still was regenerated
+     *    since the pick was made. Cleared, and the note says to look again.
+     *  - The pair is not in the new set at all. Cleared, and the note names the
+     *    scenes that were picked so the operator can find them at Gate 2.
+     *
+     * A pick recorded under a positional key from before this change is
+     * resolved through the OLD option's panels, so `thumb-2` becomes the scene
+     * pair slot two held when it was chosen — not slot two of the new set.
+     *
+     * @param  array<int, array<string, mixed>>  $composed
+     * @param  array<int, string>  $notes
+     */
+    private function carrySelection(YoutubeMetadata $metadata, array $composed, array &$notes): ?string
+    {
+        $selected = trim((string) $metadata->thumbnail_selected);
+
+        if ($selected === '') {
+            return null;
+        }
+
+        $previous = collect((array) ($metadata->thumbnail_options ?? []))
+            ->first(fn (array $o): bool => ($o['key'] ?? null) === $selected);
+
+        if ($previous === null) {
+            $notes[] = sprintf(
+                'The recorded pick "%s" named no composition in the previous set, so it was cleared. '
+                .'Pick again.',
+                $selected,
+            );
+
+            return null;
+        }
+
+        $sceneIds = array_map(
+            'intval',
+            (array) ($previous['scene_ids'] ?? array_column((array) ($previous['panels'] ?? []), 'scene_id')),
+        );
+        $label = 'scenes '.implode(' + ', array_column((array) ($previous['panels'] ?? []), 'sequence'));
+
+        $match = null;
+
+        foreach ($composed as $option) {
+            if ($option['scene_ids'] === $sceneIds) {
+                $match = $option;
+                break;
+            }
+        }
+
+        if ($match === null) {
+            $notes[] = sprintf(
+                'Your pick (%s) is no longer among the compositions, so it was cleared rather than '
+                .'left pointing at a different picture. Pick again.',
+                $label,
+            );
+
+            return null;
+        }
+
+        $was = $previous['stills_fingerprint'] ?? null;
+
+        if ($was !== null && $was !== $match['stills_fingerprint']) {
+            $notes[] = sprintf(
+                'Your pick (%s) is still in the set, but one of its stills has been regenerated since '
+                .'you chose it, so it was cleared rather than assumed. Look at it again.',
+                $label,
+            );
+
+            return null;
+        }
+
+        if ($match['key'] !== $selected) {
+            $notes[] = sprintf(
+                'Your pick was recorded as slot "%s" and is now recorded as what it shows, %s.',
+                $selected,
+                $label,
+            );
+        }
+
+        return (string) $match['key'];
+    }
+
+    /**
+     * @param  array<int, string>  $sources
+     */
+    private function fingerprint(array $sources): string
+    {
+        return substr(sha1(implode('|', array_map(
+            fn (string $source): string => (string) sha1_file($source),
+            $sources,
+        ))), 0, 16);
+    }
+
+    /**
+     * @param  array<int, string>  $keys
+     */
+    private function removeStaleCompositions(RenderWorkspace $workspace, array $keys): void
+    {
+        foreach (glob($workspace->path('thumbnails/*.jpg')) ?: [] as $file) {
+            if (! in_array(basename($file, '.jpg'), $keys, true)) {
+                @unlink($file);
+            }
+        }
     }
 
     /**
@@ -259,7 +403,12 @@ class ComposeThumbnails
 
         usort($all, fn (array $a, array $b): int => $b['score'] <=> $a['score']);
 
-        return array_slice($all, 0, max($needed, 8));
+        // The WHOLE story, not the top eight. The same truncation pairs() used
+        // to apply one step later: a slice taken on the per-still score cannot
+        // see the pair terms it feeds, so a late-act still just outside it
+        // could never reach the reversal bonus written for it. 270 stills is
+        // ~36,000 pairs of arithmetic on data already loaded.
+        return $all;
     }
 
     /**
@@ -283,6 +432,10 @@ class ComposeThumbnails
 
             $still['image_path'] = (string) $scene->image_path;
             $still['phase'] = $scene->act?->phase?->value;
+            // Who, not just how many: the pair score asks whether two panels
+            // show the same people, and a count cannot answer that.
+            $still['cast_ids'] = $scene->characters->pluck('id')->map(fn ($id): int => (int) $id)->all();
+            $still['cast_names'] = $scene->characters->pluck('name')->all();
             $scored[] = $still;
         }
 
@@ -297,20 +450,24 @@ class ComposeThumbnails
      * @param  array<int, array<string, mixed>>  $stills
      * @return array<int, array{stills: array<int, array<string, mixed>>, score: int, reasons: array<int, string>}>
      */
-    private function pairs(array $stills, int $wanted): array
+    private function pairs(array $stills, int $wanted, int $lastSequence): array
     {
-        $pool = array_slice($stills, 0, 6);
-        $last = max(array_column($stills, 'sequence'));
-
+        // EVERY still in the pool, not the top six by framing. The slice was
+        // taken before the pair score existed, so the +30 for spanning the
+        // reversal was only ever applied to pairs that had already survived a
+        // cut it had no say in — and a late-act flag reached a composition
+        // only if it out-framed the escalation flags on its own. On a 14-flag
+        // pool this is 91 pairs of arithmetic; the slice bounded a cost that
+        // was never there.
         $candidates = [];
 
-        foreach ($pool as $i => $left) {
-            foreach (array_slice($pool, $i + 1) as $right) {
+        foreach ($stills as $i => $left) {
+            foreach (array_slice($stills, $i + 1) as $right) {
                 // Earlier left, later right: a before-and-after reads the way
                 // the language does.
                 [$a, $b] = $left['sequence'] <= $right['sequence'] ? [$left, $right] : [$right, $left];
 
-                $candidates[] = $this->scorePair($a, $b, $last);
+                $candidates[] = $this->scorePair($a, $b, $lastSequence);
             }
         }
 
@@ -352,6 +509,32 @@ class ComposeThumbnails
         $score = (int) $left['score'] + (int) $right['score'];
         $reasons = [];
 
+        // The same people on both panels. Two panels of one person is one
+        // still cut in half; two panels where everyone on one side is also on
+        // the other reads the same way at thumbnail size, because the extra
+        // person is the only thing distinguishing them and they are small.
+        // Story 25 shipped Kevin beside Kevin in the same shirt, and story 23
+        // offered the same two people three times, while this docblock said
+        // the score "prefers two different leads" and nothing implemented it.
+        //
+        // -12 is CHOSEN, not measured — like every weight here — and sized to
+        // decide a tie between equally framed stills without outranking the
+        // framing itself: a same-face pair of two close-ups still beats a
+        // different-face pair with an unstated shot in it.
+        $leftCast = (array) ($left['cast_ids'] ?? []);
+        $rightCast = (array) ($right['cast_ids'] ?? []);
+
+        if ($leftCast !== [] && $rightCast !== []) {
+            $shared = count(array_intersect($leftCast, $rightCast));
+
+            if ($shared === count($leftCast) || $shared === count($rightCast)) {
+                $score -= 12;
+                $reasons[] = count($leftCast) === count($rightCast) && $shared === count($leftCast)
+                    ? sprintf('the same face on both panels (%s)', implode(', ', (array) ($left['cast_names'] ?? [])))
+                    : 'everyone on one panel is on the other too';
+            }
+        }
+
         // The arc, if the outline has one. This is what the reversal phase
         // bought beyond the script: "before she left" against "after she looked
         // for me" is a thumbnail, and two acts of escalation is one picture
@@ -368,6 +551,10 @@ class ComposeThumbnails
         } elseif ($lastSequence > 0) {
             // No phases — an outline written before the reversal existed. The
             // ends of the story are the same idea with less behind it.
+            //
+            // Against the STORY's last scene. Measured against the pool's own
+            // last scene it could only ever say how far apart the flags were,
+            // and on story 21 every flag was inside the first 40% of the video.
             $gap = ((int) $right['sequence'] - (int) $left['sequence']) / $lastSequence;
 
             if ($gap >= 0.5) {

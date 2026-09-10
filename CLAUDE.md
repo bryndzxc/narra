@@ -3635,6 +3635,188 @@ Closed since:
   so a partial re-write is available and touches no gate state. That is the
   path story 25's acts 5 and 6 were written through.
 
+- **THE THUMBNAIL POOL NEVER REACHED THE REVERSAL, AND THE DROP THAT SHAPED
+  IT WAS SILENT.** Every story in the database with more than twelve scenes
+  carried exactly six thumbnail candidates, all of them in acts 1-3:
+
+  | story | scenes | flagged | by act |
+  |---|---|---|---|
+  | 21 | 270 | 6 | 2, 2, 2, 0, 0, 0, 0 |
+  | 23 | 257 | 6 | 2, 2, 2, 0, 0, 0 |
+  | 25 | 250 | 6 | 3, 2, 1, 0, 0, 0 |
+
+  The prompt asked for "at most two scenes in this act" and the model
+  complied, act by act. `DraftScenes::persist()` then kept nominations until
+  a story-wide `thumbnail_candidates.max` of 6 was reached, walking the acts
+  in order — so the cap filled by act 3 on every story, and the departure,
+  the search and the refusal never contributed a candidate. `ComposeThumbnails`
+  widens to the whole story only when the flagged pool is under 5, and 6 is
+  never under 5, so the widened path had never run on a real story either.
+  The pair score's +30 for a pair spanning the reversal — the reason
+  `acts.phase` is read there at all — had fired only in its own test.
+
+  **Nothing said so.** Everything past the sixth nomination was discarded
+  with no note on the job row, no advisory at Gate 2 and no count anywhere,
+  which is why a pool this shape sat under three published videos without
+  anyone able to see it. The flagged badges at Gate 2 showed six honest flags;
+  what they could not show was the seven or eight the model had also made.
+  A nomination this stage throws away is an editorial judgement the model
+  made and the operator never saw — the same silence as `resolvePresent()`
+  dropping an unresolvable name, one field over.
+
+  **Fixed as a per-act cap, not a larger story-wide one.** A story-wide cap
+  walked front to back is biased toward the front by construction, whatever
+  the number, and it would need re-deriving every time the act count moved
+  (it has moved twice). `thumbnail_candidates.per_act` is 2, the prompt reads
+  the same key so the request and the keep are one number, and nominations
+  over the cap in an act are dropped WITH a line on the draft's `render_jobs`
+  row naming the act and the count. The old suite was green throughout
+  because the fake nominated one scene per act across a three-act fixture,
+  and three against a cap of six cannot overflow — a fixture too small to
+  hold the failure, which is the `--acts=` lesson again. The new case asserts
+  its own size before it asserts anything else, and was drilled by
+  reinstating the story-wide cap: red on act 1.
+
+  **The three shipped stories cannot be re-pooled by this fix.** The
+  nominations for their acts 4 onward were discarded at draft time and the
+  response archive holds no files for stories 21, 23 or 25, so there is
+  nothing to replay. The fix shapes every draft from here on; what those
+  three would have flagged in their refusal acts is unrecoverable without
+  asking the model again, which is a spending decision.
+
+- **THE THUMBNAIL PROMPT AND THE THUMBNAIL RANKER HELD OPPOSITE OPINIONS
+  ABOUT THE SAME FRAME, AND IT SURVIVED BECAUSE NOBODY PUT THE TWO TEXTS SIDE
+  BY SIDE.** The nomination rule asked for *"a face mid-reaction, or an object
+  that raises a question"*. `ThumbnailFraming` scores a frame with nobody
+  recorded in it at -40, its most negative term. The model did what it was
+  told: three of story 25's six flags were envelopes and documents on desks,
+  and one composed pair of two empty desks scored -90 and was still offered as
+  a selectable option.
+
+  Decided one way — this niche's thumbnails are faces — and made to agree in
+  both places: the object clause is gone from the prompt, which now says
+  *never a frame with nobody in it*, the ranker's -40 is documented as
+  deliberate, and `ThumbnailCompositionTest` holds the prompt text and the
+  ranker's verdict in one assertion so a rewording of either that reopens the
+  gap goes red. Drilled by restoring the old sentence — and the FIRST drill
+  passed for the wrong reason: a `sed` that left an unbalanced quote produced a
+  parse error, which is red with zero assertions and proves nothing. Re-done
+  with an exact-match edit; two assertions, failed on the clause.
+
+  **The rest of the scene instruction was read against every scorer that
+  parses a frame, and this was the only contradiction.** The overlap check
+  agrees with "never restate the sentence"; the hedged-expression advisory
+  agrees with "NEVER HEDGE"; the close-frame setting check agrees with "where
+  they are … what is in shot around them"; the -25 for a wide shot agrees with
+  "never a wide establishing shot". One ABSENCE is worth naming so it is not
+  read as covered: nothing asks a frame to state its shot scale, and the
+  ranker scores an unstated scale at zero — 134 of story 21's 270 frames, 131
+  of story 25's 250. That is the "asking for nothing in particular" shape
+  rather than a contradiction, and it is left alone here because fixing it
+  changes every frame in the video to serve one picture.
+
+- **THE PAIR SCORE'S DOCBLOCK CLAIMED A TERM NOTHING IMPLEMENTED, AND THE
+  NO-PHASE FALLBACK MEASURED THE WRONG DENOMINATOR.** Two smaller findings
+  from the same pass, both closed.
+
+  *"The pair score prefers two different leads"* had no term behind it. Story
+  23 offered the same two people three times out of four; story 25 shipped
+  Kevin beside Kevin in the same shirt. There is a term now: -12 when everyone
+  on one panel is also on the other, with the names printed in the reason. The
+  number is CHOSEN, like every weight in this area, and sized to decide a tie
+  between equally framed stills without outranking the framing. Drilled by
+  disabling the term: red.
+
+  The fallback for a story with no `acts.phase` divided the gap between two
+  panels by the highest sequence IN THE RANKED POOL rather than the story's
+  last scene. On story 21 every flag sat inside the first 107 of 270 scenes,
+  so scene 20 against 107 was reported as "opposite ends of the story" at
+  0.81 while spanning 32% of the video. It divides by the story's last scene
+  now, and the re-composed story 21 correctly reports no such thing.
+
+  **Re-composed, and the pool is still what decides.** Stories 21, 23 and 25
+  were re-composed after all four fixes, free, no cost row. Every composition
+  on 23 and 25 still says *both panels are from the escalation phase*, because
+  the pool is the same six escalation-act flags it always was and nothing in
+  the pair score can reach a scene that was never flagged. What changed is the
+  ORDER and the honesty of the reasons: story 23's top pair now shows two
+  different couples instead of the same couple twice, and story 21 no longer
+  claims two escalation scenes are opposite ends of anything. A different KIND
+  of thumbnail needs a different pool, and that begins with the next draft.
+
+  **Two things the re-compose exposed**, both closed in the entry below: the
+  top-six slice in `pairs()` that gated item 1's effect one function
+  downstream, and a kept selection that could name a different picture
+  because the keys were positional. They are left named here because this
+  re-compose is the run that re-pointed story 23's pick — see the entry below
+  for what that cost and how the row was repaired.
+
+- **THE PAIR SCORE NEVER SAW THE POOL IT WAS WRITTEN FOR, AND THE OPERATOR'S
+  PICK WAS A SLOT NUMBER.** Two closures from the thumbnail pass, and the
+  second is not about thumbnails.
+
+  **`pairs()` sliced the ranked pool to six before scoring a single pair**, and
+  the widened path sliced its own to eight one step earlier. Both cuts were
+  taken on the per-still framing score, which cannot see the pair terms it
+  feeds — so the +30 for a pair spanning the reversal was only ever applied to
+  stills that had already out-framed everything else, and a late-act flag
+  reached a composition only if it beat the escalation flags on framing alone.
+  With the per-act cap in place that made item 1 a fix whose effect was
+  blocked one function downstream. Both slices are gone: 14 flags is 91 pairs
+  of arithmetic on loaded data, and a whole 270-scene story is ~36,000, still
+  milliseconds. Nothing else read either number. Drilled red both ways.
+
+  **The pick.** Compositions were keyed `thumb-1..4` and a re-compose kept the
+  operator's pick whenever its KEY still existed. Story 23's pick was
+  `thumb-4`; the re-compose after items 2-4 put a different pair of stills in
+  slot four, and the record went on saying `thumb-4` while the delivered file
+  in the operator's folder showed the pair it used to mean. **A recorded
+  choice silently changed meaning while the record stayed the same** — the
+  audio-provenance finding one field over: `scene_audio` recorded WHO made the
+  audio and never WHAT WORDS, so nothing could speak to staleness; here the
+  row recorded WHERE the pick sat and never WHAT IT SHOWED.
+
+  The key is now the two scene ids, the option carries a fingerprint of the two
+  source files (a still can be regenerated under its own scene id, and then
+  the same pair names a different picture), and `carrySelection()` does one
+  of three things and says two of them: keeps the pick under the new key when
+  the same pair is built from the same files; clears it and names the scenes
+  when the pair is gone; clears it and says a still was regenerated when the
+  pair is present and the fingerprint moved. A NULL fingerprint on an old
+  record is UNKNOWN and keeps the pick by scene pair — cleared because it
+  demonstrably changed, never because we cannot prove it did not, which is
+  `narration_text_hash`'s rule. A legacy `thumb-N` pick resolves through the
+  scenes slot N HELD, not slot N of the new set. Six red/green cases.
+
+  **The migration is only as honest as the record it reads, and story 23's
+  record had already been re-pointed once.** The operator picked `thumb-4`
+  when slot four held scenes 81 + 103 — the file in their `Done/` folder is
+  that pair, byte for byte. The re-compose after items 2-4 ran under the OLD
+  positional code and moved slot four to scenes 24 + 81 while the pick stayed
+  `thumb-4`. So when the new code migrated the pick, it faithfully carried
+  what the row held, which was 24 + 81, and 81 + 103 is not in the current
+  set at all. The row was cleared by hand — the only value it can truthfully
+  hold — and the operator picks again. Story 25's pick survived by luck: slot
+  two held 41 + 59 in both runs. **A positional key is wrong on the FIRST
+  re-compose after the pick, not the second, and nothing downstream can
+  recover what it meant once it has moved.**
+
+  **Title selection was checked for the same shape and does not have it.**
+  `title_selected` stores the chosen TEXT, not an index into `title_options`;
+  `chooseTitle()` copies the string out of the list in the same request, and a
+  `--force` regeneration replaces the list and leaves the chosen text standing.
+  That is the correct shape — the string is the deliverable, so the record is
+  the artifact. Worth writing down because the two fields sit side by side on
+  one sheet and were built the same week, and only one of them was wrong.
+
+  **And a probe defect of my own, kept because it cost a turn.** The first
+  thumbnail report said stories 23 and 25 held a selection but no delivered
+  `<slug>.jpg` existed. Both files existed, in a `Done/` subfolder the operator
+  had moved them into alongside the videos. I listed one level of a folder and
+  reported an absence. Same rule as the WhisperX keys: a probe that reports an
+  absence has to be shown able to report a presence, and here the presence was
+  one `ls -R` away.
+
 Still open, none blocking, all findable here rather than one gate at a time:
 
 - **NOTHING STOPS A GATE APPROVAL AND AN ASSET DISPATCH WHILE A DRAFT OF THOSE

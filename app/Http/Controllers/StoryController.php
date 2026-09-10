@@ -239,9 +239,10 @@ class StoryController extends Controller
         }, 200, [
             'Content-Type' => 'image/jpeg',
             'Content-Length' => (string) filesize($path),
-            // Deliberately NOT cached. Re-composing writes over the same four
-            // filenames, so a cached candidate would show the operator the
-            // previous run's picture next to the current run's reasoning.
+            // Deliberately NOT cached. A key names a scene pair, and a re-compose
+            // after a still is regenerated writes the same key with a different
+            // picture — so a cached candidate could show the operator the
+            // previous run's image next to the current run's reasoning.
             'Cache-Control' => 'no-store',
         ]);
     }

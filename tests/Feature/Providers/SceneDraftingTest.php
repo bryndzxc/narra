@@ -11,6 +11,7 @@ use App\Contracts\ScriptWriter;
 use App\Enums\CostCategory;
 use App\Enums\Gate;
 use App\Enums\MotionPreset;
+use App\Enums\RenderStage;
 use App\Enums\SceneStatus;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
@@ -327,6 +328,68 @@ class SceneDraftingTest extends TestCase
         app(DraftScenes::class)->handle($story);
 
         $this->assertTrue((bool) $story->scenes()->where('sequence', 1)->value('is_thumbnail_candidate'));
+    }
+
+    /**
+     * The cap is per act, so the LAST act holds candidates too.
+     *
+     * The story-wide cap this replaced was six, applied in act order, and every
+     * story in the database filled it by act 3 — so the departure, the search
+     * and the refusal never contributed a thumbnail candidate and the pair
+     * score's reversal bonus had never fired on real data. This fixture asks
+     * for more than the cap in every act; the old code goes red on the last
+     * act having none, the new code keeps the cap in each.
+     *
+     * The fixture's size is asserted before anything else, because a fixture
+     * too small to overflow the cap is exactly what kept the old behaviour
+     * green: one nomination per act across three acts cannot exceed six.
+     */
+    public function test_every_act_keeps_its_own_thumbnail_candidates_and_the_drop_is_said(): void
+    {
+        config(['scenes.thumbnail_candidates.per_act' => 2]);
+
+        $story = $this->castStory();
+        $this->writer->thumbnailsPerAct = 4;
+
+        app(DraftScenes::class)->handle($story);
+
+        $acts = $story->acts()->orderBy('sequence')->get();
+        $this->assertGreaterThanOrEqual(3, $acts->count(), 'The fixture needs several acts to show front-loading.');
+
+        foreach ($acts as $act) {
+            $inAct = $story->scenes()->where('act_id', $act->id)->count();
+            $this->assertGreaterThanOrEqual(5, $inAct, "Act {$act->sequence} is too small to overflow the cap.");
+
+            $this->assertSame(
+                2,
+                $story->scenes()->where('act_id', $act->id)->where('is_thumbnail_candidate', true)->count(),
+                "Act {$act->sequence} should keep exactly the per-act cap.",
+            );
+        }
+
+        // 4 nominated, 2 kept, 2 dropped — in EVERY act, and the row says so.
+        $log = (string) $story->renderJobs()->where('stage', RenderStage::DraftScenes)->latest('id')->value('log');
+        $this->assertStringContainsString('over the per-act cap of 2 were dropped', $log);
+
+        foreach ($acts as $act) {
+            $this->assertStringContainsString("act {$act->sequence} dropped 2", $log);
+        }
+    }
+
+    public function test_nominations_within_the_cap_are_all_kept_and_nothing_is_reported_dropped(): void
+    {
+        config(['scenes.thumbnail_candidates.per_act' => 2]);
+
+        $story = $this->castStory();
+        $this->writer->thumbnailsPerAct = 2;
+
+        app(DraftScenes::class)->handle($story);
+
+        $acts = $story->acts()->count();
+        $this->assertSame(2 * $acts, $story->scenes()->where('is_thumbnail_candidate', true)->count());
+
+        $log = (string) $story->renderJobs()->where('stage', RenderStage::DraftScenes)->latest('id')->value('log');
+        $this->assertStringNotContainsString('were dropped', $log);
     }
 
     // -- Pipeline position ---------------------------------------------------

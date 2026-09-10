@@ -94,6 +94,16 @@ final class ThumbnailFraming
         $score = 0;
 
         // -- Who is in it --------------------------------------------------
+        //
+        // Zero characters is near-disqualifying ON PURPOSE, and the scene
+        // prompt now says the same thing. It did not always: the nomination
+        // rule asked for "a face mid-reaction, or an object that raises a
+        // question", the model obeyed, and this term then scored the envelope
+        // it had been asked for at -40 — three of story 25's six flags, and a
+        // composed pair of two empty desks at -90 still offered as an option.
+        // This niche's thumbnails are faces; the prompt no longer asks for
+        // objects, and a test holds the two texts side by side so they cannot
+        // drift apart again without one of them going red.
         [$castScore, $castReason] = match (true) {
             $cast === 0 => [-40, 'nobody recorded in this frame'],
             $cast === 1 => [30, 'one character — the largest a face gets in this format'],

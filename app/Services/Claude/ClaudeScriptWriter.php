@@ -1485,6 +1485,11 @@ class ClaudeScriptWriter implements ScriptWriter
         $total = count($sentences);
         $wordsPerScene = (int) config('scenes.words_per_scene');
 
+        // The same number DraftScenes keeps per act. Asking for two and keeping
+        // two is one decision; asking for two and keeping six story-wide was
+        // the pool that never reached the refusal phase.
+        $thumbnailsPerAct = (int) config('scenes.thumbnail_candidates.per_act');
+
         return sprintf(
             "ACT %d: %s\n%s\n"
             ."Break the numbered script below into about %d scenes.\n\n"
@@ -1506,9 +1511,10 @@ class ClaudeScriptWriter implements ScriptWriter
             ."- motion_preset: zoom_in, zoom_out, pan_left, pan_right or static.\n"
             .'- expression: what the faces are DOING, named plainly. Empty ONLY if nobody is '
             ."in the frame.\n"
-            .'- thumbnail_candidate: true for at most two scenes in this act — the ones that '
-            .'would stop someone scrolling. A face mid-reaction, or an object that raises a '
-            ."question. Never a wide establishing shot.\n\n"
+            .'- thumbnail_candidate: true for at most %d scene(s) in this act — the ones that '
+            .'would stop someone scrolling. A face mid-reaction, close enough to read at '
+            .'thumbnail size. Never a frame with nobody in it — cutaways belong in the video '
+            ."and never on the thumbnail — and never a wide establishing shot.\n\n"
             ."THE SCRIPT (%d sentences):\n\n%s",
             $act->sequence,
             $act->title,
@@ -1517,6 +1523,7 @@ class ClaudeScriptWriter implements ScriptWriter
             $total,
             $total,
             $wordsPerScene,
+            $thumbnailsPerAct,
             $total,
             trim($numbered),
         );
