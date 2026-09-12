@@ -5,7 +5,9 @@ namespace App\Services\Claude;
 use Anthropic\Client;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Actions\RecordProviderCost;
 use App\Models\RenderJob;
+use App\Models\Story;
 use App\Support\ModelText;
 use App\Support\Providers\ProviderUsage;
 use App\Support\Providers\ScriptWriterException;
@@ -89,22 +91,108 @@ trait TalksToClaude
             );
         }
 
+        return $this->settle($message, $operation, $config);
+    }
+
+    /**
+     * Everything that happens to a response once it has arrived, in the order
+     * that leaves a trace whichever way it goes.
+     *
+     *  1. **Archive, before any check.** The archive's own rule is that the
+     *     response that fails is the one worth having, and for a phase the
+     *     truncation path was the one place that rule did not apply: the
+     *     ceiling check threw before `decodeJson()` was reached, so the two
+     *     truncated outline calls on story 28 left no bytes anywhere, and the
+     *     question "where was the output going when it stopped" had no answer.
+     *  2. **Price and record a failed call, before throwing.** A truncated or
+     *     refused call is billed by the vendor in full. The old branch threw a
+     *     message that SAID "billed in full, at the ceiling" and wrote no ledger
+     *     row — a figure claim with nothing behind it, and non-negotiable #4
+     *     failing in the exact shape it is written to prevent. Three outline
+     *     truncations, about $1.27, were billed and absent from `cost_entries`.
+     *  3. Then the checks, then the success return.
+     *
+     * A SUCCESSFUL call is priced here and recorded by its Action, exactly as
+     * before: the Action knows the story and writes the row alongside the
+     * artifact. Only a call that will never reach its Action is recorded from
+     * here, against the stage that is being recorded — which is the only story
+     * this trait can know about, and the reason the ledger note says so when
+     * there is none.
+     *
+     * Separated from call() so it can be exercised without a stream. The
+     * truncation path had no test because building a StreamedMessage meant
+     * consuming a real one; see StreamedMessage::of().
+     *
+     * @param  array{model: string, effort: string|null, max_tokens: int, truncation_remedy?: string}  $config
+     * @return array{0: string, 1: ProviderUsage}
+     */
+    private function settle(StreamedMessage $message, string $operation, array $config): array
+    {
+        ResponseArchive::store($operation, $message->text);
+
         // Guard before reading content. A safety decline arrives as HTTP 200
         // with stop_reason 'refusal' and no usable text, and a story premise is
         // exactly the kind of input that can trip one.
         if ($message->stopReason === 'refusal') {
+            $ledger = $this->recordFailedCallSpend($message, $operation, $config);
+
             throw new ScriptWriterException(sprintf(
-                '%s was declined by the model (%s). Rework the premise at Gate 1.',
+                '%s was declined by the model (%s). Rework the premise at Gate 1. %s',
                 $operation,
-                $message->stopReasonCategory ?? 'no category given'
+                $message->stopReasonCategory ?? 'no category given',
+                $ledger,
             ));
         }
 
         if ($message->stopReason === 'max_tokens') {
-            throw new ScriptWriterException($this->truncationMessage($operation, $config));
+            $ledger = $this->recordFailedCallSpend($message, $operation, $config);
+
+            throw new ScriptWriterException($this->truncationMessage($operation, $config).' '.$ledger);
         }
 
         return [$message->text, $this->priceUsage($message, $operation, $config)];
+    }
+
+    /**
+     * Write the cost of a call that will never reach its Action, and say where
+     * it went.
+     *
+     * Returns the sentence the exception carries, so the operator reading the
+     * failure sees the row it made — or is told plainly that no row could be
+     * made, which is a different sentence from "billed in full" and must never
+     * be replaced by it. Recording is attempted against the stage currently
+     * being recorded; outside one (a console probe, a test) there is no story
+     * to charge, and inventing one would be worse than the silence this fixes.
+     *
+     * @param  array{model: string, effort: string|null, max_tokens: int}  $config
+     */
+    private function recordFailedCallSpend(StreamedMessage $message, string $operation, array $config): string
+    {
+        $usage = $this->priceUsage($message, $operation, $config);
+        $bill = sprintf('$%s for %s output tokens', number_format($usage->usdCost, 4), number_format($message->outputTokens));
+
+        $storyId = RenderJob::current()?->story_id;
+        $story = $storyId === null ? null : Story::query()->find($storyId);
+
+        if ($story === null) {
+            Log::warning(sprintf('%s failed call cost %s and could not be written to the ledger: no stage was recording.', $operation, $bill));
+
+            return sprintf(
+                'The call cost %s and is NOT in the ledger: no stage was recording it, so there was no '
+                .'story to write the row against.',
+                $bill,
+            );
+        }
+
+        try {
+            $entry = app(RecordProviderCost::class)->handle($story, $usage);
+        } catch (\Throwable $e) {
+            Log::warning(sprintf('%s failed call cost %s; the ledger write failed: %s', $operation, $bill, $e->getMessage()));
+
+            return sprintf('The call cost %s and the ledger write FAILED: %s', $bill, $e->getMessage());
+        }
+
+        return sprintf('The call cost %s, written to the ledger as cost row #%d.', $bill, (int) $entry->id);
     }
 
     /**
@@ -183,8 +271,17 @@ trait TalksToClaude
      * scene fallback re-runs the same request somewhere else without the
      * operation having two entries in config.
      *
+     * The remedy travels with the ceiling. It did not for a phase: this method
+     * returned model, effort and max_tokens and dropped `truncation_remedy` on
+     * the floor, so the message shipped on story 28 said "No truncation_remedy
+     * is configured for this operation" while config/providers.php carried a
+     * six-line one for it. The test that asserts every operation has a remedy
+     * reads config directly and stayed green throughout — the builder was
+     * correct and the value never reached it, which is `truncationMessage()`'s
+     * own founding defect one key over.
+     *
      * @param  array<string, mixed>|null  $override
-     * @return array{model: string, effort: string|null, max_tokens: int}
+     * @return array{model: string, effort: string|null, max_tokens: int, truncation_remedy: string|null}
      */
     private function operationConfig(string $operation, ?array $override = null): array
     {
@@ -209,6 +306,7 @@ trait TalksToClaude
             'model' => (string) ($override['model'] ?? $config['model']),
             'effort' => $override['effort'] ?? ($config['effort'] ?? null),
             'max_tokens' => (int) ($override['max_tokens'] ?? $config['max_tokens']),
+            'truncation_remedy' => $override['truncation_remedy'] ?? ($config['truncation_remedy'] ?? null),
         ];
     }
 
@@ -322,11 +420,11 @@ trait TalksToClaude
      */
     private function decodeJson(string $content, string $what): array
     {
-        // Before the decode, not after: a response that fails to parse is
-        // exactly the one worth keeping, and archiving on success only would
-        // retain every payload except the interesting ones.
-        ResponseArchive::store($what, $content);
-
+        // Not archived here any more. The archive is written in settle(), before
+        // the stop-reason checks, because archiving at the decode step meant
+        // that a truncated or refused response — the one worth keeping — was
+        // the one response never kept. Every string this method sees has
+        // already been archived under its operation name.
         $decoded = json_decode($content, true);
 
         if (! is_array($decoded)) {

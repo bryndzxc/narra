@@ -40,16 +40,29 @@ use Tests\TestCase;
  */
 class TruncationMessageTest extends TestCase
 {
-    /** The env vars config actually reads for a ceiling. */
-    private const REAL_CEILING_VARS = [
-        'ANTHROPIC_MAX_TOKENS_OUTLINE',
-        'ANTHROPIC_MAX_TOKENS_ACT_SCRIPT',
-        'ANTHROPIC_MAX_TOKENS_CHARACTERS',
-        'ANTHROPIC_MAX_TOKENS_SCENES',
-        'ANTHROPIC_MAX_TOKENS_TITLES',
-        'ANTHROPIC_MAX_TOKENS_METADATA_COPY',
-        'ANTHROPIC_MAX_TOKENS_TAGS',
-    ];
+    /**
+     * The ANTHROPIC_* env vars config/providers.php actually reads, taken from
+     * the file rather than retyped here.
+     *
+     * This was a hand-typed list of the seven ceiling variables, and it was
+     * correct for exactly as long as a remedy only ever named a ceiling. The
+     * outline's remedy now names `ANTHROPIC_EFFORT_OUTLINE`, because effort is
+     * what fills that ceiling, and a list that did not know effort existed
+     * failed a true sentence. A second copy of "what config reads" is the
+     * two-copies shape; the file is the one source.
+     *
+     * @return array<int, string>
+     */
+    private function variablesConfigReads(): array
+    {
+        preg_match_all(
+            '/env\(\s*[\'"](ANTHROPIC_[A-Z_]+)[\'"]/',
+            (string) file_get_contents(config_path('providers.php')),
+            $matches,
+        );
+
+        return array_values(array_unique($matches[1]));
+    }
 
     /** Every operation has a remedy, so none falls back to the generic text. */
     public function test_every_operation_carries_its_own_remedy(): void
@@ -81,7 +94,7 @@ class TruncationMessageTest extends TestCase
             foreach ($matches[0] as $named) {
                 $this->assertContains(
                     $named,
-                    self::REAL_CEILING_VARS,
+                    $this->variablesConfigReads(),
                     "'{$operation}' tells the operator to set {$named}, which config/providers.php "
                     .'never reads. Setting it changes nothing and looks like the fix was applied — '
                     .'which is how the original message wasted a run.',

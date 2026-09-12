@@ -126,7 +126,8 @@ return [
         |                       justification, what is withheld and when it is
         |                       exposed. Every act is written against it. Stays
         |                       on Opus: ~1% of the token spend, 100% of the
-        |                       structure.
+        |                       structure. Effort MEDIUM, not high — see the
+        |                       operation's own comment for what high cost.
         |
         |   generate_act_script 5-8 calls, and the bulk of the tokens. Tried on
         |                       Sonnet and moved back: the structure being
@@ -177,22 +178,48 @@ return [
 
             'generate_outline' => [
                 'model' => env('ANTHROPIC_MODEL_OUTLINE', 'claude-opus-5'),
-                'effort' => env('ANTHROPIC_EFFORT_OUTLINE', 'high'),
+                // MEDIUM, since 2026-09-12. It was `high`, on the argument that
+                // this is the one call whose decisions nothing downstream can
+                // revisit. What `high` actually bought, measured: the outline
+                // text never needed more than ~5,600 output tokens, and the
+                // rest of the 16,000 ceiling was reasoning billed as output —
+                // ~14,000 tokens on stories 26 and 27, and over the ceiling
+                // twice on story 28. The same story 28 prompt at medium came
+                // back complete at 4,693 output tokens, and the operator read
+                // it against the high-effort outlines and found it as good.
+                //
+                // Learning that cost three truncated calls and about $1.27,
+                // none of it in the ledger at the time (see settle()).
+                'effort' => env('ANTHROPIC_EFFORT_OUTLINE', 'medium'),
+                // KEPT at 16,000 on purpose, not raised to absorb medium. A
+                // medium-effort outline measures under a third of this, so a
+                // truncation at medium is NEW information — something has moved
+                // again — and it should be seen as a failure rather than
+                // swallowed by headroom nobody would notice being used.
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_OUTLINE', 16000),
                 // The outline's size is the act count and the spine, and neither
-                // is a word target — the outline stage has none. Measured on
-                // story 22: eight spine fields are ~2,400 output tokens and six
-                // acts ~2,500, so a whole outline is about a third of this
-                // ceiling and an overshoot past it is variance rather than
-                // shape. Re-running is the first thing to try, and it is the
-                // only stage here where that is true.
+                // is a word target — the outline stage has none. The outline
+                // TEXT has never exceeded ~5,600 output tokens across every
+                // story in the ledger (stored JSON measures 3-4.7 chars per
+                // output token on stories 21-25). What fills this ceiling is
+                // REASONING billed as output at effort `high`: stories 26 and
+                // 27 stored the same-sized outlines at 1.1-1.5 chars per output
+                // token, and story 28 hit 16,000 twice at high, then completed
+                // at 4,693 output tokens at medium on the identical prompt.
+                //
+                // The previous remedy said "generation variance: RE-RUN IT
+                // FIRST". That advice was followed on story 28 and cost $0.84
+                // for no outline. The effort is the lever; the ceiling is the
+                // fallback.
                 'truncation_remedy' => 'The outline has no per-act word target — that lever belongs '
-                    .'to the act scripts. A whole outline measures about a third of this ceiling '
-                    .'(eight spine fields ~2,400 tokens, six acts ~2,500), so hitting it is '
-                    .'generation variance rather than a structural overflow: RE-RUN IT FIRST. If it '
-                    .'truncates repeatedly, drop the act count (story:write --acts, or '
-                    .'GenerateOutline::DEFAULT_ACTS_SINGLE) or raise '
-                    .'ANTHROPIC_MAX_TOKENS_OUTLINE.',
+                    .'to the act scripts. The outline TEXT has never needed more than ~5,600 output '
+                    .'tokens; what fills this ceiling is reasoning billed as output, and the stage '
+                    .'runs at effort medium by default for that reason (story 28: truncated twice at '
+                    .'high, complete at 4,693 output tokens at medium, same prompt). Check '
+                    .'ANTHROPIC_EFFORT_OUTLINE is not set higher. If this truncated AT MEDIUM, that '
+                    .'is new information — something has moved again — so record it before '
+                    .'retrying, and do not raise ANTHROPIC_MAX_TOKENS_OUTLINE to absorb it: a '
+                    .'truncated call is billed at whatever the ceiling is.',
             ],
 
             'generate_act_script' => [

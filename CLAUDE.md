@@ -2028,6 +2028,23 @@ Closed since:
     failure mode more expensive rather than less. It is the third option, not
     the first.
 
+  ---------------------------------------------------------------------------
+  **CORRECTION, 2026-09-12: THE "2.9x OVERSHOOT ON IDENTICAL INPUT" WAS NOT
+  TEXT, AND "RE-RUN IT FIRST" WAS THE WRONG REMEDY.**
+  ---------------------------------------------------------------------------
+
+  The entry above reads story 23's truncated run as the outline text
+  overshooting, and files it under generation variance beside story 21's word
+  count. That is wrong, and it was wrong in a way the ledger could have shown
+  at the time: story 23's stored outline is 20,086 characters, which the
+  successful run billed as 5,483 output tokens. An outline that size cannot be
+  written three times over inside one call. What reached 16,000 was REASONING
+  billed as output tokens at effort `high` — see "THE OUTLINE CEILING WAS
+  BEING SPENT ON REASONING" below, where the same thing was measured on
+  stories 26, 27 and 28 and then separated by a single medium-effort run. The
+  remedy this entry arrived at, "re-run", was followed on story 28 and cost
+  $0.84 for no outline. It is corrected in config and below.
+
 - **`max_tokens` BOUNDS OUTPUT ONLY, so an eight-field spine moves no downstream
   stage toward its ceiling.** Worth stating because the question is natural and
   the answer is structural rather than lucky: the act-script call carries the
@@ -3883,6 +3900,125 @@ Closed since:
   from THIS set, because that is true. A field that is empty and honest beats
   one that is full and wrong, and "empty" is a state every reader of this
   column already handles.
+
+- **THE OUTLINE CEILING WAS BEING SPENT ON REASONING, NOT ON THE OUTLINE —
+  AND THE THREE CALLS THAT SHOWED IT LEFT NO TRACE.** Story 28 hit the
+  16,000-token outline ceiling twice in a row on 2026-09-12, about $0.84 for
+  no outline. The archives that should have answered "where was the output
+  going when it stopped" did not exist, so the answer came from the ledger
+  against the stored outlines instead:
+
+  | story | outline text stored (chars) | output tokens billed | chars per output token |
+  |---|---|---|---|
+  | 21 | 16,974 | 3,638 | 4.67 |
+  | 22 | 15,373 | 5,198 | 2.96 |
+  | 23 | 20,086 | 5,483 | 3.66 |
+  | 25 | 19,006 | 4,970 | 3.82 |
+  | 26 | 16,646 | 14,727 | 1.13 |
+  | 27 | 19,924 | 13,511 | 1.47 |
+  | 28, at medium | 14,037 | 4,693 | 2.99 |
+
+  Stories 26 and 27 stored outlines the same size as story 25's — 26's is the
+  smallest in the table — and billed three times the output tokens. Roughly
+  10,000 tokens per call were not text. The stream consumer's own comment
+  names the only thing that can be: thinking deltas are billed as output and
+  discarded. The outline runs at effort `high`.
+
+  **Separated by one run, not by argument.** Story 28 was re-run once with
+  `ANTHROPIC_EFFORT_OUTLINE=medium` and the ceiling left at 16,000: complete in
+  77 seconds at 4,693 output tokens, $0.1495, on an input of 2,336 tokens and
+  the same 3,282-token cache write as every other en-CN story. Same prompt,
+  same ceiling, one setting changed, and the call that could not finish at
+  high finished at a third of the ceiling at medium. The premise is ruled
+  out: input was flat across five stories (2,266 to 2,336 tokens) and the
+  returned outline did not grow. Splitting the call is ruled out for the same
+  reason — each half would reason on its own.
+
+  **What is NOT concluded, written as what it is.** Every input on our side
+  was flat across five stories. Output tripled between two calls eight hours
+  apart on 2026-09-09 — story 25 at 00:14, story 26 at 08:40 — on a `.env`
+  unchanged since 09-04, with no outline code change between them, and with
+  the cache write identical on both, so the system prompt was byte-identical.
+  The cause of that shift is unknown and is not on our side. It is NOT
+  recorded as a model-side change, because nothing here can verify one; it is
+  recorded as a boundary in the data with nothing of ours on either side of
+  it. **Pinning a dated model snapshot instead of the `claude-opus-5` alias**,
+  if the account's model list offers one, is the option that would both
+  explain and avoid a shift of that kind. It is untested.
+
+  **The ceiling was never derived and the p99 cannot be taken from ten
+  calls.** Sorted successful outline output: 3,638, 4,970, 5,169, 5,198,
+  5,483, 5,516, 5,575, 6,249, 13,511, 14,727. Before 09-09 the maximum was
+  6,249 and 16,000 was 2.6x it; since, two of four calls at high have exceeded
+  it. The ceiling is not the lever, and the remedy in config now says so —
+  the previous one said "generation variance: RE-RUN IT FIRST", which was
+  followed on story 28 and is what the $0.84 bought.
+
+  **The outline runs at effort MEDIUM by default now, and the ceiling stays
+  at 16,000.** Whether a medium outline is as good was a Gate 1 judgement on
+  story 28's, not a number, and the operator read it against the high-effort
+  outlines and found it as good. So the default moved. What it cost to learn
+  that the ceiling was being filled by reasoning rather than by the outline:
+  three truncated calls and about $1.27, none of it in the ledger at the time.
+  The ceiling is deliberately NOT raised to give medium headroom: a medium
+  outline measures under a third of 16,000, so a truncation at medium is new
+  information — something has moved again — and it should arrive as a failure
+  that is seen, not be absorbed by headroom nobody would notice being used.
+
+  ---------------------------------------------------------------------------
+  **THREE DEFECTS ON THE FAILURE PATH, ALL OF THEM "A CALL THAT COSTS MONEY
+  AND LEAVES NO TRACE", ALL CLOSED.**
+  ---------------------------------------------------------------------------
+
+  1. **A truncated call wrote no ledger row.** The ceiling check threw before
+     pricing, so the message said *"billed in full, at the ceiling"* while
+     `cost_entries` said nothing — a figure claim with no row behind it, and
+     non-negotiable #4 failing in the shape it is written to prevent. The same
+     was true of a refusal. `TalksToClaude::settle()` now prices a failed call
+     and writes the row against the stage being recorded BEFORE it throws, and
+     the message names the row it made. Outside a recorded stage it says the
+     spend is NOT in the ledger rather than claiming a bill.
+  2. **A truncated response was never archived.** The archive line sat inside
+     `decodeJson()`, after the ceiling check, so the one response its own
+     docblock says is worth keeping was the one never kept. It is written in
+     `settle()` now, first, before any check — and once, since the decode step
+     no longer archives as well.
+  3. **The configured remedy never reached the message.** `operationConfig()`
+     returned model, effort and max_tokens and dropped `truncation_remedy`, so
+     the shipped message said *"No truncation_remedy is configured for this
+     operation"* while config carried a six-line one. `TruncationMessageTest`
+     reads config directly and stayed green throughout — the builder was
+     correct and the value never reached it, which is that file's own founding
+     defect one key over. The remedy travels with the ceiling now, and one
+     test goes through the same path the worker does.
+
+  Each drilled red: the ledger write disabled, the archive moved back behind
+  the check, the remedy dropped again. `StreamedMessage::of()` exists so the
+  step after the stream can be exercised without one; before it, the
+  truncation path had no test because a message could only be built by
+  consuming a real stream.
+
+  **The three truncations are NOT backfilled, and here is exactly what is and
+  is not provable about them.** Story 23's second run and both of story 28's
+  at high. Input is provable by identity — the prompt bytes did not change
+  between attempts, and the completed runs measured 2,266 and 2,336 — and the
+  3,282-token cache write is identical on every en-CN row. The output is the
+  whole bill, about $0.40 of each $0.43, and it rests on the API reporting
+  exactly 16,000 output tokens at `max_tokens`, which is what it does and
+  which no surviving record shows for these three, because the usage object
+  was discarded with the exception. The second story-28 attempt started 2.5
+  minutes after the first ended, so its cache split is a guess about a 5-minute
+  TTL. Rather than write three rows whose largest figure is assumed, the spend
+  is recorded here: roughly $1.27 across three calls, billed by the vendor and
+  absent from `cost_entries`, reconcilable against the vendor's usage page for
+  2026-09-05 and 2026-09-12 by anyone who wants the exact figure.
+
+  **And one thing seen on the way, not fixed.** `RenderJob::record()` reopens
+  a stage's row with `updateOrCreate`, so the successful medium run overwrote
+  job 8949 — the row that had recorded the failure — and `render_jobs` now
+  shows story 28's outline as a 77-second success with no sign that two
+  attempts before it hit the ceiling. The failures survive in `failed_jobs`
+  and the log, not on the story's own stage list.
 
 Still open, none blocking, all findable here rather than one gate at a time:
 

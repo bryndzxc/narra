@@ -44,6 +44,28 @@ final class StreamedMessage
     ) {}
 
     /**
+     * A message assembled from known parts rather than from a stream.
+     *
+     * Exists so that what happens AFTER the stream — pricing, archiving, the
+     * stop-reason checks in `TalksToClaude::settle()` — can be exercised against
+     * a truncated or refused message without a network. Before this the only
+     * way to build one was to consume a real stream, so the path a truncation
+     * takes had no test at all, and it was the path that billed money and
+     * wrote nothing down.
+     */
+    public static function of(
+        string $text,
+        ?string $stopReason,
+        int $inputTokens,
+        int $outputTokens,
+        int $cacheWriteTokens = 0,
+        int $cacheReadTokens = 0,
+        ?string $stopReasonCategory = null,
+    ): self {
+        return new self($text, $stopReason, $stopReasonCategory, $inputTokens, $outputTokens, $cacheWriteTokens, $cacheReadTokens);
+    }
+
+    /**
      * @param  Traversable<mixed>  $stream
      */
     public static function consume(Traversable $stream): self
