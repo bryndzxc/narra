@@ -285,14 +285,97 @@ return [
                 // and every scene call is one act's whole script cut into
                 // scenes, so the output scales with the act rather than with
                 // anything this stage controls.
-                'truncation_remedy' => 'This stage is measured at 88% of its ceiling on a real act '
-                    .'(story 21 act 3, 14,031 output tokens), so it is the closest one to '
-                    .'truncating and a long act will exceed it. The lever is the ACT LENGTH '
-                    .'upstream, not anything here — scenes are cut from a script that already '
-                    .'exists. Raise ANTHROPIC_MAX_TOKENS_SCENES; a truncated scene list is not '
-                    .'salvageable and re-running bills the act again.',
+                // CORRECTED AFTER MEASURING, AND THE OLD TEXT IS WORTH KNOWING
+                // BECAUSE IT WAS CONFIDENT AND WRONG IN THREE PLACES. It read:
+                // "measured at 88% of its ceiling on a real act (story 21 act
+                // 3, 14,031 output tokens) ... The lever is the ACT LENGTH
+                // upstream, not anything here ... Raise
+                // ANTHROPIC_MAX_TOKENS_SCENES."
+                //
+                //   - The act was 21 act SIX. Act 3 came back at 8,321.
+                //   - Act length is a term, not the lever. Story 27 act 3 is
+                //     1,872 words and fitted at 8,828; story 28 act 2 is 1,863
+                //     and did not fit. Nine words apart, either side of the line.
+                //   - Raising the ceiling is the wrong direction: a truncated
+                //     call is billed at whatever the ceiling is, so a higher one
+                //     makes this failure dearer rather than rarer.
+                //
+                // What actually fills it is reasoning billed as output, the
+                // same thing that was filling generate_outline. Measured on
+                // story 28 act 1, where the discarded Haiku attempt is a free
+                // control — the same act, the same schema, no thinking:
+                //
+                //   Haiku   17,143 chars of JSON at  4,227 output tokens (4.06 chars/token)
+                //   Sonnet  16,090 chars of JSON at 13,720 output tokens (1.17 chars/token)
+                //
+                // So ~9,800 of Sonnet's 13,720 tokens — about 71% — were not
+                // the scene list. On the truncated act 2 it is ~11,600 of
+                // 16,000, against a complete scene list that measures ~4,900.
+                'truncation_remedy' => 'What fills this ceiling is reasoning billed as output, not the '
+                    .'scene list: on story 28 act 1 the same act came back as 4,227 output tokens from '
+                    .'Haiku with no thinking and 13,720 from Sonnet, so ~71% of the fallback call was '
+                    .'reasoning. The fallback runs at effort LOW for that reason — check '
+                    .'ANTHROPIC_EFFORT_SCENES_FALLBACK is not set higher. Act length is a term and not '
+                    .'the lever: story 27 act 3 (1,872 words) fitted at 8,828 tokens while story 28 act '
+                    .'2 (1,863 words) did not. If this truncated AT LOW that is new information — '
+                    .'record it before retrying — and do not raise ANTHROPIC_MAX_TOKENS_SCENES to '
+                    .'absorb it: a truncated call is billed at whatever the ceiling is. A truncated '
+                    .'scene list is not salvageable and the act is re-billed.',
                 'fallback' => env('ANTHROPIC_MODEL_SCENES_FALLBACK', 'claude-sonnet-5'),
-                'fallback_effort' => env('ANTHROPIC_EFFORT_SCENES_FALLBACK', 'medium'),
+
+                /*
+                | LOW, AND NOBODY EVER CHOSE THE SETTING IT REPLACES.
+                |
+                | This app sends no `thinking` parameter at all — see
+                | TalksToClaude::call(), which builds output_config and nothing
+                | else. Sonnet 5 defaults thinking ON when the parameter is
+                | absent, so the fallback has been running adaptive thinking at
+                | effort medium since it was written, on a stage whose whole
+                | job is mechanical: cut an act that already exists into scene
+                | ranges and describe each frame. That is the outline's defect
+                | one stage over — a ceiling filled by reasoning rather than by
+                | the artefact — and it was found the same way, by a truncation.
+                |
+                | Measured on story 28 act 1, where the discarded Haiku attempt
+                | is a free control: the same act, the same schema, no thinking.
+                |
+                |   Haiku   17,143 chars of JSON at  4,227 output tokens
+                |   Sonnet  16,090 chars of JSON at 13,720 output tokens
+                |
+                | ~71% of the Sonnet call was not the scene list.
+                |
+                | WHY LOW RATHER THAN `thinking: disabled`, which is accepted on
+                | Sonnet 5 and would cut more:
+                |
+                |  1. NO THINKING IS A MEASURED FAILURE MODE ON THIS EXACT CALL.
+                |     Haiku 4.5 runs with no thinking and is the primary here,
+                |     and it has been accepted on 0 of the last 33 acts. The
+                |     fallback exists because the no-thinking attempt was not
+                |     good enough; turning thinking off in the fallback too
+                |     would be answering that with the same thing again.
+                |     `low` is the only setting between the two we have data for.
+                |  2. Disabling thinking has its own documented failure modes —
+                |     internal tags leaking into the visible response, and
+                |     structure written as text rather than into the channel
+                |     that was asked for. On a stage whose entire output is
+                |     machine-parsed JSON, that is a decode failure and a
+                |     re-bill, and Anthropic's own guidance is to prefer a lower
+                |     effort over disabling it.
+                |  3. It is the existing mechanism. This key already exists and
+                |     is env-tunable, so the change is one value, rehearsable
+                |     and revertible without code. Disabling thinking would mean
+                |     a new request field, a new config key and a new axis
+                |     nothing else in this app uses.
+                |
+                | THE CEILING STAYS AT 16,000, deliberately, for the reason the
+                | outline's does: a low-effort scene call should measure well
+                | under a third of it, so a truncation at low is new information
+                | — something has moved — and it should arrive as a failure that
+                | is seen rather than be absorbed by headroom nobody notices
+                | being used. A truncated call is billed at the ceiling, so
+                | raising it makes this failure dearer rather than rarer.
+                */
+                'fallback_effort' => env('ANTHROPIC_EFFORT_SCENES_FALLBACK', 'low'),
             ],
 
             /*

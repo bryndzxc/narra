@@ -371,7 +371,7 @@ class ValidateSceneDrafts
 
             $withExpression++;
 
-            if ($this->mentions(mb_strtolower($expression), self::HEDGES)) {
+            if ($this->mentionsHedge(mb_strtolower($expression))) {
                 $offenders[] = $scene->sequence;
             }
         }
@@ -518,6 +518,32 @@ class ValidateSceneDrafts
      *
      * @param  array<int, string>  $cues
      */
+    /**
+     * A hedge as a WORD, not as half of a compound.
+     *
+     * `mentions()` matches `\b`, and a hyphen is a word boundary, so "half"
+     * fired on "half-smile", "half-lidded" and "half-standing" — a named
+     * expression twice, an expression and a posture. Story 33: four of the 21
+     * scenes this advisory flagged were those, and on every story a
+     * "half-smile" is an ordinary thing to write. An advisory that is wrong a
+     * fifth of the time is one an operator learns to skim.
+     *
+     * Its own method rather than a change to `mentions()`, deliberately: that
+     * matcher also decides the face and setting cues, and widening its boundary
+     * there would make those two checks fire LESS — a quieter advisory arrived
+     * at as a side effect of fixing a different one.
+     */
+    private function mentionsHedge(string $text): bool
+    {
+        foreach (self::HEDGES as $hedge) {
+            if (preg_match('/(?<![\p{L}\p{N}-])'.preg_quote($hedge, '/').'(?![\p{L}\p{N}-])/u', $text)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function mentions(string $text, array $cues): bool
     {
         foreach ($cues as $cue) {

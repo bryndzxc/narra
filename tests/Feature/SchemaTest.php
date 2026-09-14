@@ -8,6 +8,7 @@ use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Models\Act;
 use App\Models\AudioTrack;
+use App\Models\Chapter;
 use App\Models\Character;
 use App\Models\RenderJob;
 use App\Models\Scene;
@@ -150,7 +151,13 @@ class SchemaTest extends TestCase
         $this->assertCount(2, $story->refresh()->audioTracks);
     }
 
-    public function test_chapters_are_derived_from_acts_rather_than_stored(): void
+    /**
+     * A story written before chapters existed reads its chapter list off its
+     * acts — the shape every story before 2026-09-13 has, and the one this
+     * derivation had for a phase. No timestamp is stored twice: the acts
+     * carry the render's numbers and the list is built from them on read.
+     */
+    public function test_chapters_are_derived_from_acts_on_a_story_with_no_chapter_rows(): void
     {
         $story = Story::factory()->rendered()->create();
 
@@ -168,8 +175,37 @@ class SchemaTest extends TestCase
         $this->assertSame('21:00', $chapters[2]['timestamp']);
         $this->assertSame('The Descent', $chapters[1]['title']);
 
-        // No chapters table, no chapter columns — one answer to the question.
-        $this->assertFalse(Schema::hasTable('chapters'));
+        $this->assertSame(0, $story->chapters()->count());
+    }
+
+    /**
+     * A story with chapter rows reads its list off THEM, in act order then
+     * chapter order, and the acts' own timings are not consulted. The
+     * chapter is the unit now and the act is its container; the timestamps
+     * are still the render's, written once. See config/chapters.php.
+     */
+    public function test_chapters_are_read_from_chapter_rows_when_the_story_has_them(): void
+    {
+        $story = Story::factory()->rendered()->create();
+
+        $one = Act::factory()->for($story)->atSequence(1)->timed(0, 600_000)->create(['title' => 'The Call']);
+        $two = Act::factory()->for($story)->atSequence(2)->timed(600_000, 660_000)->create(['title' => 'The Descent']);
+
+        Chapter::factory()->forAct($two)->atSequence(1)->timed(600_000, 300_000)->create(['title' => 'Down']);
+        Chapter::factory()->forAct($two)->atSequence(2, 14)->timed(900_000, 360_000)->create(['title' => 'Further']);
+        Chapter::factory()->forAct($one)->atSequence(2, 12)->timed(300_000, 300_000)->create(['title' => 'Ringing']);
+        Chapter::factory()->forAct($one)->atSequence(1)->timed(0, 300_000)->create(['title' => 'Picking Up']);
+
+        $chapters = YoutubeMetadata::factory()->for($story)->generated()->create()->chapters();
+
+        $this->assertSame(
+            ['Picking Up', 'Ringing', 'Down', 'Further'],
+            array_column($chapters, 'title'),
+            'Chapters must come back in act order, then chapter order — never in insertion order.',
+        );
+        $this->assertSame(['0:00', '5:00', '10:00', '15:00'], array_column($chapters, 'timestamp'));
+
+        $this->assertTrue(Schema::hasTable('chapters'));
     }
 
     public function test_chapters_are_empty_until_the_render_has_timed_the_acts(): void

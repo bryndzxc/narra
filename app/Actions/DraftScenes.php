@@ -8,6 +8,7 @@ use App\Enums\RenderStage;
 use App\Enums\SceneStatus;
 use App\Enums\StoryStatus;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\Character;
 use App\Models\RenderJob;
 use App\Models\Scene;
@@ -16,6 +17,7 @@ use App\Support\ImagePromptBuilder;
 use App\Support\LocaleGuard;
 use App\Support\Providers\CharacterProfile;
 use App\Support\Providers\SceneDraft;
+use App\Support\Providers\ScriptWriterException;
 use App\Support\SentenceSplitter;
 use App\Support\ThumbnailFraming;
 use Closure;
@@ -81,6 +83,21 @@ class DraftScenes
      * @var array<int, int>  act sequence => nominations dropped
      */
     private array $thumbnailOverflow = [];
+
+    /**
+     * Scenes whose sentence range crossed a chapter boundary, by act.
+     *
+     * Same lifecycle as `$nameProblems`. The scene prompt states the
+     * boundaries and asks that no scene straddle one; when one does, the
+     * scene is filed under the chapter its FIRST sentence falls in, so the
+     * new chapter's opening line plays over the previous chapter's still for
+     * one scene. That is a few seconds of picture, not a re-bill, so it is
+     * noted rather than refused — and noted, because a boundary that moved
+     * silently is a chapter timestamp that is quietly early.
+     *
+     * @var array<int, array<int, string>>  act sequence => descriptions
+     */
+    private array $chapterStraddles = [];
 
     /**
      * Where a partial re-draft parks its new rows before renumbering.
@@ -169,6 +186,7 @@ class DraftScenes
         // attached to the wrong draft is worse than none.
         $this->nameProblems = [];
         $this->thumbnailOverflow = [];
+        $this->chapterStraddles = [];
 
         $cast = $story->characters()->get();
 
@@ -236,6 +254,29 @@ class DraftScenes
 
             $this->assertRangesCoverScript($act, $set->scenes, count($sentences));
 
+            // The frame and the expression are what Gate 2's editor validates
+            // — the two sections the operator can type — so the writer must
+            // not be able to return one the form would then refuse. Stated in
+            // the prompt, enforced here after the cost row, never at the
+            // schema: structured outputs do not honour maxLength. Same shape
+            // and same reason as Act::SUMMARY_MAX_CHARS in GenerateActScripts.
+            foreach ($set->scenes as $position => $draft) {
+                $over = Scene::textOverflows(['frame' => $draft->frame, 'expression' => $draft->expression]);
+
+                if ($over !== []) {
+                    throw new ScriptWriterException(sprintf(
+                        'Scene %d of act %d came back with a %s. The call was billed and no scene from '
+                        .'this act is stored; re-run the act (story:scenes --acts=%d). The prompt states '
+                        .'the bound, so a writer exceeding it is new information about the writer, not a '
+                        .'reason to raise the bound.',
+                        $position + 1,
+                        $act->sequence,
+                        implode(' and a ', $over),
+                        $act->sequence,
+                    ));
+                }
+            }
+
             $drafted[$act->id] = ['act' => $act, 'sentences' => $sentences, 'scenes' => $set->scenes];
 
             $progress?->__invoke($act, $set->count(), sprintf('%d sentences', count($sentences)));
@@ -260,6 +301,18 @@ class DraftScenes
         $total = $this->persist($story, $cast, $drafted, $rebuild, $onlyActs);
 
         $job->note(sprintf('%d scenes written across %d act(s).', $total, $acts->count()));
+
+        if ($this->chapterStraddles !== []) {
+            foreach ($this->chapterStraddles as $actSequence => $straddles) {
+                $job->note(sprintf(
+                    'Act %d: %d scene(s) straddle a chapter boundary and were filed under the chapter '
+                    .'their first sentence is in, so that chapter starts one scene late: %s.',
+                    $actSequence,
+                    count($straddles),
+                    implode('; ', $straddles),
+                ));
+            }
+        }
 
         // Said, not swallowed. The nominations are the model's editorial call
         // and the cap is ours; an operator reading this row should be able to
@@ -377,8 +430,34 @@ class DraftScenes
             foreach ($drafted as $entry) {
                 $keptInAct = 0;
 
+                // The act's chapters, keyed by the sentence each starts on.
+                // Empty on an act written before chapters existed, and every
+                // scene of it then carries a null chapter_id.
+                $chapters = $entry['act']->chapters()->get();
+
                 foreach ($entry['scenes'] as $index => $draft) {
                     $sequence++;
+
+                    $chapter = $chapters
+                        ->filter(fn (Chapter $c): bool => $c->first_sentence <= $draft->firstSentence)
+                        ->last();
+
+                    $crossed = $chapters->first(
+                        fn (Chapter $c): bool => $c->first_sentence > $draft->firstSentence
+                            && $c->first_sentence <= $draft->lastSentence,
+                    );
+
+                    if ($crossed !== null) {
+                        $actSequence = (int) $entry['act']->sequence;
+                        $this->chapterStraddles[$actSequence][] = sprintf(
+                            'scene %d of that act (sentences %d-%d) crosses into "%s" at sentence %d',
+                            $index + 1,
+                            $draft->firstSentence,
+                            $draft->lastSentence,
+                            $crossed->title,
+                            $crossed->first_sentence,
+                        );
+                    }
 
                     $narration = $this->splitter->join(array_slice(
                         $entry['sentences'],
@@ -412,6 +491,7 @@ class DraftScenes
                     $scene = Scene::create([
                         'story_id' => $story->id,
                         'act_id' => $entry['act']->id,
+                        'chapter_id' => $chapter?->id,
                         'sequence' => $sequence,
                         // Exactly one hook, and it is the first scene of the
                         // video by definition — not something the generator

@@ -157,6 +157,39 @@ final class ScriptSizing
     }
 
     /**
+     * How many words one chapter is meant to run, at this story's own rate.
+     *
+     * Through `wordsForSeconds()` for the reason the hook budget is: it rides
+     * in the same act prompt as the act's word target, and a chapter budget
+     * derived from a different rate than the act budget would be two beliefs
+     * about one narration inside a single string.
+     */
+    public static function chapterTargetWords(Story $story): int
+    {
+        return self::wordsForSeconds($story, (float) config('chapters.target_seconds', 150));
+    }
+
+    /**
+     * How many chapters an act of this length is expected to come back as.
+     *
+     * A projection for the prompt, not a bound — the bounds are
+     * `chapters.min_per_act` and `max_per_act`, enforced after the call. The
+     * writer is told the number its own target divides into, and told the
+     * bounds beside it, because a 985-word ask that comes back at 1,100 (the
+     * measured natural length) rounds from two chapters toward three, and
+     * the writer is the only thing that knows which it wrote.
+     */
+    public static function chaptersPerAct(Story $story, int $targetWords): int
+    {
+        $min = max(1, (int) config('chapters.min_per_act', 2));
+        $max = max($min, (int) config('chapters.max_per_act', 4));
+
+        $projected = (int) round($targetWords / max(1, self::chapterTargetWords($story)));
+
+        return max($min, min($max, $projected));
+    }
+
+    /**
      * The runtime a word count implies, at the best rate we have measured.
      *
      * NOT the frozen sizing rate, and that is the whole point of reporting it:
@@ -184,7 +217,44 @@ final class ScriptSizing
      * whatever the ask was — fitted slope +0.30, so a hundred more words asked
      * buys about thirty.
      *
-     * One measured act stands behind it. See config/render.php -> script.
+     * ---------------------------------------------------------------------
+     * IT WAS NEVER A PROPERTY OF THE WRITER. IT IS A FUNCTION OF THE CHAPTER
+     * COUNT, AND IT READ AS SETTLED BECAUSE NOBODY HAD VARIED THAT.
+     * ---------------------------------------------------------------------
+     *
+     * For a phase this was "~1,100 words almost regardless of what the prompt
+     * asks for" — a sentence about the MODEL, written from five observations
+     * that varied the word target from 800 to 1,120 and found a slope of
+     * +0.30. Every one of those five acts came back as one or two chapters,
+     * because until 2026-09-13 the prompt STATED the chapter count and the
+     * writer obeyed it absolutely. The variable was pinned in every
+     * observation, so the constant looked like a law.
+     *
+     * Story 31 unpinned it — the count is derived by the writer from the
+     * length it actually wrote — and the same premise, the same outline and
+     * the same model returned three chapters per act and 1,473 words. **29%,
+     * from a term nobody knew was in the expression.**
+     *
+     *     2 chapters/act   1,123 words
+     *     3 chapters/act   1,473 words
+     *
+     * **A CONSTANT THAT IS ACTUALLY A FUNCTION OF SOMETHING NOBODY VARIED IS
+     * THE SAME SHAPE AS A CHECK THAT CANNOT FIRE.** Both look settled for the
+     * same reason: nothing has ever moved them, so nothing has ever disagreed
+     * with them, and an absence of disagreement reads as confirmation. This
+     * file's most repeated sentence is that absence is read as agreement, and
+     * this is that sentence pointed at a measurement instead of at a guard —
+     * five observations, all agreeing, all blind to the same held variable.
+     *
+     * Two points do not fit a line and none is fitted. What is recorded
+     * instead is the CONDITION: `naturalActWordsMeasuredAtChapters()`, beside
+     * the figure, so it cannot be read as unconditional again — and
+     * `assertMeasurementStillHolds()` compares it against the configured
+     * chapter budget, so moving `chapters.target_seconds` without
+     * re-measuring goes red rather than silently invalidating every runtime
+     * projection the console shows.
+     *
+     * See config/render.php -> script.
      */
     public static function naturalActWords(): int
     {
@@ -195,6 +265,41 @@ final class ScriptSizing
     public static function targetResponseSlope(): float
     {
         return (float) config('render.script.target_response_slope', 0.30);
+    }
+
+    /**
+     * How many chapters per act the measured length was measured under.
+     *
+     * The condition the figure is only true given. See `naturalActWords()`
+     * for why it exists: the length is a function of this, and for a phase
+     * nobody knew it because this never moved.
+     */
+    public static function naturalActWordsMeasuredAtChapters(): int
+    {
+        return max(1, (int) config('render.script.measured_act_words_chapters', 3));
+    }
+
+    /**
+     * Whether the measured act length is still being used under the
+     * conditions it was measured in.
+     *
+     * The chapter budget and the measured act length are coupled and nothing
+     * said so: `chapters.target_seconds` decides how many chapters an act of
+     * a given length divides into, and the chapter count is a term in the
+     * length. Move the budget without re-measuring and every runtime
+     * projection on the console is quietly wrong — story 31's own numbers
+     * would have read 25% short.
+     *
+     * So this is the disagreement made visible. It does not refuse anything
+     * and it is not a guard on a call path; it is asserted by test, because
+     * the failure it names is "somebody changed a config value and the
+     * measurement beside it is now about a different world", which is a
+     * thing to be told at build time rather than at dispatch.
+     */
+    public static function measurementStillHolds(Story $story): bool
+    {
+        return self::chaptersPerAct($story, self::naturalActWords())
+            === self::naturalActWordsMeasuredAtChapters();
     }
 
     /** Where the measured act length came from, so the figure travels with it. */

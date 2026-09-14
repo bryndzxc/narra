@@ -12,6 +12,7 @@ use App\Models\Act;
 use App\Models\Character;
 use App\Models\CostEntry;
 use App\Models\Scene;
+use App\Support\ImagePromptBuilder;
 use App\Models\Story;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -86,7 +87,7 @@ class ScenesGateTest extends TestCase
         Livewire::test(ScenesGate::class, ['story' => $story])
             ->call('edit', $scene->id)
             ->set('narration', 'She read the sign twice before she understood it.')
-            ->set('imagePrompt', 'A hand-lettered CLOSED sign taped inside a diner window at dusk')
+            ->set('frame', 'A hand-lettered CLOSED sign taped inside a diner window at dusk')
             ->set('motion', MotionPreset::PanLeft->value)
             ->set('isThumbnailCandidate', true)
             ->call('saveScene')
@@ -97,6 +98,192 @@ class ScenesGateTest extends TestCase
         $this->assertSame('She read the sign twice before she understood it.', $scene->narration_text);
         $this->assertSame(MotionPreset::PanLeft, $scene->motion_preset);
         $this->assertTrue($scene->is_thumbnail_candidate);
+        $this->assertSame(
+            'A hand-lettered CLOSED sign taped inside a diner window at dusk',
+            ImagePromptBuilder::frameFrom((string) $scene->image_prompt),
+        );
+    }
+
+    // -- The editor edits the authored sections and nothing else -------------
+
+    /**
+     * The editor loads the frame and the expression, and a save puts them back
+     * in front of the cast block, the style and the constraints EXACTLY as
+     * stored — not rebuilt from config, so an edit never gives one scene a
+     * different style from its neighbours.
+     */
+    public function test_the_editor_loads_only_the_authored_sections_and_keeps_the_tail_byte_for_byte(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+        $scene = $story->scenes()->where('sequence', 2)->firstOrFail();
+
+        $tail = "Marguerite: a tall woman with grey hair pulled back, in a dark coat.\n\n"
+            ."painted realism, oil on canvas, muted palette\n\n"
+            .'No text, no captions, no watermarks.';
+
+        $scene->update([
+            'image_prompt' => "A diner window at dusk, a CLOSED sign taped inside.\n\n"
+                ."The expression on the faces in this image: Jaw tight, eyes on the sign.\n\n"
+                .$tail,
+        ]);
+
+        $component = Livewire::test(ScenesGate::class, ['story' => $story])->call('edit', $scene->id);
+
+        $this->assertSame('A diner window at dusk, a CLOSED sign taped inside.', $component->get('frame'));
+        $this->assertSame('Jaw tight, eyes on the sign.', $component->get('expression'));
+
+        $component
+            ->set('frame', 'The same window from the street, rain starting.')
+            ->set('expression', 'eyes wide')
+            ->call('saveScene')
+            ->assertHasNoErrors();
+
+        $this->assertSame(
+            "The same window from the street, rain starting.\n\n"
+            ."The expression on the faces in this image: Eyes wide.\n\n"
+            .$tail,
+            $scene->fresh()->image_prompt,
+        );
+    }
+
+    /**
+     * THE SHIPPED FAILURE. A stored prompt of 3,186 characters — the frame
+     * plus the app's own 2,532 characters of style and constraints — was
+     * loaded whole into a field validated at 2,000, so a narration edit on
+     * 1,495 of 1,693 scenes was refused, and refused silently. A narration
+     * edit on such a scene must simply save.
+     */
+    public function test_a_narration_edit_saves_on_a_scene_whose_stored_prompt_is_over_the_old_cap(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+        $scene = $story->scenes()->where('sequence', 1)->firstOrFail();
+
+        // Sections as build() writes them: trimmed, blank-line separated.
+        $prompt = "A kitchen at seven in the morning, one chair pulled out.\n\n"
+            .rtrim(str_repeat('The channel art style, stated at length. ', 60))."\n\n"
+            .'No text in the image.';
+
+        $this->assertGreaterThan(2000, mb_strlen($prompt), 'The fixture must be over the old cap or it proves nothing.');
+
+        $scene->update(['image_prompt' => $prompt]);
+
+        Livewire::test(ScenesGate::class, ['story' => $story])
+            ->call('edit', $scene->id)
+            ->set('narration', 'She read the sign twice before she understood it.')
+            ->call('saveScene')
+            ->assertHasNoErrors();
+
+        $scene->refresh();
+
+        $this->assertSame('She read the sign twice before she understood it.', $scene->narration_text);
+        $this->assertSame($prompt, $scene->image_prompt, 'An untouched prompt must survive a narration edit unchanged.');
+    }
+
+    public function test_a_frame_one_over_the_bound_is_refused_and_one_at_the_bound_is_not(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+        $scene = $story->scenes()->where('sequence', 1)->firstOrFail();
+
+        Livewire::test(ScenesGate::class, ['story' => $story])
+            ->call('edit', $scene->id)
+            ->set('frame', str_repeat('x', Scene::FRAME_MAX_CHARS + 1))
+            ->call('saveScene')
+            ->assertHasErrors('frame');
+
+        Livewire::test(ScenesGate::class, ['story' => $story])
+            ->call('edit', $scene->id)
+            ->set('frame', str_repeat('x', Scene::FRAME_MAX_CHARS))
+            ->set('expression', str_repeat('y', Scene::EXPRESSION_MAX_CHARS))
+            ->call('saveScene')
+            ->assertHasNoErrors();
+    }
+
+    public function test_the_scene_bounds_in_the_form_are_the_model_constants(): void
+    {
+        $rules = ScenesGate::sceneRules();
+
+        $this->assertContains('max:'.Scene::FRAME_MAX_CHARS, $rules['frame']);
+        $this->assertContains('max:'.Scene::EXPRESSION_MAX_CHARS, $rules['expression']);
+    }
+
+    /**
+     * A refused save says so beside the Save button, inside the editing row,
+     * and nothing is written. Every rule in sceneRules(), violated in turn,
+     * reaches that block — it renders the whole error bag, so a new rule is on
+     * it by construction, and this fails rather than skips if it cannot
+     * derive a violation for one.
+     */
+    public function test_every_scene_rule_refuses_visibly_beside_the_save_button(): void
+    {
+        $story = $this->storyWithScenes(StoryStatus::ScenesDrafted);
+        $scene = $story->scenes()->where('sequence', 3)->firstOrFail();
+        $before = $scene->narration_text;
+        $checked = 0;
+
+        foreach (ScenesGate::sceneRules() as $key => $rules) {
+            $value = $this->violatingValueFor($rules);
+
+            if ($value === null) {
+                $this->fail("No violating value could be derived for rule '{$key}': ".implode('|', $rules));
+            }
+
+            $component = Livewire::test(ScenesGate::class, ['story' => $story])
+                ->call('edit', $scene->id)
+                ->set('narration', 'A perfectly good line of narration.')
+                ->set($key, $value)
+                ->call('saveScene')
+                ->assertHasErrors($key);
+
+            $html = $component->html();
+            $block = $this->refusalBlock($html);
+
+            $this->assertNotNull($block, "The refusal of '{$key}' did not render.");
+            $this->assertStringContainsString("Scene {$scene->sequence} not saved", $block);
+            $this->assertStringContainsString(e($component->errors()->first($key)), $block);
+
+            // Inside the editing row: after the editor opens, before its Save.
+            $this->assertLessThan(strpos($html, 'wire:click="saveScene"'), strpos($html, 'class="alert err wide refused"'));
+            $this->assertGreaterThan(strpos($html, 'id="scene-narration"'), strpos($html, 'class="alert err wide refused"'));
+
+            $checked++;
+        }
+
+        $this->assertSame(count(ScenesGate::sceneRules()), $checked);
+        $this->assertSame($before, $scene->fresh()->narration_text, 'A refused save must write nothing.');
+    }
+
+    /** The refusal block, whitespace collapsed, or null when the page has none. */
+    private function refusalBlock(string $html): ?string
+    {
+        if (! preg_match('/<div class="alert err wide refused"[^>]*>(.*?)<\/ul>\s*<\/div>/s', $html, $m)) {
+            return null;
+        }
+
+        return preg_replace('/\s+/', ' ', $m[0]);
+    }
+
+    /**
+     * @param  array<int, string>  $rules
+     */
+    private function violatingValueFor(array $rules): ?string
+    {
+        foreach ($rules as $rule) {
+            if (str_starts_with($rule, 'max:')) {
+                return str_repeat('x', (int) substr($rule, 4) + 1);
+            }
+        }
+
+        foreach ($rules as $rule) {
+            if (str_starts_with($rule, 'min:')) {
+                return str_repeat('x', max(0, (int) substr($rule, 4) - 1));
+            }
+
+            if ($rule === 'required') {
+                return '';
+            }
+        }
+
+        return null;
     }
 
     public function test_flagging_a_new_hook_unflags_the_old_one(): void

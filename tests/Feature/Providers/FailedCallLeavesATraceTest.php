@@ -198,6 +198,133 @@ class FailedCallLeavesATraceTest extends TestCase
 
     // -- Helpers --------------------------------------------------------------
 
+    // -- The DISCARDED first attempt of a scene draft ------------------------
+
+    /**
+     * A scene draft bills twice when the cheap model is rejected, and the
+     * second bill is the one that can throw.
+     *
+     * `scenes()` bills Haiku, keeps its usage in `$discarded`, calls Sonnet,
+     * and hands both back in a SceneDraftSet for DraftScenes to record. When
+     * the Sonnet call truncates there is no set to hand back and the Haiku
+     * usage dies with the exception. Story 28 act 2: billed ~$0.035, absent
+     * from `cost_entries`, while the Sonnet half of the same act WAS recorded
+     * by the truncation path — one row where there should be two.
+     */
+    public function test_a_usage_with_no_action_to_record_it_is_written_against_the_open_stage(): void
+    {
+        $story = Story::factory()->create();
+        $writer = $this->writer();
+
+        $usage = $this->priceOf($writer, StreamedMessage::of('{"scenes":[]}', 'end_turn', 900, 4227, 0, 0));
+
+        $said = RenderJob::record($story->id, RenderStage::DraftScenes, function () use ($writer, $usage): string {
+            $record = new ReflectionMethod($writer, 'recordSpendWithNoAction');
+            $record->setAccessible(true);
+
+            return $record->invoke($writer, $usage, 'draft_scenes');
+        });
+
+        $row = CostEntry::query()->where('story_id', $story->id)->where('operation', 'draft_scenes')->first();
+
+        $this->assertNotNull($row, 'The discarded attempt was billed and wrote no ledger row.');
+        $this->assertSame(4227, (int) $row->detail['output_tokens']);
+        $this->assertStringContainsString('cost row #'.$row->id, $said);
+    }
+
+    /**
+     * The GREEN half: outside a recorded stage there is no story to charge, so
+     * it says the spend is NOT in the ledger rather than claiming a bill.
+     */
+    public function test_a_usage_with_no_stage_recording_says_it_is_not_in_the_ledger(): void
+    {
+        $writer = $this->writer();
+
+        $this->assertNull(RenderJob::current());
+
+        $record = new ReflectionMethod($writer, 'recordSpendWithNoAction');
+        $record->setAccessible(true);
+
+        $said = $record->invoke(
+            $writer,
+            $this->priceOf($writer, StreamedMessage::of('{}', 'end_turn', 900, 4227, 0, 0)),
+            'draft_scenes',
+        );
+
+        $this->assertStringContainsString('NOT in the ledger', $said);
+        $this->assertSame(0, CostEntry::query()->count());
+    }
+
+    /**
+     * AND THE CALL SITE ACTUALLY REACHES IT.
+     *
+     * Asserted on source because the failing path needs two live streams — an
+     * unusable first response and a truncated second — and `scenes()` builds
+     * both from a real client. The builder being correct while nothing calls
+     * it is this file's own founding defect (`truncationMessage()` was well
+     * tested and unreachable), so the delegation is checked rather than
+     * assumed.
+     *
+     * Comments are stripped first: a docblock quoting the old shape to explain
+     * the change would otherwise satisfy a source scan, which is the mistake
+     * the clip-stage guard's assertion made.
+     */
+    public function test_the_scene_fallback_records_the_discarded_attempt_when_it_throws(): void
+    {
+        $body = $this->methodSource(ClaudeScriptWriter::class, 'scenes');
+
+        $this->assertStringContainsString('try {', $body, 'The fallback call is not guarded at all.');
+        $this->assertStringContainsString('catch', $body);
+        $this->assertStringContainsString(
+            'recordSpendWithNoAction($discarded[0]',
+            $body,
+            'The fallback path does not record the attempt it discarded.',
+        );
+
+        $this->assertLessThan(
+            mb_strpos($body, 'recordSpendWithNoAction'),
+            mb_strpos($body, '$discarded[] = $usage;'),
+            'The attempt must be discarded before the path that records it.',
+        );
+    }
+
+    /**
+     * The source of one method, with comments removed.
+     */
+    private function methodSource(string $class, string $method): string
+    {
+        $reflected = new ReflectionMethod($class, $method);
+        $lines = file($reflected->getFileName());
+        $source = implode('', array_slice(
+            $lines,
+            $reflected->getStartLine() - 1,
+            $reflected->getEndLine() - $reflected->getStartLine() + 1,
+        ));
+
+        $out = '';
+
+        foreach (token_get_all('<?php '.$source) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            $out .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $out;
+    }
+
+    private function priceOf(ClaudeScriptWriter $writer, StreamedMessage $message): \App\Support\Providers\ProviderUsage
+    {
+        $config = new ReflectionMethod($writer, 'operationConfig');
+        $config->setAccessible(true);
+
+        $price = new ReflectionMethod($writer, 'priceUsage');
+        $price->setAccessible(true);
+
+        return $price->invoke($writer, $message, 'draft_scenes', $config->invoke($writer, 'draft_scenes'));
+    }
+
     /**
      * @return array{0: string, 1: \App\Support\Providers\ProviderUsage}
      */

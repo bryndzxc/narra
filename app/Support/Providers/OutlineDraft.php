@@ -29,6 +29,20 @@ namespace App\Support\Providers;
  * ever asked the outline what the first thirty seconds were, so the act 1 call
  * had nothing to be told, and a writer with no instruction about where the
  * opening starts writes the chronological beginning.
+ *
+ * The ninth is `narratorAtExposure`, and it is the sharpest of them. Story
+ * 25's withheld information needed the narrator's body in the room — a trust
+ * vote requiring the settlor present — and the writer brought him back for
+ * the exposure. Stories 23 and 28 let a document and a third party produce
+ * it, and the writer left the narrator 800 km away, so the public payoff
+ * arrived as hearsay. Whether the search finds them or they choose the
+ * moment, the narrator is in the room and the scene is theirs.
+ *
+ * The tenth is `betrayalScene`, and it is the other end of the same idea: the
+ * payoff was hearsay because the narrator was not in the room, and the
+ * betrayal was a discovery because nobody was. Seven stories found their
+ * betrayal or heard it at a kitchen table; the reference stages it at 1:31,
+ * in front of nine people, with the other man holding her hand.
  */
 final class OutlineDraft
 {
@@ -41,8 +55,17 @@ final class OutlineDraft
      * @param  string  $narratorGrievance  Who wronged the narrator, and how. First person.
      * @param  string  $antagonistJustification  The antagonist's own account of why they
      *                                           were entitled to it. The engine of the format.
+     * @param  string  $betrayalScene  The betrayal as a present-day scene in chapter one: the
+     *                                 room, the named witnesses, the person it is done with
+     *                                 standing there, the justification said aloud to the
+     *                                 narrator's face, and the narrator's line back.
      * @param  string  $withheldInformation  What the narrator knows and the antagonist does not.
      * @param  string  $exposureMoment  Where it comes out, and in front of whom.
+     * @param  string  $narratorAtExposure  How the narrator comes to be in the room —
+     *                                      by their own choice, unexpected, the search
+     *                                      having failed — and what only they produce
+     *                                      there. Gate 1 checks it against the withheld
+     *                                      information by overlap.
      * @param  string  $departure  How and when the narrator goes, and whether they
      *                             announce it. Not announcing is what makes the search
      *                             possible, so the announcement is the detail Gate 1 checks.
@@ -61,9 +84,14 @@ final class OutlineDraft
         public readonly string $antagonistJustification = '',
         public readonly string $withheldInformation = '',
         public readonly string $exposureMoment = '',
+        public readonly string $narratorAtExposure = '',
         public readonly string $departure = '',
         public readonly string $reversalBeats = '',
         public readonly string $refusal = '',
+        // At the END of the spine parameters rather than beside the
+        // justification, so a caller passing them positionally is unchanged.
+        // `spine()` below puts it in narrative order.
+        public readonly string $betrayalScene = '',
         /**
          * What was asked for, carried alongside what came back.
          *
@@ -99,8 +127,10 @@ final class OutlineDraft
             'hook' => $this->hook,
             'narrator_grievance' => $this->narratorGrievance,
             'antagonist_justification' => $this->antagonistJustification,
+            'betrayal_scene' => $this->betrayalScene,
             'withheld_information' => $this->withheldInformation,
             'exposure_moment' => $this->exposureMoment,
+            'narrator_at_exposure' => $this->narratorAtExposure,
             'departure' => $this->departure,
             'reversal_beats' => $this->reversalBeats,
             'refusal' => $this->refusal,

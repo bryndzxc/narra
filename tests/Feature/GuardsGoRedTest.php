@@ -3,17 +3,20 @@
 namespace Tests\Feature;
 
 use App\Actions\GenerateActScripts;
+use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
 use App\Actions\DraftScenes;
 use App\Actions\ValidateSceneDrafts;
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 use App\Enums\Gate;
 use App\Enums\StoryStatus;
 use App\Models\Act;
 use App\Models\Character;
 use App\Models\Scene;
 use App\Models\Story;
+use App\Support\ChapterAnnouncement;
 use App\Support\GateVoice;
 use App\Support\ImagePromptBuilder;
 use App\Support\SlotContent;
@@ -534,6 +537,13 @@ class GuardsGoRedTest extends TestCase
                 .'same account the whole time.',
             'exposure_moment' => 'At the reception, in front of eighty guests and both families, '
                 .'when Dana stood up to thank everyone who had helped and named everyone but me.',
+            // In the room by choice, producing the withheld information in
+            // person, in its own words — the state the presence pair below
+            // needs to be able to express. "care home fees" and "account"
+            // are the overlap.
+            'narrator_at_exposure' => 'I come to the reception uninvited, having chosen the moment, '
+                .'and put eleven months of care home fees from the same account on the table '
+                .'myself. She did not find me. I came.',
             'departure' => 'I moved out of the apartment two weeks after the reception and did '
                 .'not say where I was going. Nobody was given an address and my number changed '
                 .'the same afternoon. Dana found out that I was gone three weeks later.',
@@ -551,10 +561,430 @@ class GuardsGoRedTest extends TestCase
             Act::factory()->for($story)->atSequence($sequence)->inPhase($phases[$sequence])->create([
                 'is_rehook_written' => true,
                 'escalation_beat' => "Act {$sequence} costs somebody something they cannot get back.",
+                // Declared, so the outline is one that was ASKED and the
+                // timeframe pair can turn one act prior without the whole
+                // story reading as pre-field.
+                'timeframe' => ActTimeframe::Present,
             ]);
         }
 
         return $story->refresh();
+    }
+
+    // -- The betrayal scene ---------------------------------------------------
+    //
+    // Four checks, four pairs, each GREEN the RED input with one thing changed.
+    // Built on `storyWithBothPayoffs()` plus a scene and an act 1 summary, and
+    // the fixture's ability to hold both halves is asserted at the end.
+
+    /** The healthy scene every pair varies from. */
+    private const BETRAYAL_SCENE = 'At Dana\'s engagement dinner, in front of both families and twenty '
+        .'relatives, Dana stood up with her fiance Mark beside her and announced that I had agreed to pay '
+        .'the venue balance. Aunt Ruth asked when I had offered. Dana said it to my face, to the whole '
+        .'room: I have no kids and no mortgage, and family helps family. Mark looked at his plate and said '
+        .'nothing. I asked whether I was also paying for the soup, and the table laughed at me instead of '
+        .'at her.';
+
+    private const ACT_ONE_STAGES_IT = 'At the engagement dinner, in front of twenty relatives, Dana '
+        .'announces I agreed to pay the venue balance and says family helps family to my face. Mark '
+        .'stays silent. I answer back and the table laughs at me.';
+
+    /**
+     * RED: the kitchen table — stories 29-32's staging, with every other part
+     * of the scene intact, including the justification said to her face.
+     */
+    public function test_the_betrayal_audience_check_goes_red(): void
+    {
+        $review = $this->reviewBetrayal(
+            'At our kitchen table, with her fiance Mark beside her, Dana told me I had agreed to pay the '
+            .'venue balance. Dana said it to my face: I have no kids and no mortgage, and family helps '
+            .'family. Mark looked at his plate and said nothing. I asked whether I was also paying for '
+            .'the soup, and she told me not to be petty.'
+        );
+
+        $this->assertStringContainsString('The betrayal scene names nobody watching', implode(' ', $review['warnings']));
+        $this->assertSame('weak', $review['spine']['betrayal_scene']['state']);
+    }
+
+    public function test_the_betrayal_audience_check_passes_a_room_with_people_in_it(): void
+    {
+        $review = $this->reviewBetrayal(self::BETRAYAL_SCENE);
+
+        $this->assertStringNotContainsString('names nobody watching', implode(' ', $review['warnings']));
+        $this->assertSame('ok', $review['spine']['betrayal_scene']['state']);
+    }
+
+    /** RED: the scene happens in public and she never says her justification. */
+    public function test_the_said_aloud_check_goes_red(): void
+    {
+        $review = $this->reviewBetrayal(str_replace(
+            'I have no kids and no mortgage, and family helps family.',
+            'I had offered at Christmas and was now embarrassing her.',
+            self::BETRAYAL_SCENE,
+        ));
+
+        $this->assertStringContainsString('is not said in the betrayal scene', implode(' ', $review['warnings']));
+        $this->assertArrayNotHasKey('says', $review['spine']['betrayal_scene']);
+    }
+
+    public function test_the_said_aloud_check_names_the_sentence_she_says(): void
+    {
+        $review = $this->reviewBetrayal(self::BETRAYAL_SCENE);
+
+        $this->assertStringNotContainsString('is not said in the betrayal scene', implode(' ', $review['warnings']));
+        $this->assertStringContainsString('no kids and no mortgage', (string) ($review['spine']['betrayal_scene']['says'] ?? ''));
+    }
+
+    /** RED: story 23's shape — the betrayal found in posted photos. */
+    public function test_the_discovery_check_goes_red(): void
+    {
+        $review = $this->reviewBetrayal('I found out from the photos Mark posted that morning. '.self::BETRAYAL_SCENE);
+
+        $warnings = implode(' ', $review['warnings']);
+
+        $this->assertStringContainsString('reads as FOUND rather than done', $warnings);
+        $this->assertStringContainsString('"found out"', $warnings);
+        $this->assertSame([], array_filter(
+            $review['problems'],
+            fn (string $p): bool => str_contains($p, 'FOUND'),
+        ), 'A discovery is a warning, never a problem: not every premise can stage a public betrayal.');
+    }
+
+    /** GREEN: the same markers, negated — the good case says them out loud. */
+    public function test_the_discovery_check_passes_a_negated_finding(): void
+    {
+        $review = $this->reviewBetrayal('Not from any photos anybody posted: from her own mouth. '.self::BETRAYAL_SCENE);
+
+        $this->assertStringNotContainsString('reads as FOUND', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * RED: act 1's summary is about something else and shares only the cast's
+     * NAMES with the scene — three of them, which is exactly enough to pass a
+     * three-word overlap if names were counted. That is the drill for the
+     * proper-noun filter as well as for the check.
+     */
+    public function test_the_act_one_check_goes_red(): void
+    {
+        $review = $this->reviewBetrayal(
+            self::BETRAYAL_SCENE,
+            'On the telephone, Dana, Mark and Ruth argue over a seating chart.',
+        );
+
+        $this->assertStringContainsString('Act 1\'s summary does not stage the betrayal scene', implode(' ', $review['warnings']));
+    }
+
+    public function test_the_act_one_check_passes_an_act_that_stages_the_scene(): void
+    {
+        $review = $this->reviewBetrayal(self::BETRAYAL_SCENE, self::ACT_ONE_STAGES_IT);
+
+        $this->assertStringNotContainsString('does not stage the betrayal scene', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * The pairs above are only as good as the fixture under them: an outline
+     * that was ASKED (so the field is not read as unasked), with an act 1, and
+     * a justification to overlap. And the shared page fixture cannot hold any
+     * of it, on purpose — it is pre-phase and outlined before the field.
+     */
+    public function test_the_betrayal_fixture_can_express_every_state(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        $this->assertFalse((bool) $story->outlined_before_betrayal_scene);
+        $this->assertNotSame('', trim((string) $story->antagonist_justification));
+        $this->assertNotNull($story->acts()->where('sequence', 1)->first());
+
+        $shared = GateLayoutContractTest::pageFixtureFor(StoryStatus::Outlined);
+
+        $this->assertTrue($shared->outlined_before_betrayal_scene);
+        $this->assertSame('', trim((string) $shared->betrayal_scene));
+    }
+
+    /**
+     * @return array{problems: array<int, string>, warnings: array<int, string>, spine: array<string, array<string, string>>}
+     */
+    private function reviewBetrayal(string $scene, string $actOneSummary = self::ACT_ONE_STAGES_IT): array
+    {
+        $story = $this->storyWithBothPayoffs();
+        $story->update(['betrayal_scene' => $scene]);
+        $story->acts()->where('sequence', 1)->update(['summary' => $actOneSummary]);
+
+        return app(ValidateOutlineSpine::class)->handle($story->refresh());
+    }
+
+    // -- The spoken chapter number --------------------------------------------
+
+    /**
+     * RED: an act whose chapters never say their number out loud.
+     *
+     * The state story 30's acts 1 and 4 came back in — chapters present,
+     * titled, sequenced and boundaried, with no announcement anywhere in the
+     * prose. Nothing in the database looks wrong, which is why nothing saw
+     * it: the Gate 1 page listed twelve chapters and every one of them had a
+     * title.
+     *
+     * Act 4 is the one silenced here rather than act 1, deliberately. Act 1
+     * chapter 1 is the one chapter whose announcement is allowed to be late,
+     * so a pair built on it would be testing the exception; act 4 is the
+     * other act story 30 lost, and it is an ordinary act with an ordinary
+     * rule.
+     */
+    public function test_the_chapter_announcement_check_goes_red(): void
+    {
+        $story = $this->storyWrittenAsChapters(silentAct: 4);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story);
+        $found = $this->announcementWarnings($review);
+
+        $this->assertNotEmpty($found, 'An act whose chapters never announce themselves was not reported.');
+        $this->assertStringContainsString('Act 4, chapter 1', implode(' ', $found));
+        $this->assertStringContainsString('never says its number out loud', implode(' ', $found));
+
+        // And it names the number that was missing, not just that one was.
+        $this->assertStringContainsString('"'.ChapterAnnouncement::sentenceFor(7).'"', implode(' ', $found));
+    }
+
+    /** GREEN: the identical story with every act announcing. */
+    public function test_the_chapter_announcement_check_passes_an_announced_story(): void
+    {
+        $review = app(ValidateOutlineSpine::class)->handle($this->storyWrittenAsChapters());
+
+        $this->assertSame([], $this->announcementWarnings($review));
+    }
+
+    /**
+     * GREEN, and the case the check is most likely to be got wrong on: act 1
+     * chapter 1 announces AFTER the hook, because the cold open precedes
+     * "chapter 1" in the reference and in our contract.
+     *
+     * A check that demanded the number as the first sentence everywhere would
+     * report the correct shape as the defect on every story — which is how a
+     * guard gets switched off within a week.
+     */
+    public function test_the_chapter_announcement_check_allows_act_ones_late_announcement(): void
+    {
+        $story = $this->storyWrittenAsChapters();
+        $this->delayTheAnnouncement($story, actSequence: 1, by: 4);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame([], $this->announcementWarnings($review));
+    }
+
+    /** RED: the same delay anywhere else, which is a chapter marker nobody can navigate to. */
+    public function test_the_chapter_announcement_check_reports_a_buried_number_in_a_later_act(): void
+    {
+        $story = $this->storyWrittenAsChapters();
+        $this->delayTheAnnouncement($story, actSequence: 3, by: 4);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+        $found = $this->announcementWarnings($review);
+
+        $this->assertNotEmpty($found);
+        $this->assertStringContainsString('Act 3, chapter 1', implode(' ', $found));
+        $this->assertStringContainsString('4 sentence(s) in rather than opening on it', implode(' ', $found));
+    }
+
+    /**
+     * The fixture can express both states, asserted rather than assumed.
+     *
+     * `pageFixtureFor()` has silently voided a contract twice by not varying
+     * the field the assertion reads, and `PartialSceneRedraftTest` did it a
+     * third way by being too SMALL to hold the collision. So this asserts the
+     * size — more than one act, more than one chapter per act — and that the
+     * two halves of the pair actually differ in the prose.
+     */
+    public function test_the_chapter_announcement_fixture_can_express_the_silence(): void
+    {
+        $this->assertTrue(ChapterAnnouncement::enabled(), 'The check is silent with announcements off.');
+
+        $announced = $this->storyWrittenAsChapters();
+        $silent = $this->storyWrittenAsChapters(silentAct: 4);
+
+        $this->assertGreaterThan(3, $announced->acts()->count());
+        $this->assertGreaterThan(1, $announced->acts()->where('sequence', 4)->first()->chapters()->count());
+
+        $this->assertStringContainsString(
+            ChapterAnnouncement::sentenceFor(7),
+            (string) $announced->acts()->where('sequence', 4)->first()->script,
+        );
+        $this->assertStringNotContainsString(
+            ChapterAnnouncement::sentenceFor(7),
+            (string) $silent->acts()->where('sequence', 4)->first()->script,
+        );
+
+        // And the silenced act is the ONLY thing that differs: act 3 still
+        // announces in both, so the red case cannot be satisfied by a story
+        // that announces nothing anywhere.
+        $this->assertStringContainsString(
+            ChapterAnnouncement::sentenceFor(5),
+            (string) $silent->acts()->where('sequence', 3)->first()->script,
+        );
+    }
+
+    /**
+     * A story written as chapters, optionally with one act's announcements
+     * suppressed.
+     *
+     * Acts are written one at a time so the suppression lands on exactly one
+     * of them — the fake resets the flag after each act, the way it resets
+     * the re-hook one.
+     */
+    private function storyWrittenAsChapters(int $silentAct = 0): Story
+    {
+        $story = Story::factory()->status(StoryStatus::Draft)->single()->create();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh();
+
+        $writer = app(ScriptWriter::class);
+
+        foreach ($story->acts()->orderBy('sequence')->pluck('sequence') as $sequence) {
+            $writer->suppressChapterNumbers = ((int) $sequence === $silentAct);
+
+            app(GenerateActScripts::class)->handle($story, only: [(int) $sequence]);
+        }
+
+        return $story->refresh();
+    }
+
+    /**
+     * Push an act's first announcement later into its own chapter, keeping
+     * every boundary consistent — which is what act 1 legitimately looks like
+     * once the five hook beats sit in front of "Chapter one."
+     */
+    private function delayTheAnnouncement(Story $story, int $actSequence, int $by): void
+    {
+        $act = $story->acts()->where('sequence', $actSequence)->first();
+        $filler = str_repeat('The invoice sat on the table. ', $by);
+
+        $act->update(['script' => $filler.$act->script]);
+
+        // Every boundary after the first shifts by the sentences inserted
+        // ahead of it. The first chapter still starts at sentence 1.
+        foreach ($act->chapters()->where('sequence', '>', 1)->get() as $chapter) {
+            $chapter->update(['first_sentence' => $chapter->first_sentence + $by]);
+        }
+    }
+
+    /** @param  array{warnings: array<int, string>}  $review */
+    private function announcementWarnings(array $review): array
+    {
+        return array_values(array_filter(
+            $review['warnings'],
+            static fn (string $warning): bool => str_contains($warning, 'its number out loud')
+                || str_contains($warning, 'announces itself as chapter')
+                || str_contains($warning, 'rather than opening on it'),
+        ));
+    }
+
+    // -- When an act is set ---------------------------------------------------
+
+    /**
+     * RED: one escalation act declared prior. The input is story 28's own
+     * summary sentence, which was read at Gate 1 and approved.
+     */
+    public function test_the_timeframe_check_goes_red(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+        $story->acts()->where('sequence', 2)->update([
+            'timeframe' => ActTimeframe::Prior,
+            'summary' => 'Act 2 tells the second betrayal in full.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertStringContainsString(
+            'Act 2 is set before the story\'s present: "Act 2 tells the second betrayal in full"',
+            implode(' ', $review['problems']),
+            'An escalation act staged in the past was not refused, and the script is written from '
+            .'the summary and nothing else.',
+        );
+    }
+
+    public function test_the_timeframe_check_passes_an_outline_set_in_the_present(): void
+    {
+        $review = app(ValidateOutlineSpine::class)->handle($this->storyWithBothPayoffs());
+
+        $this->assertStringNotContainsString('set before the story', implode(' ', $review['problems']));
+        $this->assertStringNotContainsString('do not say whether', implode(' ', $review['problems']));
+    }
+
+    // -- The narrator at the exposure ----------------------------------------
+
+    /**
+     * RED: a found narrator who produces nothing. The search succeeding
+     * stopped being a weakness on 2026-09-13 — the reference transcript has
+     * her find him and kneel — so what a found narrator is judged on is the
+     * same thing an uninvited one is: does the field name what only they
+     * produce. GREEN below is the identical found shape WITH the thing named,
+     * so the pair cannot be satisfied by refusing every "found me".
+     */
+    public function test_the_found_narrator_check_goes_red(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+        $story->update([
+            'narrator_at_exposure' => 'The man she paid found me in March and she brought me to the '
+                .'hall herself, where I stood at the back and watched her make the toast.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertStringContainsString('names nothing that only they can produce', implode(' ', $review['warnings']));
+        $this->assertStringContainsString('found me', (string) ($review['spine']['narrator_at_exposure']['found'] ?? ''));
+    }
+
+    public function test_the_found_narrator_check_passes_a_found_narrator_who_produces(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+        $story->update([
+            'narrator_at_exposure' => 'The man she paid found me at the care home in March and she '
+                .'brought me to the reception, where I put eleven months of the fees on the table '
+                .'from the same account myself.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('ok', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertNotEmpty($review['spine']['narrator_at_exposure']['produces'] ?? '');
+        $this->assertStringContainsString('found me', (string) $review['spine']['narrator_at_exposure']['found']);
+        $this->assertStringNotContainsString('reads as the search succeeding', implode(' ', $review['warnings']));
+    }
+
+    public function test_the_found_narrator_check_passes_a_negated_finding(): void
+    {
+        $review = app(ValidateOutlineSpine::class)->handle($this->storyWithBothPayoffs());
+
+        $this->assertSame('ok', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertNotEmpty($review['spine']['narrator_at_exposure']['produces'] ?? '');
+        $this->assertArrayNotHasKey('found', $review['spine']['narrator_at_exposure']);
+    }
+
+    /**
+     * The fixture can express both states, asserted rather than assumed — the
+     * lesson `pageFixtureFor()` taught twice, applied at the third field
+     * before the drill rather than after it.
+     */
+    public function test_the_presence_fixture_can_express_both_states(): void
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        $this->assertNotSame('', trim((string) $story->withheld_information));
+        $this->assertNotSame('', trim((string) $story->narrator_at_exposure));
+        $this->assertTrue(
+            $story->acts()->get()->every(fn (Act $act): bool => $act->timeframe !== null),
+            'Every act must be declared, or turning one prior would read as a half-fixed outline '
+            .'rather than as the refused shape.',
+        );
+
+        // And the shared page fixture cannot hold this, on purpose: it is
+        // pre-phase, so its narrator has no departure to come back from.
+        $shared = GateLayoutContractTest::pageFixtureFor(StoryStatus::Outlined);
+
+        $this->assertSame('', trim((string) $shared->narrator_at_exposure));
+        $this->assertTrue($shared->acts()->get()->every(fn (Act $act): bool => $act->timeframe === null));
     }
 
     // -- The close-frame setting advisory ------------------------------------
@@ -699,6 +1129,35 @@ class GuardsGoRedTest extends TestCase
         );
 
         $this->assertStringNotContainsString('hedge it', implode(' ', $warnings));
+    }
+
+    /**
+     * GREEN: a compound is a named expression, not a hedge. Story 33 scenes
+     * 34, 116, 92 and 24, verbatim in shape — four of the 21 the advisory
+     * flagged there, and "half-smile" is an ordinary thing to write.
+     */
+    public function test_the_hedged_expression_check_ignores_a_hyphenated_compound(): void
+    {
+        foreach (['mouth set in a bitter half-smile', 'tired half-smile, eyes already elsewhere', 'bored, eyes half-lidded', 'driver respectful, half-standing'] as $expression) {
+            $warnings = $this->warningsForFrame('Close on Erin at the kitchen table, the window dark behind her.', $expression);
+
+            $this->assertStringNotContainsString('hedge it', implode(' ', $warnings), "\"{$expression}\" was read as a hedge");
+        }
+    }
+
+    /**
+     * RED, beside it: the same word standing alone is still a hedge, and a
+     * hedge that sits beside a compound still fires. A boundary that simply
+     * stopped matching `half` would pass the case above and this is what says
+     * it did not.
+     */
+    public function test_the_hedged_expression_check_still_fires_on_half_as_a_word(): void
+    {
+        foreach (['a half smile, eyes down', 'bitter half-smile, eyes slightly narrowed'] as $expression) {
+            $warnings = $this->warningsForFrame('Close on Erin at the kitchen table, the window dark behind her.', $expression);
+
+            $this->assertStringContainsString('hedge it', implode(' ', $warnings), "\"{$expression}\" was not read as a hedge");
+        }
     }
 
     // -- Expression is not spent on a shot that cannot show it ----------------

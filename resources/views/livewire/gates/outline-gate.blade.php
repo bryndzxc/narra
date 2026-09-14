@@ -525,8 +525,9 @@
                     The structure this genre runs on. Every act-generation call reads these fields
                     off the story, so a cartoon antagonist here becomes 5,500&ndash;8,000 words of
                     cartoon antagonist. The first four say how the narrator is wronged and where it
-                    comes out; the last three say that they leave, that they are searched for, and
-                    what they say when they are found.
+                    comes out; the fifth says how the narrator is in the room when it does; the last
+                    three say that they leave, that they are searched for, and what they say when
+                    the antagonist reaches them afterwards.
                 </p>
             </div>
         </div>
@@ -574,6 +575,25 @@
                              it promises, and the sentence is short enough to read. --}}
                         <span class="badge run">promises &ldquo;{{ $field['promises'] }}&rdquo;</span>
                     @endif
+                    @if (! empty($field['produces']))
+                        {{-- Which sentence of the withheld information the narrator
+                             produces in person. "They produce something" is worth
+                             less than "they produce the 2016 transfer agreement". --}}
+                        <span class="badge run">produces &ldquo;{{ $field['produces'] }}&rdquo;</span>
+                    @endif
+                    @if (! empty($field['says']))
+                        {{-- Which sentence of the justification the betrayal scene
+                             has her say aloud. "She says something" is worth less
+                             than the sentence she says in front of the room. --}}
+                        <span class="badge run">says aloud &ldquo;{{ $field['says'] }}&rdquo;</span>
+                    @endif
+                    @if (! empty($field['found']))
+                        {{-- The found shape: she reached them before the exposure.
+                             Legal since the reference transcript was read (she finds
+                             him and kneels in public); noted so an operator can see
+                             which of the two shapes the outline took. --}}
+                        <span class="badge">she finds them &mdash; &ldquo;{{ $field['found'] }}&rdquo;</span>
+                    @endif
                 </label>
                 <textarea id="spine-{{ $key }}" wire:model="spine.{{ $key }}" rows="3"
                           @disabled(! $this->editable())></textarea>
@@ -599,6 +619,17 @@
             them earlier, in the same words. Between the two, the narrator has to LEAVE without
             announcing it &mdash; an announced departure cannot be searched for, and the search is
             the next third of the video.
+        </div>
+
+        <div class="muted small mt-4">
+            The narrator is IN THE ROOM for the exposure &mdash; by their own choice, or because she has
+            found where they are and come; either way the scene is theirs. What decides it is
+            the withheld information: when a document or a friend can produce it, the writer leaves the
+            narrator 800 km away and the payoff arrives as a report &mdash; stories 23 and 28 both hear
+            about their own exposure secondhand. When it takes the narrator's own hand, the writer brings
+            them back &mdash; story 25's narrator raises his hand at the back of the room in a work
+            jacket. The field is checked against the withheld information for the thing only they can
+            produce.
         </div>
         </div>
     </div>
@@ -644,6 +675,18 @@
                     <span class="badge {{ in_array($act['phase'], ['search', 'refusal'], true) ? 'ok' : '' }}"
                           title="{{ $act['beat_label'] }}">{{ $act['phase_label'] }}</span>
                 @endif
+                {{-- WHEN the act is set, as the outline writer declared it. The
+                     refused state is a `fail` badge on the card as well as a
+                     problem at the top: story 28's "Act 2 tells the second
+                     betrayal in full" was read at Gate 1 and approved, and a
+                     sentence in a summary is not a marker while scanning six
+                     cards. A null is not badged — it is "not asked", and the
+                     unasked warning above says so once. --}}
+                @if ($act['timeframe'] === 'prior')
+                    <span class="badge fail" title="A prior incident is cited in a sentence inside a present-day act, never staged as the act">set in the past</span>
+                @elseif ($act['timeframe'] === 'present')
+                    <span class="badge" title="Set in the story's present, as every escalation act must be">present day</span>
+                @endif
                 @if ($act['sequence'] === 1)
                     <span class="badge run" title="Chapter 1 must start at 00:00">opens the video</span>
                 @endif
@@ -666,9 +709,19 @@
             </div>
 
             <div class="field">
-                <label for="act-summary-{{ $i }}">Summary &mdash; fed to the next act's generation call</label>
+                <label for="act-summary-{{ $i }}">Summary &mdash; fed to the next act's generation call
+                    {{-- The bound, visible before the press rather than only after
+                         it. Once the act script exists this text is the WRITER's,
+                         not the outline's, and it is what the form validates. --}}
+                    <span class="right muted mono small">{{ mb_strlen($act['summary']) }}/{{ \App\Models\Act::SUMMARY_MAX_CHARS }}</span>
+                </label>
                 <textarea id="act-summary-{{ $i }}" wire:model="acts.{{ $i }}.summary" rows="3"
                           @disabled(! $this->editable())></textarea>
+                {{-- Never had one. The one field on this form whose refusal had no
+                     renderer was the one that refused story 28's approve. The
+                     gate bar now lists every refusal regardless; this is the
+                     field-level copy beside the text it is about. --}}
+                @error("acts.$i.summary") <div class="error">{{ $message }}</div> @enderror
                 <div class="muted small mt-2">
                     This is the mechanism that stops 7,000 words drifting, repeating, or
                     contradicting themselves.
@@ -685,16 +738,44 @@
                     @if (in_array($act['phase'], ['search', 'refusal'], true))
                         The narrator is already gone, so the cost runs the other way: each attempt has
                         to take more from the antagonist than the last &mdash; money, standing, the
-                        people who found her excuse reasonable. A search that costs her nothing is a
-                        montage, and the refusals it leads to are unearned.
+                        people who found her excuse reasonable, her face in public. She reaches the
+                        narrator in this phase, and the meetings are where it costs her. A search that
+                        costs her nothing is a montage, and the refusals it leads to are unearned.
                     @else
-                        Every act has to cost more than the one before it, and none of them resolves
-                        anything before the exposure. An act where the narrator wins a round has spent
-                        the tension the rest of the video runs on.
+                        Every act has to cost more than the one before it, and none of them recovers
+                        anything before the exposure. The narrator answers back in every scene the
+                        antagonist is in &mdash; one line that lands &mdash; and the act still ends
+                        worse off for them on the ledger.
                     @endif
                 </div>
                 @error("acts.$i.escalation_beat") <div class="error">{{ $message }}</div> @enderror
             </div>
+
+            @if ($act['phase'])
+                {{-- Editable where the phase is not: the repair for a refused
+                     act is to rewrite the summary as present-day and then say
+                     so, and an operator with no way to clear the declaration
+                     could not approve without regenerating. --}}
+                <div class="field">
+                    <label for="act-timeframe-{{ $i }}">When this act is set</label>
+                    <select id="act-timeframe-{{ $i }}" wire:model="acts.{{ $i }}.timeframe"
+                            @disabled(! $this->editable())>
+                        <option value="">not declared</option>
+                        @foreach (\App\Enums\ActTimeframe::cases() as $timeframe)
+                            <option value="{{ $timeframe->value }}">{{ $timeframe->label() }}</option>
+                        @endforeach
+                    </select>
+                    <div class="muted small mt-2">
+                        Every escalation act is set in the story's present. A prior incident is cited
+                        in one sentence with its date, and the line the antagonist said years ago is
+                        staged at its most recent saying &mdash; story 25 quotes it in the first
+                        thirty seconds and stages it at a present-day dinner. An act set in the past
+                        is refused here, because the script is written from the summary and nothing
+                        else.
+                    </div>
+                    @error("acts.$i.timeframe") <div class="error">{{ $message }}</div> @enderror
+                </div>
+            @endif
 
             @if ($act['sequence'] > 1)
                 <div class="checks">
@@ -703,6 +784,29 @@
                                @disabled(! $this->editable())>
                         <span>Re-hook written &mdash; this act opens with a line engineered to carry the viewer forward</span>
                     </label>
+                </div>
+            @endif
+
+            {{-- The chapters the act was written AS: the unit the viewer gets
+                 a title and a fresh re-hook in, every ~2.5 minutes, where the
+                 act is the unit the writer keeps 7,000 words coherent in. Read
+                 only: they are the writer's cut of its own script, and a bad
+                 one is fixed by rewriting the act. Rendered only when they
+                 exist — an act written before chapters has none, and an empty
+                 list under six cards would be the quiet-state defect again. --}}
+            @if ($act['chapters'] !== [])
+                <div class="field">
+                    <label>Chapters &mdash; {{ count($act['chapters']) }} in this act, each with its own re-hook</label>
+                    @foreach ($act['chapters'] as $chapter)
+                        <div class="muted small">
+                            <span class="mono">{{ $chapter['sequence'] }}.</span>
+                            {{ $chapter['title'] }}
+                            <span class="mono">from sentence {{ $chapter['first_sentence'] }}</span>
+                            @unless ($chapter['has_rehook'])
+                                <span class="badge warn">no re-hook</span>
+                            @endunless
+                        </div>
+                    @endforeach
                 </div>
             @endif
         </div>
@@ -733,6 +837,28 @@
         @php($open = count($this->spineReview()['problems']) + count($this->structuralWarnings()))
 
         <div class="gatebar">
+            {{--
+                A REFUSED SAVE, SAID WHERE THE PRESS HAPPENED.
+
+                Livewire answers a failed validation with a 200 and a filled
+                error bag, and nothing else: no modal, no log, no exception.
+                Story 28's Approve was refused for act 4's summary and the page
+                re-rendered identical to the one before the press, because the
+                only renderer a validation error has is an `@error` beside its
+                field — the summary never had one — and that field was three
+                screens above this bar.
+
+                So the whole bag is rendered HERE, inside the sticky bar, every
+                key. A rule added to saveRules() is on this list by construction;
+                a template author cannot forget one. `wide` because it sits
+                beside full-width controls; `refused` is a real rule, not a hint.
+            --}}
+            @if ($errors->any())
+                <x-refused-save :fields="$this->refusedFields()"
+                                heading="Not saved, and Gate 1 not crossed."
+                                :status="$story->status->value" />
+            @endif
+
             <button wire:click="save">Save outline</button>
 
             @if ($open > 0)

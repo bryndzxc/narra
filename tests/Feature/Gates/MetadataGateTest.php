@@ -70,6 +70,77 @@ class MetadataGateTest extends TestCase
         $this->assertNull(YoutubeMetadata::query()->firstOrFail()->title_selected);
     }
 
+    /**
+     * A refused save says so beside the Save button and, since approve()
+     * saves first, a refused approve crosses nothing and says both.
+     *
+     * Neither the title nor the description had an `@error`, so a refusal of
+     * either was silent — the same shape as Gate 1's act summary and Gate 2's
+     * image prompt, not firing today (largest stored: 88 and 965) and one
+     * paste away from firing.
+     */
+    public function test_a_refused_approve_is_said_beside_the_buttons_and_crosses_nothing(): void
+    {
+        $story = $this->storyReadyForMetadata();
+
+        $component = Livewire::test(MetadataGate::class, ['story' => $story])
+            ->set('titleSelected', str_repeat('a', (int) config('youtube.limits.title_hard') + 1))
+            ->set('description', str_repeat('b', (int) config('youtube.limits.description') + 1))
+            ->call('approve');
+
+        $this->assertSame(StoryStatus::MetadataReady, $story->fresh()->status);
+
+        $html = $component->html();
+        $block = $this->refusalBlock($html);
+
+        $this->assertNotNull($block, 'The refusal must render.');
+        $this->assertStringContainsString('Sheet not saved, and Gate 4 not crossed', $block);
+        $this->assertStringContainsString('href="#title"', $block);
+        $this->assertStringContainsString('href="#description"', $block);
+
+        // Directly above the buttons it is about.
+        $this->assertLessThan(strpos($html, 'wire:click="save"'), strpos($html, 'class="alert err wide refused"'));
+    }
+
+    public function test_every_sheet_rule_refuses_visibly_beside_the_save_button(): void
+    {
+        $story = $this->storyReadyForMetadata();
+        $checked = 0;
+
+        $violations = [
+            'titleSelected' => str_repeat('a', (int) config('youtube.limits.title_hard') + 1),
+            'description' => str_repeat('b', (int) config('youtube.limits.description') + 1),
+            'publishAtEastern' => 'not a date',
+        ];
+
+        foreach (MetadataGate::saveRules() as $key => $rules) {
+            $this->assertArrayHasKey($key, $violations, "No violating value is known for the new rule '{$key}'.");
+
+            $component = Livewire::test(MetadataGate::class, ['story' => $story])
+                ->set($key, $violations[$key])
+                ->call('save')
+                ->assertHasErrors($key);
+
+            $block = $this->refusalBlock($component->html());
+
+            $this->assertNotNull($block, "The refusal of '{$key}' did not render.");
+            $this->assertStringContainsString(e($component->errors()->first($key)), $block);
+
+            $checked++;
+        }
+
+        $this->assertSame(count(MetadataGate::saveRules()), $checked);
+    }
+
+    private function refusalBlock(string $html): ?string
+    {
+        if (! preg_match('/<div class="alert err wide refused"[^>]*>(.*?)<\/ul>\s*<\/div>/s', $html, $m)) {
+            return null;
+        }
+
+        return preg_replace('/\s+/', ' ', $m[0]);
+    }
+
     public function test_a_title_past_the_visible_length_is_a_warning_not_a_block(): void
     {
         // 100 is the limit; 70 is where the tail stops being visible. The

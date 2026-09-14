@@ -403,6 +403,43 @@ class ScenesGateLayoutTest extends TestCase
         ]);
     }
 
+    /**
+     * A refused scene save renders inside the editing row, carries its own
+     * width, and makes no claim the page is not entitled to.
+     *
+     * The state no other case in this file builds — every fixture here saves
+     * cleanly — which is how a refusal with no renderer went unrendered by
+     * any test while it was live on 1,495 of 1,693 scenes.
+     */
+    public function test_a_refused_scene_save_lands_in_the_editing_row_and_passes_the_page_contracts(): void
+    {
+        $story = $this->storyNeedingADecision();
+        $scene = $story->scenes()->where('sequence', 2)->firstOrFail();
+
+        $component = Livewire::test(ScenesGate::class, ['story' => $story])
+            ->call('edit', $scene->id)
+            ->set('frame', str_repeat('x', Scene::FRAME_MAX_CHARS + 1))
+            ->call('saveScene');
+
+        $html = $component->html();
+
+        $editor = $this->positionOf($html, 'id="scene-narration"');
+        $refusal = $this->positionOf($html, 'class="alert err wide refused"');
+        $save = $this->positionOf($html, 'wire:click="saveScene"');
+
+        $this->assertLessThan($refusal, $editor, 'The refusal must be inside the editing row, not at the top of the page.');
+        $this->assertLessThan($save, $refusal, 'The refusal must read before the Save button it is about.');
+
+        // The page carries older alerts the whole-page width probe already
+        // reports and this change does not touch; the assertion here is that
+        // the refusal is not among them.
+        foreach (PageProbe::alertsWithoutTheirOwnWidth($html) as $offender) {
+            $this->assertStringNotContainsString('refused', $offender, 'The refusal alert must carry `wide`.');
+        }
+
+        $this->assertSame([], PageProbe::claimsNotEntitledTo($html, $component->instance()->voice()));
+    }
+
     private function storyNeedingADecision(
         StoryStatus $status = StoryStatus::ScenesDrafted,
         string $slug = 'gate-two-layout',

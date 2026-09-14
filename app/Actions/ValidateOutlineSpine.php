@@ -3,9 +3,13 @@
 namespace App\Actions;
 
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 use App\Enums\StoryFormat;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\Story;
+use App\Support\ChapterAnnouncement;
+use App\Support\SentenceSplitter;
 
 /**
  * The genre check, run at Gate 1.
@@ -50,6 +54,15 @@ use App\Models\Story;
  */
 class ValidateOutlineSpine
 {
+    public function __construct(
+        // The same splitter GenerateActScripts computed the chapter
+        // boundaries with and DraftScenes cuts scenes with. A chapter's
+        // `first_sentence` is an offset into THAT splitting, so resolving it
+        // with any other parser would read a different sentence — and the
+        // check would report the sentence beside the one it is judging.
+        private readonly SentenceSplitter $splitter,
+    ) {}
+
     /** Below this a spine field is a label rather than an answer. */
     private const MIN_SPINE_CHARS = 60;
 
@@ -77,6 +90,51 @@ class ValidateOutlineSpine
         'wedding', 'funeral', 'reunion', 'dinner', 'church', 'reception',
         'crowd', 'relatives', 'friends', 'colleagues', 'congregation',
         'toast', 'speech', 'audience', 'gathered', 'witnesses', 'public',
+    ];
+
+    /**
+     * People watching the betrayal scene, and occasions that cannot happen
+     * without them.
+     *
+     * NOT `WITNESS_MARKERS`, and the difference is the point. That list admits
+     * `room`, `table`, `family` and `dinner`, which is right for an exposure —
+     * an exposure is an occasion by construction, so a room means a room full
+     * of people. A betrayal scene's default is the opposite: stories 29-32 all
+     * staged theirs at a kitchen table, with the husband and his mother, and
+     * every one of those words is in that scene. Reusing the exposure's list
+     * would pass exactly the scene this check exists to catch, so the private
+     * nouns are left out and the drill for it is a kitchen table.
+     */
+    private const AUDIENCE_MARKERS = [
+        'front of', 'everyone', 'everybody', 'whole room', 'whole table',
+        'guests', 'relatives', 'families', 'friends', 'colleagues', 'coworkers',
+        'classmates', 'clients', 'customers', 'staff', 'diners', 'neighbors',
+        'neighbours', 'elders', 'cousins', 'aunts', 'uncles', 'crowd', 'audience',
+        'witnesses', 'gathered', 'public', 'people', 'banquet', 'reception',
+        'party', 'wedding', 'funeral', 'reunion', 'ceremony',
+    ];
+
+    /**
+     * Ways of saying the betrayal was FOUND rather than done.
+     *
+     * Seven stories: a roommate's posted photos (23), a hotel booking the
+     * narrator was copied on (25), and a kitchen-table conversation in private
+     * (28-32). The first two are this list. Matched whole-word behind the same
+     * negation window the departure uses, because "not from a message, from her
+     * own mouth at the table" is the good case and says the marker out loud.
+     *
+     * A WARNING, never a problem, and on the operator's word: not every premise
+     * can stage a public betrayal, and a problem would refuse stories the genre
+     * allows. The field can still describe the moment she confirms a found
+     * betrayal aloud in front of people — and when it does, it usually still
+     * names what was found, which is why this reports rather than refuses.
+     */
+    private const DISCOVERY_MARKERS = [
+        'found out', 'finds out', 'find out', 'discovered', 'discovers', 'discover',
+        'email', 'e-mail', 'emails', 'text message', 'messages', 'screenshot',
+        'screenshots', 'posted', 'photos', 'booking', 'booked', 'receipt',
+        'receipts', 'bank statement', 'her phone', 'his phone', 'copied me',
+        'overheard', 'overhears', 'overhear',
     ];
 
     /**
@@ -145,6 +203,37 @@ class ValidateOutlineSpine
     ];
 
     /**
+     * Ways of saying the antagonist's search succeeded.
+     *
+     * This used to REFUSE, on the rule that the search fails and the narrator
+     * chooses the moment they are seen. That rule was derived from a reference
+     * TITLE, and the first reference transcript read (2026-09-13) runs the
+     * other way: she finds him — "I asked everyone I could think of... I had
+     * to beg someone at the student records office" — and the finding is what
+     * costs her, on her knees on a street in another city. So a found narrator
+     * is no longer weak. What the field still has to say is what the narrator
+     * PRODUCES there and that the scene is theirs, which the overlap check
+     * below decides. The markers are kept so the page can say, as a note,
+     * that this is the found shape — and so an outline written to the old
+     * rule ("she did not find me, I came") reads exactly as it did.
+     *
+     * Matched whole-word with the same negation window as the announcement
+     * markers, because "she did not find me, I came" says the marker out loud.
+     */
+    private const FOUND_MARKERS = [
+        'finds me', 'found me', 'find me',
+        'finds him', 'found him', 'find him',
+        'finds her', 'found her', 'find her',
+        'finds them', 'found them', 'find them',
+        'tracks me down', 'tracked me down', 'tracks him down', 'tracked him down',
+        'tracks her down', 'tracked her down', 'tracks them down', 'tracked them down',
+        'locates me', 'located me', 'locates him', 'located him', 'locates her', 'located her',
+        'traces me', 'traced me', 'traces him', 'traced him', 'traces her', 'traced her',
+        'discovers where', 'discovered where', 'finds out where', 'found out where',
+        'the agency finds', 'the investigator finds', 'the detective finds',
+    ];
+
+    /**
      * Words too common to prove a refusal is answering anything in particular.
      *
      * The refusal check works by overlap: the refusal has to reuse the specific
@@ -185,12 +274,30 @@ class ValidateOutlineSpine
         // anything else. See GenerateOutline.
         $legacy = $this->predatesReversalPhase($story);
 
+        // The second known age: outlined WITH the reversal phase and before
+        // the act timeframe and the narrator's presence at the exposure were
+        // asked. Stories 22 through 28. Same treatment as the first — said
+        // once, as what it is — and ended the same way, by an operator typing
+        // the field in.
+        $unasked = ! $legacy && $this->predatesTimeframeAndPresence($story);
+
+        // The third known age, and the first NOT inferred from the acts: every
+        // story that had an outline when `betrayal_scene` was added, frozen by
+        // that migration. It spans the other two ages as well, so it is read
+        // for this one field only. An operator typing the field in ends it.
+        $predatesBetrayalScene = (bool) $story->outlined_before_betrayal_scene
+            && trim((string) $story->betrayal_scene) === '';
+
         foreach ($this->fields() as $key => $meta) {
             $value = trim((string) $story->{$key});
             $state = 'ok';
 
             if ($value === '' && $legacy && ($meta['later'] ?? false)) {
                 // Reported once, below, as the one thing it actually is.
+                $state = 'absent';
+            } elseif ($value === '' && $unasked && ($meta['asked_later'] ?? false)) {
+                $state = 'absent';
+            } elseif ($value === '' && $predatesBetrayalScene && ($meta['betrayal_later'] ?? false)) {
                 $state = 'absent';
             } elseif ($value === '') {
                 $problems[] = "{$meta['label']} is missing. {$meta['why']}";
@@ -210,21 +317,50 @@ class ValidateOutlineSpine
 
         if ($legacy) {
             $warnings[] = 'This outline was generated before the reversal phase existed, so it has no '
-                .'hook, no departure, no search and no refusal — it escalates to the last act and pays '
+                .'hook, no betrayal scene, no departure, no search and no refusal — it escalates to the last act and pays '
                 .'off in the ending. That is the shape this genre loses on: the reversal is a phase, '
                 .'not a scene, and the opening is five beats rather than a summary of the premise. '
                 .'Four stories are in this position. Re-generating the outline adds both; the acts '
                 .'already written against this one stay on record.';
         }
 
+        if ($unasked) {
+            $warnings[] = 'This outline was generated before two questions were asked of it: whether '
+                .'each act is set in the story\'s present, and how the narrator comes to be in the '
+                .'room for the exposure. Measured on the stories in this position, story 28 spent '
+                .'two of its three escalation acts staging 2015 and 2017 and its present-day '
+                .'betrayal lands at 20:18, and stories 23 and 28 both hear about their own exposure '
+                .'from somebody who was there, because a document produced the withheld '
+                .'information and the narrator was 800 km away. Neither can be seen from here on '
+                .'an outline that was never asked. Re-generating the outline asks both; typing a '
+                .'narrator-at-exposure in by hand and marking the acts present gets the ordinary '
+                .'checks back.';
+        }
+
+        // Said once, and not on the pre-phase four, whose blanket warning
+        // above already says a regenerated outline is the repair for all of it.
+        if ($predatesBetrayalScene && ! $legacy) {
+            $warnings[] = 'This outline was generated before it was asked for the betrayal as a scene. '
+                .'Measured on the seven stories in this position, every one of them found its '
+                .'betrayal or heard it in private, and first said the antagonist\'s justification in '
+                .'front of people at 9-11 minutes or not before the exposure at all — the reference '
+                .'stages both at 1:31, in a room of nine, with the other man holding her hand. That '
+                .'cannot be seen from here on an outline that was never asked. Re-generating the '
+                .'outline asks it; typing a betrayal scene in by hand gets the ordinary checks back.';
+        }
+
         $this->checkHook($story, $warnings, $spine);
         $this->checkJustification($story, $warnings, $spine);
+        $this->checkBetrayalScene($story, $warnings, $spine);
         $this->checkExposure($story, $warnings, $spine);
+        $this->checkNarratorAtExposure($story, $warnings, $spine);
+        $this->checkTimeframe($story, $problems, $legacy || $unasked);
         $this->checkDeparture($story, $warnings, $spine);
         $this->checkReversalBeats($story, $warnings, $spine);
         $this->checkRefusal($story, $warnings, $spine);
         $this->checkEscalation($story, $problems, $warnings);
         $this->checkPhases($story, $problems, $warnings, $legacy);
+        $this->checkChapterAnnouncements($story, $warnings);
         $this->checkFormat($story, $warnings);
 
         return ['problems' => $problems, 'warnings' => $warnings, 'spine' => $spine];
@@ -408,6 +544,173 @@ class ValidateOutlineSpine
     }
 
     /**
+     * The betrayal is a scene: done in front of people, with the justification
+     * said aloud to the narrator's face, in chapter one.
+     *
+     * -----------------------------------------------------------------------
+     * THE FINDING
+     * -----------------------------------------------------------------------
+     *
+     * Seven stories measured, and the same shape in all seven: the betrayal
+     * found (23's posted photos, 25's cc'd booking) or said in private at a
+     * kitchen table (28-32), the justification first staged in private, its
+     * first public saying at 9-11 minutes or never before the exposure. The
+     * reference stages it at 1:31 of 34:46, straight after the cold open, at a
+     * dinner of nine — and the man she is with never says a word.
+     *
+     * -----------------------------------------------------------------------
+     * FOUR THINGS CHECKED, EACH ITS OWN REPAIR, ALL WARNINGS
+     * -----------------------------------------------------------------------
+     *
+     * 1. SOMEBODY IS WATCHING. `AUDIENCE_MARKERS`, which deliberately does not
+     *    contain the words a kitchen table is made of. See that constant.
+     * 2. THE JUSTIFICATION IS SAID HERE. By overlap against
+     *    `antagonist_justification`, sentence by sentence, two distinctive
+     *    words — the refusal and hook checks' rule — and it records WHICH
+     *    sentence is said aloud, because "she says something" is worth less in
+     *    front of an approve button than the sentence she says.
+     * 3. IT IS NOT A DISCOVERY. `DISCOVERY_MARKERS`, negation-windowed.
+     * 4. ACT 1 CARRIES IT. The act script is written from the act summary, so a
+     *    betrayal scene the outline describes and act 1's summary does not
+     *    stage is a scene that will land at a banquet in act 2 — which is what
+     *    the old "act 2 or 3" instruction produced four times. Overlap of three
+     *    distinctive words with proper nouns removed first, because every
+     *    passage about one story shares its cast's names and two names would
+     *    pass any pair of summaries.
+     *
+     * WHAT IS NOT CHECKED, said so the field is not read as covered: that the
+     * person it is done with is IN THE ROOM. A name in the field cannot be told
+     * from a name mentioned, and a guess at that is the kind of check that
+     * reports everything or nothing. The operator reads that half.
+     *
+     * Silent on an empty field: `handle()` has reported it as missing or as
+     * unasked already.
+     *
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array{label: string, value: string, state: string}>  $spine
+     */
+    private function checkBetrayalScene(Story $story, array &$warnings, array &$spine): void
+    {
+        $text = trim((string) $story->betrayal_scene);
+
+        if ($text === '') {
+            return;
+        }
+
+        $lower = mb_strtolower($text);
+
+        if ($this->wholeWordHits($lower, self::AUDIENCE_MARKERS) === []) {
+            $warnings[] = 'The betrayal scene names nobody watching. Every story before this field '
+                .'staged its betrayal at a kitchen table or had it found, and first said the '
+                .'justification in public ten minutes later or never; the reference does it at a '
+                .'dinner of nine, where a friend asks "Who\'s this?" and she has to answer out loud. '
+                .'Name the occasion and the people in the room.';
+            $spine['betrayal_scene']['state'] = 'weak';
+        }
+
+        $justification = trim((string) $story->antagonist_justification);
+
+        if ($justification !== '') {
+            $words = $this->distinctiveWords($text);
+            $said = null;
+
+            foreach ($this->departureBeats($justification) as $label => $sentence) {
+                if (count(array_intersect($words, $this->distinctiveWords($sentence))) >= 2) {
+                    $said = (string) $label;
+
+                    break;
+                }
+            }
+
+            if ($said !== null) {
+                $spine['betrayal_scene']['says'] = $said;
+            } else {
+                $warnings[] = 'The antagonist\'s justification is not said in the betrayal scene — the '
+                    .'scene shares no specific language with it. This is where it is FIRST SAID ALOUD, '
+                    .'to the narrator\'s face, in front of people: "I want to see a different view '
+                    .'before I get married" at 2:44 in the reference, and again to the friend who '
+                    .'challenges her. Saved for a banquet in act 2, it arrives ten minutes late and '
+                    .'in private first. Put her words from the justification into the scene.';
+                $spine['betrayal_scene']['state'] = 'weak';
+            }
+        }
+
+        $found = $this->unnegatedHits($lower, self::DISCOVERY_MARKERS);
+
+        if ($found !== []) {
+            $warnings[] = sprintf(
+                'The betrayal scene reads as FOUND rather than done: it contains %s with nothing '
+                .'negating it. Stories 23 and 25 had their betrayals found — posted photos, a booking '
+                .'the narrator was copied on — and neither ever put the antagonist in a room saying '
+                .'it. If the premise needs the discovery, make this scene the moment she confirms it '
+                .'aloud in front of people, not the moment it was found.',
+                '"'.implode('", "', array_slice($found, 0, 3)).'"'
+            );
+            $spine['betrayal_scene']['state'] = 'weak';
+        }
+
+        if ($story->format === StoryFormat::Anthology) {
+            return;
+        }
+
+        $first = $story->acts()->where('sequence', 1)->first();
+
+        if ($first === null || trim((string) $first->summary) === '') {
+            return;
+        }
+
+        $scene = array_diff($this->distinctiveWords($text), $this->properNouns($text));
+        $summary = array_diff(
+            $this->distinctiveWords((string) $first->summary),
+            $this->properNouns((string) $first->summary),
+        );
+
+        if (count(array_intersect($scene, $summary)) >= 3) {
+            return;
+        }
+
+        $warnings[] = sprintf(
+            'Act 1\'s summary does not stage the betrayal scene — it shares almost nothing with it '
+            .'once the names are set aside. Act 1 is written from its summary and nothing else, so '
+            .'a scene the spine describes and act 1 does not is a scene that lands somewhere later; '
+            .'stories 29-32 put their first public saying at a banquet at 9-11 minutes. Act 1 opens '
+            .'"%s".',
+            $this->label($this->firstSentence((string) $first->summary)),
+        );
+        $spine['betrayal_scene']['state'] = 'weak';
+    }
+
+    /**
+     * Capitalised words that are not the first word of their sentence.
+     *
+     * A proxy for names, and a deliberately crude one: it misses a name that
+     * opens a sentence and catches "Mother" used as a name, both of which are
+     * harmless here — this only removes words from an overlap count, so a
+     * miss makes the check slightly easier to pass and never makes it fire.
+     *
+     * @return array<int, string>
+     */
+    private function properNouns(string $text): array
+    {
+        $names = [];
+
+        foreach (preg_split('/(?<=[.!?])\s+/u', trim($text)) ?: [] as $sentence) {
+            $tokens = preg_split('/\s+/u', trim($sentence)) ?: [];
+            array_shift($tokens);
+
+            foreach ($tokens as $token) {
+                $word = preg_replace("/[^\p{L}\p{N}']/u", '', $token) ?? '';
+
+                if ($word !== '' && preg_match('/^\p{Lu}/u', $word)) {
+                    $names[] = mb_strtolower($word);
+                }
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /**
      * The public payoff is exposure in front of people.
      *
      * @param  array<int, string>  $warnings
@@ -432,6 +735,196 @@ class ValidateOutlineSpine
             .'video. Name the occasion and who is in the room.';
 
         $spine['exposure_moment']['state'] = 'weak';
+    }
+
+    /**
+     * The narrator is in the room for the exposure, by their own choice, and
+     * produces the withheld information in person.
+     *
+     * -----------------------------------------------------------------------
+     * THE FINDING
+     * -----------------------------------------------------------------------
+     *
+     * Two of three phase stories deliver their public payoff as hearsay. Story
+     * 23: "I was eight hundred kilometers away that night, and I did not hear
+     * about any of it for nine days." Story 28: "my mother had flown down for
+     * the new year and told me the whole thing at my kitchen table." In both,
+     * the spine let something other than the narrator produce the withheld
+     * information — a developer's account manager and a roommate, an automated
+     * bank notice — and the writer, told in the search phase that the narrator
+     * "is not watching", left him where the departure put him.
+     *
+     * Story 25 is the exception and the model. Its withheld information needs
+     * the narrator's body: the trust "requires the settlor physically present
+     * to authorize a vote". So he comes back, uninvited, in a work jacket at
+     * the service door, and raises his hand. The search still fails — 590,000
+     * yuan and no address — and she reaches him in the corridor afterwards
+     * because he came.
+     *
+     * -----------------------------------------------------------------------
+     * TWO THINGS CHECKED, IN THIS ORDER
+     * -----------------------------------------------------------------------
+     *
+     * First, that the field does not read as the SEARCH succeeding. "She finds
+     * me at the banquet" hands the whole search phase's cost back to her: the
+     * rule is that the search fails and the narrator chooses the moment they
+     * are seen. Whole-word markers with the same negation window the
+     * announcement check uses, because "she did not find me — I came" is the
+     * good case and it contains the marker.
+     *
+     * Second, by overlap against `withheld_information`, sentence by sentence
+     * — the way the hook is checked against the departure — that the field
+     * names the specific thing only the narrator can produce. It records WHICH
+     * sentence, because "they produce something" is worth less in front of an
+     * approve button than "they produce the 2016 transfer agreement".
+     *
+     * Silent on an empty field: `fields()` has already reported that as
+     * missing, absent or unasked, and a second finding about the same
+     * absence is the kind the operator learns to scroll past.
+     *
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array{label: string, value: string, state: string}>  $spine
+     */
+    private function checkNarratorAtExposure(Story $story, array &$warnings, array &$spine): void
+    {
+        $text = trim((string) $story->narrator_at_exposure);
+
+        if ($text === '') {
+            return;
+        }
+
+        $hits = $this->unnegatedHits(mb_strtolower($text), self::FOUND_MARKERS);
+
+        if ($hits !== []) {
+            // A note, not a weakness. The search succeeding is the reference's
+            // own shape; what decides the field is the overlap check below.
+            $spine['narrator_at_exposure']['found'] = implode('", "', array_slice($hits, 0, 3));
+        }
+
+        $words = $this->distinctiveWords($text);
+        $withheld = trim((string) $story->withheld_information);
+
+        if ($withheld !== '') {
+            foreach ($this->departureBeats($withheld) as $label => $sentence) {
+                if (count(array_intersect($words, $this->distinctiveWords($sentence))) >= 2) {
+                    $spine['narrator_at_exposure']['produces'] = (string) $label;
+
+                    return;
+                }
+            }
+        }
+
+        $warnings[] = 'The narrator at the exposure names nothing that only they can produce — it '
+            .'shares no specific language with the withheld information. That is the lever: when a '
+            .'document, a lawyer or a friend can put the fact on the table, the writer leaves the '
+            .'narrator 800 km away and the public payoff arrives as a report (stories 23 and 28). '
+            .'When it takes the narrator\'s own hand — a signature only they give, a vote that needs '
+            .'them present, a bag only they carry — the writer brings them back (story 25). Name '
+            .'the thing, in the withheld information\'s own words.';
+
+        $spine['narrator_at_exposure']['state'] = 'weak';
+    }
+
+    /**
+     * Every escalation act is set in the story's present.
+     *
+     * -----------------------------------------------------------------------
+     * THE FINDING
+     * -----------------------------------------------------------------------
+     *
+     * Story 28's present-day betrayal lands at 20:18 of 43:27. The hook opens
+     * on it and obeys every rule it has; then act 1 stages the 2015 betrayal
+     * in full and act 2 stages the 2017 one in full — 13:15 of staged history,
+     * two of the three escalation acts — and the outline said so in as many
+     * words: "Act 2 tells the second betrayal in full." Story 23 spends act 1
+     * on the Spring Festival table of that year and act 2 on four years of
+     * night shifts; its betrayal is at 15:01. Nothing could refuse either,
+     * because nothing had asked an act WHEN it was set.
+     *
+     * The outline writer declares it per act now, and this refuses `prior` on
+     * any act: a prior incident is cited in one sentence inside a present-day
+     * act, and the line the antagonist said years ago is staged at its most
+     * recent saying. Story 25 is the model — "a wife who earns more" quoted at
+     * 0:18, staged at 9:17 in a present-day dinner — and it is the story that
+     * works on every measure.
+     *
+     * A PROBLEM, not a warning, because the act script is written from the
+     * summary and nothing else: an approved prior act is a bought prior act.
+     * The message quotes the act's own opening sentence, so the operator is
+     * looking at the text that has to change rather than a sequence number.
+     *
+     * A partial set — some acts declared, some null — is a problem the way an
+     * unphased act in a phased outline is: the act writer reads this column,
+     * and a null beside a present cannot be read as either.
+     *
+     * Skipped for an anthology (no shared present) and for the two known ages
+     * of outline that were never asked, each of which is reported once above.
+     *
+     * @param  array<int, string>  $problems
+     */
+    private function checkTimeframe(Story $story, array &$problems, bool $unasked): void
+    {
+        if ($story->format === StoryFormat::Anthology || $unasked) {
+            return;
+        }
+
+        $acts = $story->acts()->orderBy('sequence')->get();
+
+        if ($acts->isEmpty()) {
+            return;
+        }
+
+        $undeclared = $acts->filter(fn (Act $act): bool => $act->timeframe === null);
+
+        if ($undeclared->isNotEmpty() && $undeclared->count() < $acts->count()) {
+            $problems[] = sprintf(
+                'Act(s) %s do not say whether they are set in the story\'s present while the rest '
+                .'of the outline does. The act writer reads this to decide whether an earlier '
+                .'incident is cited or staged, and a blank beside a "present" cannot be read as '
+                .'either. Mark each one, or re-generate the outline.',
+                $undeclared->pluck('sequence')->implode(', ')
+            );
+
+            return;
+        }
+
+        if ($undeclared->count() === $acts->count()) {
+            // Not the unasked case — that was decided above, on the narrator
+            // field as well. An outline that carries the narrator field and no
+            // timeframe on any act is one somebody started fixing by hand.
+            $problems[] = 'No act says whether it is set in the story\'s present. Every escalation '
+                .'act has to be, and the outline writer declares it per act: mark each act, or '
+                .'re-generate the outline.';
+
+            return;
+        }
+
+        foreach ($acts as $act) {
+            if ($act->timeframe !== ActTimeframe::Prior) {
+                continue;
+            }
+
+            $problems[] = sprintf(
+                'Act %d is set before the story\'s present: "%s" A prior incident is cited in one '
+                .'sentence, with its date, inside a present-day act — never staged as the act. Story '
+                .'28 spent two of its three escalation acts on 2015 and 2017 and its present-day '
+                .'betrayal landed at 20:18. Rewrite this summary as what happens NOW, quote the '
+                .'earlier line in a sentence, and mark the act present.',
+                $act->sequence,
+                $this->label($this->firstSentence((string) $act->summary)),
+            );
+        }
+    }
+
+    /** The first sentence of a passage, which for a summary is what it is about. */
+    private function firstSentence(string $text): string
+    {
+        $sentences = array_values(array_filter(
+            array_map('trim', preg_split('/(?<=[.!?])\s+/u', trim($text)) ?: []),
+            fn (string $sentence): bool => $sentence !== ''
+        ));
+
+        return $sentences === [] ? trim($text) : $sentences[0];
     }
 
     /**
@@ -713,6 +1206,171 @@ class ValidateOutlineSpine
     /**
      * @param  array<int, string>  $warnings
      */
+    /**
+     * Every chapter says its own number out loud, and this reads the prose to
+     * see whether it did.
+     *
+     * -----------------------------------------------------------------------
+     * THE INSTANCE
+     * -----------------------------------------------------------------------
+     *
+     * Story 30 announced eight of its twelve chapters. The four it missed are
+     * not scattered: they are both chapters of act 1 and both of act 4 — THE
+     * ONLY TWO ACTS WITH A SPECIAL OPENING INSTRUCTION, act 1 carrying the
+     * five hook beats and act 4 carrying the departure. Acts 2, 3, 5 and 6
+     * announced both of theirs and numbered them correctly across the whole
+     * story.
+     *
+     * That is the shape worth checking for rather than the count. An act with
+     * two instructions about how it opens drops one of them, and until now
+     * nothing looked at the prose to notice — the chapter rows were all
+     * present, titled and sequenced, and the Gate 1 page listed them as such.
+     *
+     * -----------------------------------------------------------------------
+     * WHY A WARNING AND NOT A PROBLEM
+     * -----------------------------------------------------------------------
+     *
+     * Not a judgement about severity — a judgement about the panel. The
+     * problems panel is headed "The outline is missing part of its structure"
+     * and every finding in it is about a spine field or an act declaration.
+     * This is a finding about returned PROSE, and its nearest sibling — an
+     * act with no re-hook written, which is the same defect one level up —
+     * is already a structural warning. Two findings of one kind in two
+     * different panels is how an operator learns to read neither.
+     *
+     * -----------------------------------------------------------------------
+     * WHAT IT DELIBERATELY DOES NOT DO
+     * -----------------------------------------------------------------------
+     *
+     * It is silent when announcements are off, because then the prose is
+     * asked to carry no marker and looking for one would report every chapter
+     * in the story the day somebody flips the config. It is silent on an act
+     * with no chapters, which is every story written before the chapters
+     * table existed: `YoutubeMetadata::chapters()` reads acts for those by
+     * design, so that is a supported state and not a defect to report on
+     * twenty stories.
+     *
+     * And it reports WHICH of the three things went wrong — nothing spoken,
+     * spoken in the wrong place, spoken with the wrong number — because they
+     * are three different repairs. A wrong number is the known limit of
+     * rewriting one act in the middle of a story; nothing spoken is an
+     * instruction that lost a collision.
+     *
+     * @param  array<int, string>  $warnings
+     */
+    private function checkChapterAnnouncements(Story $story, array &$warnings): void
+    {
+        if (! ChapterAnnouncement::enabled()) {
+            return;
+        }
+
+        $number = 0;
+
+        foreach ($story->acts()->orderBy('sequence')->get() as $act) {
+            $chapters = $act->chapters()->orderBy('sequence')->get();
+            $sentences = $this->splitter->split((string) $act->script);
+
+            if ($chapters->isEmpty() || $sentences === []) {
+                // An act written before chapters existed, or one whose script
+                // has not been written yet. Neither is this check's business
+                // and both are reported elsewhere.
+                $number += $chapters->count();
+
+                continue;
+            }
+
+            foreach ($chapters as $index => $chapter) {
+                $number++;
+
+                $from = max(0, (int) $chapter->first_sentence - 1);
+                $next = $chapters[$index + 1] ?? null;
+                $to = $next === null
+                    ? count($sentences)
+                    : max($from, (int) $next->first_sentence - 1);
+
+                $window = array_slice($sentences, $from, max(1, $to - $from));
+
+                // The one chapter whose announcement is NOT its first
+                // sentence, by contract: act 1 chapter 1 opens on the hook —
+                // the cold open — and says "Chapter one." after the five
+                // beats. Checking its first sentence would report the correct
+                // shape as the defect, which is how a guard gets switched off.
+                $openerOnly = ! ($act->sequence === 1 && $index === 0);
+
+                $this->judgeAnnouncement($chapter, $act, $number, $window, $openerOnly, $warnings);
+            }
+        }
+    }
+
+    /**
+     * One chapter's announcement, against the sentences it owns.
+     *
+     * @param  array<int, string>  $window
+     * @param  array<int, string>  $warnings
+     */
+    private function judgeAnnouncement(
+        Chapter $chapter,
+        Act $act,
+        int $number,
+        array $window,
+        bool $openerOnly,
+        array &$warnings,
+    ): void {
+        $where = sprintf('Act %d, chapter %d ("%s")', $act->sequence, $chapter->sequence, $chapter->title);
+        $wanted = ChapterAnnouncement::sentenceFor($number);
+
+        $spokenAt = null;
+        $spokenAs = null;
+
+        foreach ($window as $offset => $sentence) {
+            if (($found = ChapterAnnouncement::numberIn($sentence)) !== null) {
+                $spokenAt = $offset;
+                $spokenAs = $found;
+                break;
+            }
+        }
+
+        if ($spokenAt === null) {
+            $warnings[] = sprintf(
+                '%s never says its number out loud. Every chapter opens by speaking it — "%s" — '
+                .'and this one opens on "%s" instead. Story 30 missed exactly four chapters this '
+                .'way and all four were in the two acts that carry a second instruction about how '
+                .'they open, act 1 with the hook and act 4 with the departure. Rewriting the act '
+                .'is what fixes it.',
+                $where,
+                $wanted,
+                $this->label($window[0] ?? ''),
+            );
+
+            return;
+        }
+
+        if ($spokenAs !== $number) {
+            $warnings[] = sprintf(
+                '%s announces itself as chapter %d, and counting from the start of the story it is '
+                .'chapter %d. Chapter numbers run across the whole video, so rewriting one act to '
+                .'a different chapter count shifts every act after it — rewrite from the changed '
+                .'act onward rather than one act in the middle.',
+                $where,
+                $spokenAs,
+                $number,
+            );
+
+            return;
+        }
+
+        if ($openerOnly && $spokenAt !== 0) {
+            $warnings[] = sprintf(
+                '%s says "%s" %d sentence(s) in rather than opening on it. The number is the '
+                .'chapter\'s first sentence and the re-hook is its second; a viewer who hears the '
+                .'marker after the chapter has already started cannot use it to find their place.',
+                $where,
+                $wanted,
+                $spokenAt,
+            );
+        }
+    }
+
     private function checkFormat(Story $story, array &$warnings): void
     {
         if ($story->format !== StoryFormat::Anthology) {
@@ -758,6 +1416,33 @@ class ValidateOutlineSpine
     }
 
     /**
+     * Whether this outline was generated after the reversal phase and before
+     * the act timeframe and the narrator's presence at the exposure were asked.
+     *
+     * Decided on both at once: every outline generated since carries a
+     * timeframe on every act and a narrator-at-exposure on the story, so
+     * "no act has a timeframe AND the field is empty" cannot mean anything
+     * else. Either one being present means somebody has started fixing it by
+     * hand, and the ordinary per-field checks come back — the same rule
+     * `predatesReversalPhase()` applies to the hook and the reversal three.
+     */
+    private function predatesTimeframeAndPresence(Story $story): bool
+    {
+        if ($story->format === StoryFormat::Anthology) {
+            return false;
+        }
+
+        if (trim((string) $story->narrator_at_exposure) !== '') {
+            return false;
+        }
+
+        $acts = $story->acts()->get();
+
+        return $acts->isNotEmpty()
+            && $acts->every(fn (Act $act): bool => $act->timeframe === null);
+    }
+
+    /**
      * The earlier moments a refusal can be answering, labelled.
      *
      * Only what happened BEFORE the narrator left. A refusal that echoes the
@@ -771,6 +1456,10 @@ class ValidateOutlineSpine
         $moments = [
             'the grievance' => (string) $story->narrator_grievance,
             "the antagonist's justification" => (string) $story->antagonist_justification,
+            // Where that justification was first said aloud, in front of
+            // people — the strongest sentence a refusal can hand back, and the
+            // consumer question for this field asked of the refusal check.
+            'the betrayal scene' => (string) $story->betrayal_scene,
         ];
 
         foreach ($story->acts()->orderBy('sequence')->get() as $act) {
@@ -851,7 +1540,7 @@ class ValidateOutlineSpine
     }
 
     /**
-     * @return array<string, array{label: string, why: string, later?: bool}>
+     * @return array<string, array{label: string, why: string, later?: bool, asked_later?: bool, betrayal_later?: bool}>
      */
     private function fields(): array
     {
@@ -881,6 +1570,18 @@ class ValidateOutlineSpine
                 'why' => 'This is the engine of the format. The audience stays for thirty-five minutes '
                     .'because someone is being unreasonable and believes they are being fair.',
             ],
+            'betrayal_scene' => [
+                'label' => 'Betrayal scene',
+                // Absent on every story outlined before the field existed —
+                // all three earlier ages at once — which is why it has its own
+                // flag rather than borrowing `later` or `asked_later`.
+                'betrayal_later' => true,
+                'why' => 'The betrayal DONE, in chapter one, in front of people: the room, who is '
+                    .'watching, the person it is done with standing there, the justification said '
+                    .'aloud to the narrator\'s face, and the narrator\'s line back. Seven stories found '
+                    .'their betrayal or heard it in private; the reference stages it at 1:31, at a '
+                    .'dinner of nine, and the other man never says a word.',
+            ],
             'withheld_information' => [
                 'label' => 'Withheld information',
                 'why' => 'What the narrator knows and the antagonist does not. It is what makes '
@@ -891,6 +1592,19 @@ class ValidateOutlineSpine
                 'label' => 'Exposure moment',
                 'why' => 'The public payoff. Exposure in front of witnesses, not revenge — and it is '
                     .'the thing the title promises, so it cannot be decided later.',
+            ],
+            'narrator_at_exposure' => [
+                'label' => 'Narrator at the exposure',
+                // Absent on the pre-phase four, which have no departure for a
+                // narrator to come back from; and absent-as-unasked on the
+                // post-phase stories outlined before the question existed.
+                'later' => true,
+                'asked_later' => true,
+                'why' => 'How the narrator comes to be in the room — by their own choice, unexpected, '
+                    .'the search having failed — and what only they can produce there. When a '
+                    .'document can produce it, the writer leaves the narrator 800 km away and the '
+                    .'public payoff arrives as a report; stories 23 and 28 both did. Story 25 needed '
+                    .'the narrator\'s body in the room and he came back.',
             ],
             'departure' => [
                 'label' => 'Departure',
@@ -909,9 +1623,9 @@ class ValidateOutlineSpine
             'refusal' => [
                 'label' => 'Refusal',
                 'later' => true,
-                'why' => 'What the narrator says when they are finally found, and which earlier moment '
-                    .'it answers. The exposure is the public payoff; this is the private one, and it '
-                    .'is what viewers wait forty minutes for.',
+                'why' => 'What the narrator says when the antagonist reaches them after the exposure, '
+                    .'and which earlier moment it answers. The exposure is the public payoff; this is '
+                    .'the private one, and it is what viewers wait forty minutes for.',
             ],
         ];
     }

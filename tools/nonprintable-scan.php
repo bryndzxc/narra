@@ -84,7 +84,12 @@ foreach (array_slice($argv, 1) as $arg) {
 $sweepingWholeTree = $paths === [];
 
 if ($sweepingWholeTree) {
-    $paths = ['app', 'config', 'database', 'routes', 'tests', 'tools'];
+    // `docs` and `CLAUDE.md` are here because prose is where this defect is
+    // MOST likely to arrive, not least: both are written in long generated
+    // blocks, which is the authoring route that produced all four known
+    // instances. The extension filter already accepted `md`; nothing pointed it
+    // at the two `md` targets that matter.
+    $paths = ['app', 'config', 'database', 'routes', 'tests', 'tools', 'docs', 'CLAUDE.md'];
 }
 
 /** The C0 set minus tab, newline and carriage return, plus DEL. */
@@ -107,7 +112,22 @@ $scanned = 0;
 foreach ($paths as $path) {
     $root = __DIR__.'/../'.$path;
 
-    if (! is_dir($root)) {
+    if (is_file($root)) {
+        // A single FILE is a legitimate target, and supporting one is what
+        // closed this tool's own blind spot. It reported "0 finding(s)" on a
+        // run made immediately after 148 lines of GENERATED prose were appended
+        // to CLAUDE.md — the exact authoring route this tool exists to police —
+        // because CLAUDE.md is a file at the repository root and every default
+        // path was a directory. The report was honest about its coverage one
+        // line above the zero and was still read as broader than it was.
+        //
+        // An absence from an instrument that cannot see the subject is not
+        // evidence about the subject. That is the probe rule, turned on a tool
+        // rather than on a measurement.
+        $files = [new SplFileInfo($root)];
+    } elseif (is_dir($root)) {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+    } else {
         // Named rather than skipped. A typo'd path that silently scanned
         // nothing would report a clean tree, which is the failure mode this
         // whole file is about.
@@ -115,8 +135,6 @@ foreach ($paths as $path) {
 
         exit(2);
     }
-
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 
     foreach ($files as $file) {
         if (! $file->isFile() || ! in_array($file->getExtension(), ['php', 'blade', 'json', 'md'], true)) {

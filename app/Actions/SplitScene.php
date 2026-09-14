@@ -95,6 +95,9 @@ class SplitScene
             $created = Scene::create([
                 'story_id' => $scene->story_id,
                 'act_id' => $scene->act_id,
+                // The same chapter: a split is two halves of one scene's
+                // narration, and narration does not change chapter mid-scene.
+                'chapter_id' => $scene->chapter_id,
                 'sequence' => $scene->sequence + 1,
                 // Never. The hook is the first scene of the video and a split
                 // produces a second half, which by definition is not first.

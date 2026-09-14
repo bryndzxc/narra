@@ -2596,6 +2596,27 @@
         color: var(--warn-ink);
     }
 
+    /*
+     * A refused save, beside the control that was pressed.
+     *
+     * Rendered by the refused-save component on every gate page that validates — inside
+     * Gate 1's sticky bar, above Gate 2's inline Save, above Gate 4's Save
+     * sheet. Where the parent is a flex row of controls the refusal takes the
+     * whole row so it reads before the buttons rather than beside one of them;
+     * elsewhere flex-basis does nothing and the alert is just an alert. It is
+     * an ordinary `.alert.err` — the same red every refusal in the console
+     * wears — and on the blurred bar it is the loudest thing there, which is
+     * the point.
+     *
+     * ON THE ELEMENT, NOT UNDER A CONTAINER. This was `.gatebar > .refused`
+     * for one page and would have answered CONTEXT on the other two — the
+     * `.measure` lesson: a rule the layout may move out from under.
+     */
+    .alert.refused {
+        flex-basis: 100%;
+        margin-bottom: 4px;
+    }
+
     @media (max-width: 760px) {
         .gatebar { position: static; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
         .gatebar > .note { margin-left: 0; text-align: left; }

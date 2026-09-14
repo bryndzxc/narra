@@ -181,7 +181,9 @@ class PreflightAssetDispatch
      */
     private function reportPaceExpectation(Story $story): array
     {
-        $unmeasured = NarrationPace::unmeasured($story->voice_id, $story->locale_profile);
+        // The story is handed over so the sentence can state the rate THIS
+        // script was sized against, rather than a figure from another column.
+        $unmeasured = NarrationPace::unmeasured($story->voice_id, $story->locale_profile, $story);
 
         if ($unmeasured !== null) {
             return [self::warn($unmeasured)];

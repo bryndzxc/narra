@@ -324,10 +324,43 @@ return [
     | Do NOT tune it to make a runtime estimate come out nicer — that is the
     | false-success pattern this file names at story 9, and the figure would
     | stop being a measurement the moment it happened.
+    |
+    | ------------------------------------------------------------------------
+    | IT IS NOT A PROPERTY OF THE WRITER. IT IS A FUNCTION OF HOW MANY
+    | CHAPTERS THE ACT IS ASKED TO OPEN, AND NOBODY HAD VARIED THAT.
+    | ------------------------------------------------------------------------
+    |
+    | 1,123 was measured when an act came back as TWO chapters, and every
+    | sentence written about it — "an act comes back at roughly this length
+    | whatever the prompt says" — treated it as a fact about the model. Story
+    | 31 varied the chapter count for the first time, by deriving it from the
+    | act's real length instead of stating it, and the same premise and the
+    | same outline returned THREE chapters per act and 1,473 words. 29% more,
+    | with nothing in the prompt asking for a word more.
+    |
+    |   2 chapters/act   1,123 words    (2026-09-05, one act, en-US)
+    |   3 chapters/act   1,473 words    (2026-09-13, six acts, story 31, en-CN)
+    |
+    | A chapter costs a spoken number, a re-hook and a boundary, so the count
+    | of them is a term in the length. The two points are not enough to fit a
+    | line and none is fitted here; what is recorded is the CONDITION, so the
+    | figure cannot be read as unconditional again. `measured_act_words_
+    | chapters` is that condition, and `ScriptSizing` asserts the configured
+    | chapter budget still divides the measured length into it — so moving
+    | `chapters.target_seconds` without re-measuring goes red instead of
+    | silently invalidating every runtime projection on the console.
     */
     'script' => [
-        'measured_act_words' => (int) env('SCRIPT_MEASURED_ACT_WORDS', 1123),
-        'measured_act_words_on' => 'one act, en-US, 6-act plan, asked 985 (2026-09-05)',
+        'measured_act_words' => (int) env('SCRIPT_MEASURED_ACT_WORDS', 1473),
+        'measured_act_words_on' => 'six acts, en-CN, story 31, 3 chapters/act (2026-09-13)',
+
+        /*
+        | How many chapters per act the figure above was measured under. The
+        | condition, recorded beside the measurement rather than inferred from
+        | the date — see the block above for why it exists at all.
+        */
+        'measured_act_words_chapters' => (int) env('SCRIPT_MEASURED_ACT_CHAPTERS', 3),
+
         'target_response_slope' => 0.30,
 
         /*

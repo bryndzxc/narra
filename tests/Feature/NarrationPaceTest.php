@@ -144,6 +144,67 @@ class NarrationPaceTest extends TestCase
         $this->assertStringContainsString('narration:measure', $said);
     }
 
+    /**
+     * THE FIGURE IN THAT SENTENCE HAS TO BE THE FIGURE IT NAMES.
+     *
+     * It said "scripts are sized against 160 wpm (the fallback)" and printed
+     * the guard's figure. Scripts are sized by `bestKnownWpm()`, so on any
+     * locale with a measurement the claim was false — story 33, Sarah on
+     * en-CN, was sized at 199 and the estimate beside the sentence read 199,
+     * on the screen where the spend is authorised.
+     *
+     * RED is the old claim on exactly that shape: an unmeasured voice on a
+     * locale another voice IS measured on. GREEN names three figures as what
+     * they are.
+     */
+    public function test_an_unmeasured_voice_is_told_the_rate_its_script_was_actually_sized_against(): void
+    {
+        $sarah = 'EXAVITQu4vr4xnSDxMaL';
+        $story = Story::factory()->create(['voice_id' => $sarah, 'locale_profile' => self::MEASURED_AT_197]);
+        $story->forceFill(['sized_against_wpm' => 197])->save();
+
+        $said = (string) NarrationPace::unmeasured($sarah, self::MEASURED_AT_197, $story->refresh());
+
+        $this->assertStringNotContainsString('sized against 160', $said, 'the sentence claims a sizing rate the script was never written to');
+        $this->assertStringContainsString('this script was sized against 197 wpm', $said);
+        $this->assertStringContainsString('runtime estimates borrow 197 wpm', $said);
+        $this->assertStringContainsString('the pace guard has only the 160 wpm fallback', $said);
+    }
+
+    /**
+     * The builder above is only true on the spend screen if the preflight hands
+     * it the story. Asserted at the call site on comment-stripped source — the
+     * `truncationMessage()` lesson: a correct builder can be unreachable from
+     * the one caller that matters.
+     */
+    public function test_the_preflight_hands_the_story_to_the_sentence(): void
+    {
+        $code = '';
+
+        foreach (token_get_all((string) file_get_contents(app_path('Actions/PreflightAssetDispatch.php'))) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+            $code .= is_array($token) ? $token[1] : $token;
+        }
+
+        $this->assertStringContainsString(
+            'NarrationPace::unmeasured($story->voice_id, $story->locale_profile, $story)',
+            $code,
+        );
+    }
+
+    public function test_with_nothing_measured_on_the_locale_it_says_both_use_the_fallback(): void
+    {
+        $story = Story::factory()->create(['voice_id' => self::BRIAN, 'locale_profile' => self::UNMEASURED_LOCALE]);
+
+        $said = (string) NarrationPace::unmeasured(self::BRIAN, self::UNMEASURED_LOCALE, $story->refresh());
+
+        $this->assertStringContainsString('runtime estimates and the pace guard both use the 160 wpm fallback', $said);
+        // Null sizing is unknown, and says so rather than printing a number.
+        $this->assertStringContainsString('the rate this script was sized against is not recorded', $said);
+    }
+
     // -- The guard fires on the real failure ---------------------------------
 
     public function test_it_fires_on_the_exact_drift_that_survived_sixty_nine_scenes(): void

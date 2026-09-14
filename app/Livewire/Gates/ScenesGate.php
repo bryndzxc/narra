@@ -28,6 +28,7 @@ use App\Models\Story;
 use App\Support\CharacterTextGuard;
 use App\Support\GateVoice;
 use App\Support\ImagePromptBuilder;
+use App\Support\RefusedFields;
 use App\Support\SceneAssetEstimate;
 use App\Support\SceneChangeSet;
 use App\Support\WorkerHealth;
@@ -74,7 +75,24 @@ class ScenesGate extends Component
 
     public string $narration = '';
 
-    public string $imagePrompt = '';
+    /**
+     * The two AUTHORED sections of the image prompt, and only those.
+     *
+     * This was one field, `imagePrompt`, holding the WHOLE stored prompt and
+     * validated at a literal 2,000 characters. A stored prompt is five
+     * sections and the operator writes two of them: the frame and the
+     * expression. The other three — the cast block, the art style and the
+     * constraints — are frozen text and config, 2,532 characters of a median
+     * 3,008, identical across the story and not the operator's to change from
+     * here. Measured, 1,495 of 1,693 stored prompts were over the old cap, so
+     * an ordinary narration edit on most scenes was refused — and refused in
+     * silence, because the field had no `@error`. See Scene::FRAME_MAX_CHARS
+     * for the numbers and ImagePromptBuilder::rewrite() for how the tail is
+     * preserved on save.
+     */
+    public string $frame = '';
+
+    public string $expression = '';
 
     public string $motion = '';
 
@@ -445,7 +463,8 @@ class ScenesGate extends Component
 
         $this->editing = $scene->id;
         $this->narration = (string) $scene->narration_text;
-        $this->imagePrompt = (string) $scene->image_prompt;
+        $this->frame = ImagePromptBuilder::frameFrom((string) $scene->image_prompt);
+        $this->expression = ImagePromptBuilder::expressionFrom((string) $scene->image_prompt);
         $this->motion = $scene->motion_preset->value;
         $this->isHook = (bool) $scene->is_hook;
         $this->isThumbnailCandidate = (bool) $scene->is_thumbnail_candidate;
@@ -456,14 +475,59 @@ class ScenesGate extends Component
         $this->editing = null;
     }
 
+    /**
+     * The rules saveScene() validates against. Public and static so a test can
+     * walk every key and prove each refusal is visible beside the Save button.
+     *
+     * The frame and expression bounds come from the model, the way Gate 1's
+     * act bounds do; they measure the two sections the operator actually
+     * types. Narration has a floor and no ceiling: it is the video.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function sceneRules(): array
+    {
+        return [
+            'narration' => ['required', 'string', 'min:5'],
+            'frame' => ['nullable', 'string', 'max:'.Scene::FRAME_MAX_CHARS],
+            'expression' => ['nullable', 'string', 'max:'.Scene::EXPRESSION_MAX_CHARS],
+            'motion' => ['required', 'string'],
+        ];
+    }
+
+    /**
+     * Every validation failure on the open editor, labelled and anchored, for
+     * the block beside Save. Whole error bag, by construction — see
+     * RefusedFields for why that is the fix and not a list of fields.
+     *
+     * @return array<int, array{key: string, label: string, anchor: string, message: string}>
+     */
+    #[Computed]
+    public function refusedFields(): array
+    {
+        return RefusedFields::from($this->getErrorBag(), fn (string $key): array => match ($key) {
+            'narration' => ['Narration', 'scene-narration'],
+            'frame' => ['Frame', 'scene-frame'],
+            'expression' => ['Expression', 'scene-expression'],
+            'motion' => ['Motion', 'scene-motion'],
+            default => RefusedFields::plain($key),
+        });
+    }
+
     public function saveScene(): void
     {
         $this->authorizeEdit();
 
-        $this->validate([
-            'narration' => ['required', 'string', 'min:5'],
-            'imagePrompt' => ['nullable', 'string', 'max:2000'],
-            'motion' => ['required', 'string'],
+        // A stale refusal must not outlive the press it was about.
+        $this->resetErrorBag();
+        unset($this->refusedFields);
+
+        $this->validate(self::sceneRules(), [
+            'frame.max' => 'The frame is the composed shot — 25-45 words in the prompt that wrote it — and '
+                .'has a bound of '.Scene::FRAME_MAX_CHARS.' characters. The cast, style and constraints '
+                .'are added after it and are not counted here.',
+            'expression.max' => 'The expression names what the faces are doing and has a bound of '
+                .Scene::EXPRESSION_MAX_CHARS.' characters.',
         ]);
 
         $scene = $this->scene((int) $this->editing);
@@ -474,9 +538,18 @@ class ScenesGate extends Component
             $this->story->scenes()->whereKeyNot($scene->id)->update(['is_hook' => false]);
         }
 
+        // The authored sections go back in front of the stored tail — the
+        // cast block, the style and the constraints exactly as they were.
+        // Never rebuilt from config: see ImagePromptBuilder::rewrite().
+        $prompt = app(ImagePromptBuilder::class)->rewrite(
+            (string) $scene->image_prompt,
+            $this->frame,
+            $this->expression,
+        );
+
         $scene->update([
             'narration_text' => $this->narration,
-            'image_prompt' => $this->imagePrompt ?: null,
+            'image_prompt' => $prompt !== '' ? $prompt : null,
             'motion_preset' => MotionPreset::from($this->motion),
             'is_hook' => $this->isHook,
             'is_thumbnail_candidate' => $this->isThumbnailCandidate,

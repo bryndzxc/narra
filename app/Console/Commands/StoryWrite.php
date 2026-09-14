@@ -245,6 +245,11 @@ class StoryWrite extends Command
                 ['status', $story->status->value],
                 ['acts written', $story->acts()->whereNotNull('script')->count().' of '.$story->acts()->count()],
                 ['rehooks written', $story->acts()->where('is_rehook_written', true)->count()],
+                // The unit the viewer gets a re-hook in. Six acts of the
+                // writer's natural length should read as about fifteen here;
+                // a count near six means the writer returned one chapter per
+                // act, which the Action refuses, so a low figure is a bug.
+                ['chapters', $story->chapters()->count().' ('.$story->chapters()->whereNotNull('rehook_line')->count().' with a re-hook)'],
                 ['words', number_format($words)],
                 ['target', '5,500-8,000 words'],
                 ['in target', $words >= 5500 && $words <= 8000 ? 'yes' : 'NO'],

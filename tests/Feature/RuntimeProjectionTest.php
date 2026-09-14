@@ -57,8 +57,16 @@ class RuntimeProjectionTest extends TestCase
 
         $this->assertNotNull($sizing['projected'], 'A story with no script must carry a projection.');
 
-        $this->assertSame(6895, $sizing['target']);
-        $this->assertSame(6738, $sizing['projected']['words']);
+        // Both read off the one place that decides each, rather than being
+        // transcribed. The literals here were 6,895 and 6,738 and the second
+        // was a figure measured at TWO chapters per act; when the chapter
+        // count moved, a transcribed projection would have gone on asserting
+        // a runtime the pipeline no longer produces.
+        $this->assertSame(ScriptSizing::targetWords($story), $sizing['target']);
+        $this->assertSame(
+            ScriptSizing::projectedWords(GenerateOutline::defaultActCountFor($story)),
+            $sizing['projected']['words'],
+        );
 
         $this->assertNotSame(
             round($sizing['minutes'], 1),
@@ -121,19 +129,24 @@ class RuntimeProjectionTest extends TestCase
      */
     public function test_the_new_story_form_shows_a_runtime_that_follows_the_act_count(): void
     {
-        $six = Livewire::test(NewStory::class)->set('acts', 6)->instance()->estimate();
-        $eight = Livewire::test(NewStory::class)->set('acts', 8)->instance()->estimate();
+        $default = GenerateOutline::DEFAULT_ACTS_SINGLE;
+
+        $atDefault = Livewire::test(NewStory::class)->set('acts', $default)->instance()->estimate();
+        $atEight = Livewire::test(NewStory::class)->set('acts', 8)->instance()->estimate();
 
         $this->assertGreaterThan(
-            $six['projected_minutes'] + 8,
-            $eight['projected_minutes'],
-            'Two more acts is about nine more minutes. If the form does not move with the field, '
-            .'the field is a lever with no dial on it.',
+            $atDefault['projected_minutes'] + (8 - $default) * 6,
+            $atEight['projected_minutes'],
+            'Each extra act is about seven minutes at the measured act length. If the form does '
+            .'not move with the field, the field is a lever with no dial on it.',
         );
 
-        $this->assertTrue($six['projected_in_window']);
+        $this->assertTrue(
+            $atDefault['projected_in_window'],
+            'The default act count must project inside the window. That is what it is chosen for.',
+        );
         $this->assertFalse(
-            $eight['projected_in_window'],
+            $atEight['projected_in_window'],
             'Eight acts projects past the ceiling, and the form is where that is decided.',
         );
     }

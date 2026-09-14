@@ -58,8 +58,24 @@ class Story extends Model
         // See the migration that added them for why each one is load-bearing.
         'narrator_grievance',
         'antagonist_justification',
+        // The betrayal as a scene: where the justification is first SAID,
+        // aloud, to the narrator's face, in front of witnesses, with the person
+        // it was done with in the room. Seven stories found their betrayal or
+        // heard it in private, and first said the justification in public at
+        // 9-11 minutes or never; the reference stages it at 1:31. See the
+        // migration, and CLAUDE.md 3e.
+        'betrayal_scene',
         'withheld_information',
         'exposure_moment',
+        // How the narrator comes to be in the room for the exposure, and what
+        // only they can produce there. Stories 23 and 28 let a document and a
+        // third party produce the withheld information, and the writer left the
+        // narrator 800 km away, so the public payoff arrived as hearsay; story
+        // 25's spine needed his body in the room and he came back. The search
+        // may succeed or fail; the scene is the narrator's either way. See
+        // the migration, and CLAUDE.md 3d for why "the search fails" was
+        // dropped.
+        'narrator_at_exposure',
         // The reversal half of the spine. The first four say how the narrator
         // is wronged and where it comes out; these three say that they leave,
         // that they are searched for, and what they say when they are found.
@@ -110,6 +126,10 @@ class Story extends Model
             'target_duration_max' => 'integer',
             'sized_against_wpm' => 'integer',
             'locale_guidance_fingerprint' => 'string',
+            // Not fillable, for the reason the two above are not: it is a fact
+            // about when the outline was written, frozen by the migration that
+            // added `betrayal_scene` and cleared only by `GenerateOutline`.
+            'outlined_before_betrayal_scene' => 'boolean',
         ];
     }
 
@@ -179,6 +199,23 @@ class Story extends Model
     public function scenes(): HasMany
     {
         return $this->hasMany(Scene::class)->orderBy('sequence');
+    }
+
+    /**
+     * Every chapter in the story, in act order then chapter order — the
+     * order the video plays them in and the order the YouTube chapter list
+     * is built in. Empty on a story written before chapters existed, where
+     * YoutubeMetadata::chapters() falls back to the acts.
+     *
+     * @return HasMany<Chapter, $this>
+     */
+    public function chapters(): HasMany
+    {
+        return $this->hasMany(Chapter::class)
+            ->join('acts', 'acts.id', '=', 'chapters.act_id')
+            ->select('chapters.*')
+            ->orderBy('acts.sequence')
+            ->orderBy('chapters.sequence');
     }
 
     /** @return HasMany<Character, $this> */

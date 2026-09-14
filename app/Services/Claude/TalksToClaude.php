@@ -168,8 +168,42 @@ trait TalksToClaude
      */
     private function recordFailedCallSpend(StreamedMessage $message, string $operation, array $config): string
     {
-        $usage = $this->priceUsage($message, $operation, $config);
-        $bill = sprintf('$%s for %s output tokens', number_format($usage->usdCost, 4), number_format($message->outputTokens));
+        return $this->recordSpendWithNoAction($this->priceUsage($message, $operation, $config), $operation);
+    }
+
+    /**
+     * Write a call that was billed and whose usage will never reach its Action.
+     *
+     * TWO CALLERS, AND THE SECOND ONE IS WHY THIS IS A METHOD RATHER THAN THE
+     * BODY OF THE FIRST.
+     *
+     *  1. `recordFailedCallSpend()` above — a call that truncated or was
+     *     refused, so `settle()` throws instead of returning a usage.
+     *  2. `ClaudeScriptWriter::scenes()` — the DISCARDED first attempt of a
+     *     scene draft, when the fallback that follows it then throws.
+     *
+     * The second one was silent. `scenes()` bills Haiku, keeps its usage in
+     * `$discarded`, calls Sonnet, and hands both back in a `SceneDraftSet` for
+     * `DraftScenes` to record. When the Sonnet call truncates there is no set
+     * to hand back, so the Haiku usage dies with the exception — story 28 act
+     * 2, about $0.035, billed and absent from `cost_entries`. The Sonnet half
+     * of the same act WAS recorded, by caller 1, which is what made the gap
+     * visible at all: one row where there should be two.
+     *
+     * It also corrupted the measurement of the thing. Counting a timestamp
+     * group with one `draft_scenes` row as "Haiku was accepted" read story 28
+     * act 2 as a Haiku win, when Haiku had in fact been billed and discarded.
+     *
+     * Same shape as the truncated outline calls this trait already exists to
+     * fix: a call that happened and left no row. Non-negotiable #4.
+     */
+    private function recordSpendWithNoAction(ProviderUsage $usage, string $operation): string
+    {
+        $bill = sprintf(
+            '$%s for %s output tokens',
+            number_format($usage->usdCost, 4),
+            number_format((int) ($usage->detail['output_tokens'] ?? 0)),
+        );
 
         $storyId = RenderJob::current()?->story_id;
         $story = $storyId === null ? null : Story::query()->find($storyId);

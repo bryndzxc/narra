@@ -6,6 +6,7 @@ use App\Enums\MotionPreset;
 use App\Enums\SceneStatus;
 use App\Support\AudioFrames;
 use App\Support\NarrationPace;
+use App\Support\TextBounds;
 use Database\Factories\SceneFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -28,9 +29,73 @@ class Scene extends Model
     /** @use HasFactory<SceneFactory> */
     use HasFactory;
 
+    /**
+     * How long the two AUTHORED sections of an image prompt may be.
+     *
+     * A stored `image_prompt` is five sections joined by a blank line: the
+     * frame, the expression block, the cast block, the art style and the
+     * constraints (ImagePromptBuilder::build). Only the first two are written
+     * per scene — by the scene writer, then by the operator at Gate 2. The
+     * other three are the frozen cast text and two config constants,
+     * identical across every scene of the story, and the operator neither
+     * writes them nor can change them from the editor.
+     *
+     * Gate 2's editor used to load the WHOLE prompt into one field and
+     * validate it at a literal 2,000. Measured over 1,681 stored prompts:
+     *
+     *   whole prompt                   p50 3,008   p90 3,281   max 4,206
+     *   everything the operator did    p50 2,838   p90 3,084   max 3,973
+     *     not write (cast + style +
+     *     constraints)
+     *   frame (authored)               p50   140   p90   173   p99 241   max 311
+     *   expression (authored)          p50    48   p90    73   p99  92   max 117
+     *
+     * The art style alone is 2,226 characters and the constraints 306, so
+     * 2,532 of a median 3,008 was the app's own text, and 1,495 of 1,693
+     * scenes could not be saved — silently, because the field had no error
+     * renderer. The operator was being measured against a constant. The
+     * editor now loads and validates the frame and the expression only, and
+     * ImagePromptBuilder::rewrite() puts them back in front of the untouched
+     * tail. These bounds measure what is actually typed.
+     *
+     * 600 and 250 are derived from the authored distributions: roughly twice
+     * the observed maximum of each, and for the frame about 100 words against
+     * a prompt that asks for 25-45 — room for the operator to say more than
+     * the writer did without a frame becoming a paragraph of scene, which
+     * the same prompt forbids. Stated in the scene prompt and enforced after
+     * the call in DraftScenes, for the reason Act::SUMMARY_MAX_CHARS is:
+     * structured outputs do not honour maxLength.
+     */
+    public const FRAME_MAX_CHARS = 600;
+
+    public const EXPRESSION_MAX_CHARS = 250;
+
+    /**
+     * @return array<string, int>
+     */
+    public static function textBounds(): array
+    {
+        return [
+            'frame' => self::FRAME_MAX_CHARS,
+            'expression' => self::EXPRESSION_MAX_CHARS,
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $fields
+     * @return array<string, string>
+     */
+    public static function textOverflows(array $fields): array
+    {
+        return TextBounds::overflows(self::textBounds(), $fields);
+    }
+
     protected $fillable = [
         'story_id',
         'act_id',
+        // The chapter this scene's narration falls in. Null on a scene
+        // drafted before chapters existed, or whose act was rewritten since.
+        'chapter_id',
         'sequence',
         'is_hook',
         'is_thumbnail_candidate',
@@ -61,6 +126,12 @@ class Scene extends Model
     public function story(): BelongsTo
     {
         return $this->belongsTo(Story::class);
+    }
+
+    /** @return BelongsTo<Chapter, $this> */
+    public function chapter(): BelongsTo
+    {
+        return $this->belongsTo(Chapter::class);
     }
 
     /**

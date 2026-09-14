@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Story;
+
 /**
  * How fast the narrator actually reads, and whether the run still matches it.
  *
@@ -242,7 +244,7 @@ final class NarrationPace
      * mistaken for is caught elsewhere, by `narration_speed` provenance and by
      * the run fingerprint, neither of which depends on this.
      */
-    public static function unmeasured(?string $voiceId, ?string $localeProfile): ?string
+    public static function unmeasured(?string $voiceId, ?string $localeProfile, ?Story $story = null): ?string
     {
         if ($localeProfile === null || trim($localeProfile) === '') {
             return null;
@@ -255,26 +257,49 @@ final class NarrationPace
         $name = self::voiceName($voiceId) ?? (string) $voiceId;
         $others = array_keys(self::voice($voiceId)['locales'] ?? []);
 
-        return sprintf(
-            '%s has no measured reading pace for %s, so the pace guard cannot judge this run.
-'
-            .'  %s'.'
-'
-            .'  scripts are sized against %d wpm (the fallback) until one exists
+        // THREE FIGURES, AND THE OLD LINE NAMED THE WRONG ONE. It said
+        // "scripts are sized against 160 wpm (the fallback)", printing the
+        // guard's figure. Scripts are sized by `bestKnownWpm()`, which on a
+        // locale with any measurement is that measurement — story 33 was sized
+        // at 199 and the estimate beside this sentence read 199 — so the line
+        // was false on every en-CN story, on the screen where the operator
+        // authorises the spend. Each figure is now stated as what it is.
+        $figures = [];
 
-'
+        if ($story !== null) {
+            $figures[] = $story->sized_against_wpm === null
+                ? 'the rate this script was sized against is not recorded'
+                : sprintf('this script was sized against %d wpm', $story->sized_against_wpm);
+        }
+
+        $borrowed = self::bestKnownWpm($voiceId, $localeProfile);
+        $fallback = self::expectedWpm($voiceId, $localeProfile);
+
+        $figures[] = $borrowed === $fallback
+            ? sprintf('runtime estimates and the pace guard both use the %d wpm fallback', $fallback)
+            : sprintf(
+                'runtime estimates borrow %d wpm, the best rate measured on %s by another voice; the pace '
+                .'guard has only the %d wpm fallback',
+                $borrowed,
+                $localeProfile,
+                $fallback,
+            );
+
+        return sprintf(
+            "%s has no measured reading pace for %s, so the pace guard cannot judge this run.\n"
+            ."  %s\n"
+            ."  %s — none of them is this narrator's figure\n\n"
             .'This is not a warning about quality — the audio is unaffected. It means the runtime '
-            .'estimate for this story is a guess.
-'
+            ."estimate for this story is a guess.\n"
             .'When the narration batch finishes, run `php artisan narration:measure <story>` and paste '
             .'the result into render.narration.voices. The guard resumes at full strength for this '
             .'pair the moment it exists.',
             $name,
             $localeProfile,
             $others === []
-                ? sprintf('this voice has no measured locale at all')
+                ? 'this voice has no measured locale at all'
                 : sprintf('measured elsewhere: %s — a different kind of prose, so not transferable', implode(', ', $others)),
-            self::expectedWpm($voiceId, $localeProfile),
+            implode('; ', $figures),
         );
     }
 

@@ -50,7 +50,26 @@ class StyleNotesRepairTest extends TestCase
         }
     }
 
-    public function test_the_retry_is_told_what_was_wrong_rather_than_just_re_rolled(): void
+    /**
+     * THE RETRY IS A CLEAN RE-SAMPLE, AND THAT REVERSES THIS FILE'S ORIGINAL
+     * ASSERTION ON MEASURED GROUNDS.
+     *
+     * This test used to be `test_the_retry_is_told_what_was_wrong_rather_than
+     * _just_re_rolled` and it asserted the opposite, on the reasoning that
+     * "asking again without saying what failed re-rolls the same mistake at
+     * the same price". Sound a priori, and wrong: across four real attempts
+     * on story 32 the note never repaired the cast and always introduced a
+     * NEW violation in a DIFFERENT character, spelled out of the note's own
+     * vocabulary -- "round softly sagging-free face read instead as softly
+     * rounded", "a square weathered-shaped face". The model acknowledges the
+     * instruction inside the field text, where an image generator reads it as
+     * description.
+     *
+     * The flag keeps the old behaviour reachable, because this is an
+     * experiment rather than the fix -- the fix is a repair scoped to the
+     * offending field, and it is not built. See config/characters.php.
+     */
+    public function test_the_retry_is_a_clean_resample_by_default(): void
     {
         $story = $this->story();
 
@@ -67,9 +86,32 @@ class StyleNotesRepairTest extends TestCase
 
         $this->assertCount(2, $attempts);
         $this->assertSame([], $attempts[0]['rejection_notes'], 'The first attempt cannot have feedback.');
+        $this->assertSame(
+            [],
+            $attempts[1]['rejection_notes'],
+            'The retry must be a clean re-sample: the note supplies the forbidden word.',
+        );
+    }
 
-        // The whole point. Asking again without saying what failed re-rolls the
-        // same mistake at the same price.
+    /** And the old behaviour is still reachable, so the contamination can be reproduced. */
+    public function test_the_note_can_be_turned_back_on(): void
+    {
+        config(['characters.repair_with_notes' => true]);
+
+        $story = $this->story();
+
+        /** @var FakeScriptWriter $writer */
+        $writer = app(FakeScriptWriter::class);
+        $writer->dirtyStyleNotesForAttempts = 1;
+
+        app(ExtractCharacters::class)->handle($story);
+
+        $attempts = array_values(array_filter(
+            $writer->calls,
+            fn (array $call): bool => $call['method'] === 'characters'
+        ));
+
+        $this->assertCount(2, $attempts);
         $this->assertNotEmpty($attempts[1]['rejection_notes']);
         $this->assertStringContainsString('microphone', implode(' ', $attempts[1]['rejection_notes']));
     }

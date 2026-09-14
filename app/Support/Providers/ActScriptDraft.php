@@ -16,15 +16,26 @@ namespace App\Support\Providers;
  * the boundary. At 30-40 minutes the 15-second opening hook is not enough on
  * its own; every act needs one, and `acts.is_rehook_written` tracks whether it
  * happened so Gate 1 can surface an act that has none.
+ *
+ * `chapters` is the act as the writer returned it: two or three chapters,
+ * each with a title and its own re-hook, whose texts joined ARE `script`.
+ * The act stays the unit the script is written in; the chapter is the unit
+ * it is watched in. See config/chapters.php for the measurement. Empty on a
+ * draft from a writer that predates chapters, which GenerateActScripts
+ * refuses — an act with no chapter boundaries is the shape being replaced.
  */
 final class ActScriptDraft
 {
+    /**
+     * @param  array<int, ChapterDraft>  $chapters
+     */
     public function __construct(
         public readonly int $sequence,
         public readonly string $script,
         public readonly string $summary,
         public readonly string $rehookLine,
         public readonly ProviderUsage $usage,
+        public readonly array $chapters = [],
     ) {}
 
     public function wordCount(): int
@@ -35,6 +46,11 @@ final class ActScriptDraft
     /** Everything a locale check has to read. */
     public function proseForInspection(): string
     {
-        return $this->script."\n".$this->summary."\n".$this->rehookLine;
+        $chapterText = implode("\n", array_map(
+            fn (ChapterDraft $chapter): string => $chapter->title."\n".$chapter->rehookLine,
+            $this->chapters,
+        ));
+
+        return $this->script."\n".$this->summary."\n".$this->rehookLine."\n".$chapterText;
     }
 }

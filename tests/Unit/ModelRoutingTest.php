@@ -62,6 +62,37 @@ class ModelRoutingTest extends TestCase
         }
     }
 
+    /**
+     * An effort value the API does not know is a 400, exactly like sending one
+     * to a model that rejects it — and it fails in the same place, per act,
+     * after everything upstream has been billed.
+     *
+     * The list is the API's, not ours, which is what stops this being a test
+     * of a literal against itself: it catches a typo in a value config is free
+     * to set to anything. Worth having the moment a level is edited by hand,
+     * which `fallback_effort` just was.
+     */
+    private const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+    public function test_every_configured_effort_is_a_level_the_api_accepts(): void
+    {
+        foreach (config('providers.anthropic.operations') as $operation => $config) {
+            foreach (['effort', 'fallback_effort'] as $key) {
+                $effort = $config[$key] ?? null;
+
+                if ($effort === null || $effort === '') {
+                    continue;
+                }
+
+                $this->assertContains(
+                    $effort,
+                    self::EFFORT_LEVELS,
+                    sprintf("Operation '%s' sets %s to '%s', which is not an effort level.", $operation, $key, $effort),
+                );
+            }
+        }
+    }
+
     public function test_the_scene_fallback_model_also_respects_the_effort_rule(): void
     {
         $fallback = config('providers.anthropic.operations.draft_scenes.fallback');

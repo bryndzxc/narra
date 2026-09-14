@@ -50,31 +50,36 @@ class ActCountTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * The default is six for a single narrative.
+     * The default is five for a single narrative.
      *
-     * RED against the seven this replaces. Stated as a number rather than as a
-     * property because the number IS the decision — the window arithmetic below
-     * is what makes it the right one, and this is what makes it the current one.
+     * RED against the six this replaces, which was RED against seven. Stated
+     * as a number rather than as a property because the number IS the
+     * decision — the window arithmetic below is what makes it the right one,
+     * and this is what makes it the current one.
      */
-    public function test_a_single_narrative_gets_six_acts(): void
+    public function test_a_single_narrative_gets_five_acts(): void
     {
-        $this->assertSame(6, GenerateOutline::DEFAULT_ACTS_SINGLE);
-        $this->assertSame(6, GenerateOutline::defaultActCountForFormat(StoryFormat::Single));
+        $this->assertSame(5, GenerateOutline::DEFAULT_ACTS_SINGLE);
+        $this->assertSame(5, GenerateOutline::defaultActCountForFormat(StoryFormat::Single));
         $this->assertSame(5, GenerateOutline::defaultActCountForFormat(StoryFormat::Anthology));
     }
 
     /**
-     * Six acts of the writer's natural length lands mid-window; seven does not.
+     * Five acts of the writer's natural length lands mid-window; six does not.
      *
-     * The reason for the change, as arithmetic rather than as a docblock. 1,123
-     * words is the one unconfounded observation — one act, en-US, current code,
-     * asked for 985.
+     * The reason for the change, as arithmetic rather than as a docblock —
+     * and it reads off `naturalActWords()` rather than a literal, which is
+     * the whole point. The previous version of this test hard-coded 1,123, a
+     * figure measured when an act came back as TWO chapters; five acts of
+     * that is 28.2 minutes, so this test would have called the correct act
+     * count too short. **A measurement pasted into an assertion is a
+     * measurement that cannot be corrected.**
      */
-    public function test_six_acts_of_natural_length_lands_inside_the_window(): void
+    public function test_five_acts_of_natural_length_lands_inside_the_window(): void
     {
         $story = $this->story(StoryFormat::Single);
 
-        $natural = 1123;
+        $natural = ScriptSizing::naturalActWords();
         $acts = GenerateOutline::defaultActCountFor($story);
 
         $minutes = ScriptSizing::minutesFor($story, $natural * $acts);
@@ -84,20 +89,51 @@ class ActCountTest extends TestCase
             sprintf('%d acts at the natural length runs %.1f minutes.', $acts, $minutes),
         );
 
-        // And the count that was there before does not, other than by seconds.
-        $atSeven = ScriptSizing::minutesFor($story, $natural * 7);
+        // And the count that was there before does not: six acts of the
+        // three-chapter length is 44.4 minutes, which is what moved it.
+        $atSix = ScriptSizing::minutesFor($story, $natural * 6);
 
+        $this->assertGreaterThan($minutes, $atSix);
         $this->assertGreaterThan(
-            $minutes,
-            $atSeven,
-            'The premise: seven acts is longer, and it is longer at the ceiling.',
+            (float) $story->target_duration_max,
+            $atSix,
+            'Six acts of the measured length is over the ceiling. That is what five is for.',
         );
-        $this->assertGreaterThan(
-            39.0,
-            $atSeven,
-            'Seven acts of natural length is 39.9 min against a 40 min ceiling — inside by seconds, '
-            .'and one long act puts it over. That is what six is for.',
+    }
+
+    /**
+     * THE MEASUREMENT'S CONDITION, ASSERTED.
+     *
+     * `naturalActWords()` is not a property of the writer — it is a function
+     * of how many chapters the act is asked to open, and for a phase that was
+     * invisible because the chapter count was STATED in the prompt and
+     * therefore never varied. A constant that is really a function of
+     * something nobody varied looks settled for exactly the reason a check
+     * that cannot fire looks passed: nothing has ever disagreed with it.
+     *
+     * This is the coupling made visible. The configured chapter budget must
+     * still divide the measured act length into the number of chapters that
+     * length was measured under. Move `chapters.target_seconds` without
+     * re-measuring and this goes red, instead of every runtime projection on
+     * the console going quietly wrong.
+     */
+    public function test_the_measured_act_length_still_holds_at_the_configured_chapter_budget(): void
+    {
+        $story = $this->story(StoryFormat::Single);
+
+        $this->assertSame(
+            ScriptSizing::naturalActWordsMeasuredAtChapters(),
+            ScriptSizing::chaptersPerAct($story, ScriptSizing::naturalActWords()),
+            sprintf(
+                'The act length was measured at %d chapters per act and the configured chapter '
+                .'budget now divides it into %d. One of the two has moved without the other; '
+                .'re-measure the act length before trusting any runtime projection.',
+                ScriptSizing::naturalActWordsMeasuredAtChapters(),
+                ScriptSizing::chaptersPerAct($story, ScriptSizing::naturalActWords()),
+            ),
         );
+
+        $this->assertTrue(ScriptSizing::measurementStillHolds($story));
     }
 
     /**
@@ -108,15 +144,15 @@ class ActCountTest extends TestCase
      * always two acts behind it — the search and the refusal. Going back to six
      * costs one escalation act out of four, not a phase.
      */
-    public function test_six_acts_keeps_the_departure_search_and_refusal(): void
+    public function test_five_acts_keeps_the_departure_search_and_refusal(): void
     {
-        $plan = ActPhase::planFor(6);
+        $plan = ActPhase::planFor(5);
 
         $this->assertSame(
-            [ActPhase::Escalation, ActPhase::Escalation, ActPhase::Escalation,
+            [ActPhase::Escalation, ActPhase::Escalation,
                 ActPhase::Departure, ActPhase::Search, ActPhase::Refusal],
             array_values($plan),
-            'Six acts must still carry the whole five-movement arc.',
+            'Five acts must still carry the whole five-movement arc.',
         );
 
         foreach ([ActPhase::Departure, ActPhase::Search, ActPhase::Refusal] as $phase) {
@@ -127,9 +163,51 @@ class ActCountTest extends TestCase
             );
         }
 
-        // The cost, named: escalation 4 -> 3.
+        // The cost, named: escalation 3 -> 2. Four at seven, three at six, two
+        // at five, and never a phase at any of them.
         $this->assertCount(4, array_filter(ActPhase::planFor(7), fn (ActPhase $p): bool => $p === ActPhase::Escalation));
-        $this->assertCount(3, array_filter($plan, fn (ActPhase $p): bool => $p === ActPhase::Escalation));
+        $this->assertCount(3, array_filter(ActPhase::planFor(6), fn (ActPhase $p): bool => $p === ActPhase::Escalation));
+        $this->assertCount(2, array_filter($plan, fn (ActPhase $p): bool => $p === ActPhase::Escalation));
+    }
+
+    /**
+     * AND AT FIVE THE CLAMP IS WHAT SAVES THE SEARCH ACT.
+     *
+     * The two-thirds point of five acts is act 4. A departure there makes act
+     * 5 the refusal and leaves NO SEARCH ACT AT ALL — the compressed ending
+     * the whole phase structure exists to replace. `departureActFor()` clamps
+     * to `count - 2` and pulls it back to act 3.
+     *
+     * At six and seven that clamp is INERT: the two-thirds point already
+     * lands on `count - 2`, so it has never been the term that decided
+     * anything, and it spent two act-count moves as a guarantee nobody could
+     * watch working. Five is where it starts doing the work — so five is the
+     * count that breaks first if it is ever loosened, and that is asserted
+     * here rather than left in a docblock.
+     */
+    public function test_the_departure_clamp_is_what_keeps_a_search_act_at_five(): void
+    {
+        $this->assertSame(3, ActPhase::departureActFor(5));
+
+        // The unclamped two-thirds point, which is what the clamp overrides.
+        $this->assertSame(4, (int) ceil(5 * 2 / 3));
+
+        // And what that would have produced: no search phase at all.
+        $unclamped = [];
+        for ($sequence = 1; $sequence <= 5; $sequence++) {
+            $unclamped[$sequence] = match (true) {
+                $sequence < 4 => ActPhase::Escalation,
+                $sequence === 4 => ActPhase::Departure,
+                default => ActPhase::Refusal,
+            };
+        }
+        $this->assertNotContains(ActPhase::Search, $unclamped);
+        $this->assertContains(ActPhase::Search, ActPhase::planFor(5));
+
+        // Inert at the counts this project used before, which is why it was
+        // never seen to matter.
+        $this->assertSame((int) ceil(6 * 2 / 3), ActPhase::departureActFor(6));
+        $this->assertSame((int) ceil(7 * 2 / 3), ActPhase::departureActFor(7));
     }
 
     /**

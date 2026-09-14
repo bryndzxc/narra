@@ -152,7 +152,19 @@ class ExtractCharacters
         $notes = [];
 
         for ($attempt = 1; $attempt <= 2; $attempt++) {
-            $cast = $this->writer->characters($story, $scripts, $notes);
+            // The note is SUPPRESSED by default, and that reverses this
+            // method's original design on measured grounds. It used to carry
+            // the guard's findings back, on the reasoning that re-asking
+            // blindly re-rolls the same mistake -- and four real attempts
+            // showed the note introducing a NEW violation in a different
+            // character every time, built out of the note's own vocabulary
+            // ("sagging-free", "weathered-shaped"). See
+            // config/characters.php -> repair_with_notes.
+            $cast = $this->writer->characters(
+                $story,
+                $scripts,
+                (bool) config('characters.repair_with_notes', false) ? $notes : [],
+            );
 
             // Recorded before anything is checked, because it has already been
             // billed whatever the answer turns out to be.

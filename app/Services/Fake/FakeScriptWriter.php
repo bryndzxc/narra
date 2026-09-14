@@ -4,13 +4,17 @@ namespace App\Services\Fake;
 
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
 use App\Enums\StoryFormat;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\Story;
+use App\Support\ChapterAnnouncement;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\Providers\ChapterDraft;
 use App\Support\Providers\CharacterCast;
 use App\Support\Providers\CharacterProfile;
 use App\Support\Providers\OutlineDraft;
@@ -142,6 +146,29 @@ class FakeScriptWriter implements ScriptWriter
     /** One expression for every scene, replacing the rotation. */
     public ?string $expressionOverride = null;
 
+    /**
+     * How many chapters the next act comes back as, instead of the default
+     * two. Exists so a test can hand GenerateActScripts a count outside the
+     * bound and a chapter under the word floor — the shapes the prompt says
+     * are not allowed and the Action refuses after the cost row.
+     */
+    public ?int $chaptersForNextAct = null;
+
+    /** Leave the re-hook off every chapter of the next act. */
+    public bool $suppressChapterRehooks = false;
+
+    /**
+     * Leave the SPOKEN NUMBER off every chapter of the next act.
+     *
+     * The state story 30's acts 1 and 4 came back in — chapters present,
+     * titled and sequenced, with no announcement anywhere in the prose. It
+     * is a toggle rather than the default because the default has to be what
+     * the contract asks for: a fake whose chapters never announced would
+     * make `ValidateOutlineSpine::checkChapterAnnouncements()` report every
+     * fixture story in the suite, which is how a detector stops being read.
+     */
+    public bool $suppressChapterNumbers = false;
+
     public function outline(Story $story, int $actCount): OutlineDraft
     {
         $this->calls[] = ['method' => 'outline', 'story_id' => $story->id, 'act_count' => $actCount];
@@ -177,6 +204,11 @@ class FakeScriptWriter implements ScriptWriter
                 // stop the pipeline producing.
                 escalationBeat: $this->beatFor($i, $phase),
                 phase: $phase,
+                // Present on every act, because that is the outline Gate 1
+                // accepts and the one the real writer is told to produce. A
+                // test that wants the refused shape sets `prior` on the row.
+                // Null on an anthology act, which has no present to be set in.
+                timeframe: $phase === null ? null : ActTimeframe::Present,
             );
         }
 
@@ -214,12 +246,35 @@ class FakeScriptWriter implements ScriptWriter
             antagonistJustification: 'Dana says I am the one with no kids and no mortgage, that she '
                 .'gave up her twenties looking after our mother while I was away at school, and that '
                 .'family helps family. She believes every word of it, and so does our mother.',
+            // The betrayal DONE, in front of people, and every part Gate 1
+            // reads for: an audience (both families, twenty relatives), the
+            // justification said aloud in its own words (no kids, no
+            // mortgage, family helps family), the person it is done for in the
+            // room and silent, a witness's question, and a line back that loses.
+            // No discovery marker, so a healthy fixture raises nothing; the
+            // RED halves in GuardsGoRedTest add one.
+            betrayalScene: 'At Dana\'s engagement dinner, in front of both families and twenty '
+                .'relatives, Dana stood up with her fiancé Mark beside her and announced that I had '
+                .'agreed to pay the venue balance. Aunt Ruth asked when I had offered. Dana said it to '
+                .'my face, to the whole room: I have no kids and no mortgage, and family helps family. '
+                .'Mark looked at his plate and said nothing. I said I would be delighted to pay for a '
+                .'wedding I had first heard about over the soup, our mother told me to keep the peace, '
+                .'and the table laughed at me instead of at her.',
             withheldInformation: 'I had been paying our mother care home fees since March out of the '
                 .'same account, and Dana had never once asked where that money was coming from.',
             // Witnesses named, because an exposure without them is a private
             // conversation and a much worse video.
             exposureMoment: 'At the reception, in front of eighty guests and both families, when Dana '
                 .'stood up to thank everyone who had helped and named everyone except me.',
+            // In the room, by choice, unexpected — and producing the thing
+            // only the narrator can. Shares the withheld information's own
+            // words (care home, fees, account), because that overlap is what
+            // Gate 1 measures. This fixture's narrator comes uninvited; a
+            // found narrator is the other legal shape and has its own test.
+            narratorAtExposure: 'I come to the reception uninvited, having chosen the moment, and '
+                .'when Dana names everyone but me I stand up with the care home fees printed out '
+                .'and put eleven months of them on the table from the same account. She did not '
+                .'find me. I came.',
             // Unannounced, because an announced departure cannot be searched
             // for and ValidateOutlineSpine flags one. The fake has to be in
             // the genre it is used to test, not merely the right shape.
@@ -235,8 +290,8 @@ class FakeScriptWriter implements ScriptWriter
                 .'thought the eleven months of payments had been.',
             // Answers the grievance in the grievance's own words, which is what
             // the refusal check looks for: shared, specific language.
-            refusal: 'When Dana finally found me at the care home in March, she asked me to come back '
-                .'and help, because family helps family. I said her own sentence back to her and then '
+            refusal: 'When Dana reached me in the parking lot after the reception, she asked me to come '
+                .'back and help, because family helps family. I said her own sentence back to her and then '
                 .'I said no. She had called me embarrassing at every dinner for eleven months; I told '
                 .'her she was welcome to say it again, to anyone she liked, and I went back inside.',
             requestedActCount: $actCount,
@@ -289,6 +344,14 @@ class FakeScriptWriter implements ScriptWriter
             // fake never looked at what it was handed.
             'phase' => $act->phase?->value,
             'escalation_beat' => $act->escalationBeat,
+            // Recorded in the same change that added the field, so the third
+            // dropped-on-the-way field fails a test instead of shipping.
+            'timeframe' => $act->timeframe?->value,
+            'narrator_at_exposure' => $story->narrator_at_exposure,
+            // Recorded at every act, because every act's prompt carries it:
+            // act 1 stages it, and the later acts must not re-stage its first
+            // saying or must hand it back.
+            'betrayal_scene' => $story->betrayal_scene,
             'prior_summaries' => count($priorSummaries),
             'target_words' => $targetWords,
             'outline_size' => count($fullOutline),
@@ -307,6 +370,13 @@ class FakeScriptWriter implements ScriptWriter
             $this->injectIntoScript = null;
         }
 
+        // The act AS chapters, the way the real writer returns it: the prose
+        // cut into whole-sentence runs, each with a title and a re-hook, and
+        // the script is their join. Two by default, which is the floor and
+        // what a real act at the fake's target divides into.
+        $chapters = $this->chaptersFor($script, $act->sequence, $this->firstChapterNumberFor($story, $act));
+        $script = implode("\n\n", array_map(fn (ChapterDraft $c): string => $c->text, $chapters));
+
         return new ActScriptDraft(
             sequence: $act->sequence,
             script: $script,
@@ -315,7 +385,8 @@ class FakeScriptWriter implements ScriptWriter
                 .'I paid it. Nobody knows yet that I have been covering the care home since March.',
                 $act->sequence
             ),
-            rehookLine: 'The second invoice came the morning after I told her I could not do this again.',
+            rehookLine: $chapters[0]->rehookLine,
+            chapters: $chapters,
             // ZERO, THROUGH simulated(), AND BOTH HALVES OF THAT MATTER.
             //
             // The quantity was `$targetWords` under a token unit — a word count
@@ -339,6 +410,63 @@ class FakeScriptWriter implements ScriptWriter
                 detail: ['target_words' => $targetWords],
             ),
         );
+    }
+
+    /**
+     * The act's prose as chapters: whole sentences, evenly divided.
+     *
+     * Sentences rather than words, because a chapter's boundary is a
+     * sentence index and a chapter cut mid-sentence would fail the join
+     * check in GenerateActScripts — correctly, and about the fake.
+     *
+     * @return array<int, ChapterDraft>
+     */
+    private function chaptersFor(string $script, int $actSequence, int $firstNumber): array
+    {
+        $count = max(1, $this->chaptersForNextAct ?? 2);
+        $this->chaptersForNextAct = null;
+
+        $sentences = preg_split('/(?<=[.!?])\s+/u', trim($script)) ?: [$script];
+        $perChapter = max(1, (int) ceil(count($sentences) / $count));
+
+        // The spoken number opens the chapter and the re-hook is the sentence
+        // AFTER it — which is the correction the real prompt took in the same
+        // change. Story 30 stored "Chapter three." as four chapters'
+        // `rehook_line`, so `acts.is_rehook_written` said yes on acts whose
+        // recorded opening line was a chapter marker.
+        $announce = ! $this->suppressChapterNumbers && ChapterAnnouncement::enabled();
+
+        $chapters = [];
+
+        foreach (array_chunk($sentences, $perChapter) as $index => $run) {
+            $text = implode(' ', $run);
+
+            $chapters[] = new ChapterDraft(
+                title: self::CHAPTER_TITLES[($actSequence + $index) % count(self::CHAPTER_TITLES)],
+                rehookLine: $this->suppressChapterRehooks ? '' : $run[0],
+                text: $announce
+                    ? ChapterAnnouncement::sentenceFor($firstNumber + $index).' '.$text
+                    : $text,
+            );
+        }
+
+        $this->suppressChapterRehooks = false;
+        $this->suppressChapterNumbers = false;
+
+        return $chapters;
+    }
+
+    /**
+     * The story-wide number of this act's first chapter, read from the rows
+     * the earlier acts stored — the same way `ClaudeScriptWriter` derives it,
+     * because a fake that numbered from the act sequence would agree with
+     * itself and never with a story whose acts came back at three chapters.
+     */
+    private function firstChapterNumberFor(Story $story, ActOutline $act): int
+    {
+        $earlier = $story->acts()->where('sequence', '<', $act->sequence)->pluck('id');
+
+        return 1 + Chapter::query()->whereIn('act_id', $earlier)->count();
     }
 
     public function characters(Story $story, array $scripts, array $rejectionNotes = []): CharacterCast
@@ -408,8 +536,15 @@ class FakeScriptWriter implements ScriptWriter
             'target' => $targetScenes,
             'phase' => $act->phase?->value,
             'escalation_beat' => $act->escalation_beat,
+            'timeframe' => $act->timeframe?->value,
             'narrator_grievance' => $story->narrator_grievance,
             'antagonist_justification' => $story->antagonist_justification,
+            // What the real prompt hands act 1's scene call: who is in the room.
+            'betrayal_scene' => $act->sequence === 1 ? $story->betrayal_scene : null,
+            // The chapter boundaries this call could see, recorded in the
+            // change that added them. A scene straddling one puts the last
+            // still of one chapter under the opening line of the next.
+            'chapter_boundaries' => $act->chapters()->pluck('first_sentence')->all(),
         ];
 
         $total = count($sentences);
@@ -524,6 +659,16 @@ class FakeScriptWriter implements ScriptWriter
 
         return implode(' ', array_slice($words, 0, $targetWords));
     }
+
+    /** Chapter titles, distinct from the act titles so a page can tell them apart. */
+    private const CHAPTER_TITLES = [
+        'Eleven at Night',
+        'The Florist',
+        'A Tuesday',
+        'No Kids, No Mortgage',
+        'Since March',
+        'Not Once',
+    ];
 
     private const TITLES = [
         'The First Invoice',

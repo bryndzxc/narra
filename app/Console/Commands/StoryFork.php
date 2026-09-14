@@ -79,8 +79,10 @@ class StoryFork extends Command
                 // dropped them would not be running the same experiment.
                 'narrator_grievance' => $source->narrator_grievance,
                 'antagonist_justification' => $source->antagonist_justification,
+                'betrayal_scene' => $source->betrayal_scene,
                 'withheld_information' => $source->withheld_information,
                 'exposure_moment' => $source->exposure_moment,
+                'narrator_at_exposure' => $source->narrator_at_exposure,
                 'hook' => $source->hook,
                 'departure' => $source->departure,
                 'reversal_beats' => $source->reversal_beats,
@@ -98,13 +100,16 @@ class StoryFork extends Command
                     'story_id' => $fork->id,
                     'sequence' => $act->sequence,
                     'phase' => $act->phase,
+                    'timeframe' => $act->timeframe,
                     'title' => $act->title,
                     'summary' => $act->summary,
                     'escalation_beat' => $act->escalation_beat,
                     // Deliberately not copied: `script`, and with it
-                    // `is_rehook_written`. The script is the thing being
-                    // regenerated; copying it would produce a fork that looks
-                    // finished and silently compares a model against itself.
+                    // `is_rehook_written` and the act's chapters. The script
+                    // is the thing being regenerated, and the chapters are the
+                    // writer's cut of it; copying either would produce a fork
+                    // that looks finished and silently compares a model
+                    // against itself.
                     'script' => null,
                     'is_rehook_written' => false,
                 ]);
@@ -114,6 +119,15 @@ class StoryFork extends Command
             // mass-assignable — it is a state machine with four gates in it, not
             // an attribute — so the freshly created model carries no status at
             // all until the database default is read back.
+            // The outline travels, so the fact about WHEN it was written
+            // travels with it: a fork of a story outlined before the betrayal
+            // scene was asked is that same unasked outline, and Gate 1 should
+            // say so once rather than call the field missing. Not fillable,
+            // hence forced.
+            $fork->forceFill([
+                'outlined_before_betrayal_scene' => (bool) $source->outlined_before_betrayal_scene,
+            ])->save();
+
             $fork->refresh();
 
             // Straight to `outlined` rather than through the Gate 1 approval:

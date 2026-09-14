@@ -6,17 +6,20 @@ use App\Actions\DispatchTextStage;
 use App\Actions\GenerateActScripts;
 use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
+use App\Enums\ActTimeframe;
 use App\Enums\Gate;
 use App\Enums\OperatorAction;
 use App\Enums\StoryStatus;
 use App\Exceptions\DispatchRefusedException;
 use App\Exceptions\GateViolationException;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\Story;
 use App\Support\GateVoice;
 use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
 use App\Support\NarrationPace;
+use App\Support\RefusedFields;
 use App\Support\ScriptSizing;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
@@ -78,14 +81,16 @@ class OutlineGate extends Component
         'hook' => '',
         'narrator_grievance' => '',
         'antagonist_justification' => '',
+        'betrayal_scene' => '',
         'withheld_information' => '',
         'exposure_moment' => '',
+        'narrator_at_exposure' => '',
         'departure' => '',
         'reversal_beats' => '',
         'refusal' => '',
     ];
 
-    /** @var array<int, array{id: int, sequence: int, phase: ?string, phase_label: string, beat_label: string, title: string, summary: string, escalation_beat: string, is_rehook_written: bool}> */
+    /** @var array<int, array{id: int, sequence: int, phase: ?string, phase_label: string, beat_label: string, timeframe: ?string, title: string, summary: string, escalation_beat: string, is_rehook_written: bool, chapters: array<int, array{sequence: int, title: string, has_rehook: bool, first_sentence: int}>}> */
     public array $acts = [];
 
     public ?string $saved = null;
@@ -279,26 +284,123 @@ class OutlineGate extends Component
         return app(ValidateOutlineSpine::class)->handle($this->story);
     }
 
-    public function save(): void
+    /**
+     * The rules save() validates against. Public and static so a test can walk
+     * every key and prove each one's refusal is visible on the page.
+     *
+     * THE ACT BOUNDS COME FROM THE MODEL, NOT FROM A LITERAL HERE. The summary
+     * rule was a literal 2,000 while the act-script stage — which REPLACES the
+     * outline's summary with the writer's own — was returning up to 2,026, so
+     * this form refused text the operator never typed, produced by a stage
+     * this rule had never been sized against. See Act::SUMMARY_MAX_CHARS for
+     * the measurement and the number, and Act::textOverflows() for the guard
+     * that now stops the writer returning what this rule would reject.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function saveRules(): array
     {
-        $this->authorizeEdit();
-
-        $this->validate([
+        return [
             'premise' => ['required', 'string', 'min:20'],
             'castAgeProfile' => ['nullable', 'string', 'max:500'],
             'spine.hook' => ['nullable', 'string', 'max:2000'],
             'spine.narrator_grievance' => ['nullable', 'string', 'max:2000'],
             'spine.antagonist_justification' => ['nullable', 'string', 'max:2000'],
+            'spine.betrayal_scene' => ['nullable', 'string', 'max:2000'],
             'spine.withheld_information' => ['nullable', 'string', 'max:2000'],
             'spine.exposure_moment' => ['nullable', 'string', 'max:2000'],
+            'spine.narrator_at_exposure' => ['nullable', 'string', 'max:2000'],
             'spine.departure' => ['nullable', 'string', 'max:2000'],
             'spine.reversal_beats' => ['nullable', 'string', 'max:2000'],
             'spine.refusal' => ['nullable', 'string', 'max:2000'],
-            'acts.*.title' => ['required', 'string', 'max:100'],
-            'acts.*.summary' => ['nullable', 'string', 'max:2000'],
-            'acts.*.escalation_beat' => ['nullable', 'string', 'max:1000'],
-        ], [
-            'acts.*.title.max' => 'An act title doubles as a YouTube chapter title; keep it under 100 characters.',
+            'acts.*.title' => ['required', 'string', 'max:'.Act::TITLE_MAX_CHARS],
+            'acts.*.summary' => ['nullable', 'string', 'max:'.Act::SUMMARY_MAX_CHARS],
+            'acts.*.escalation_beat' => ['nullable', 'string', 'max:'.Act::ESCALATION_BEAT_MAX_CHARS],
+            // Editable, unlike the phase, because the repair for a refused
+            // act is to rewrite its summary as present-day and then SAY so —
+            // an operator who fixes the text by hand with no way to clear the
+            // declaration would have an outline that cannot be approved
+            // without regenerating it. `in:` rather than a bare string so a
+            // typo is a refusal and not a null the check reads as unknown.
+            'acts.*.timeframe' => ['nullable', 'in:'.implode(',', array_column(ActTimeframe::cases(), 'value'))],
+        ];
+    }
+
+    /**
+     * Every validation failure on this page, labelled and anchored, for the
+     * gate bar.
+     *
+     * ---------------------------------------------------------------------
+     * WHY THIS EXISTS: A REFUSED SAVE SAID NOTHING, AND THE PRESS WAS AT THE
+     * BOTTOM OF THE THIRD SCREEN.
+     * ---------------------------------------------------------------------
+     *
+     * Livewire catches ValidationException, fills the error bag and answers
+     * 200. No modal, no log, no exception — the only surface a validation
+     * refusal has is an `@error` directive, and the act summary never had one.
+     * So story 28's operator pressed Approve, Livewire refused act 4's
+     * 2,026-character summary, and the page re-rendered byte-identical to the
+     * one before the press. Even a present `@error` would have rendered three
+     * screens up beside the field, below the fold of a sticky bar that gave no
+     * sign anything had been refused.
+     *
+     * This is the third refusal path on a gate page and it reaches none of the
+     * other two's vocabulary: a capability refusal is a 403 the browser shows,
+     * a dispatch refusal lands in `$problem`, and a validation refusal lands
+     * ONLY in the error bag. Rendering the bag whole — every key, not the ones
+     * a template author remembered — is what makes an invisible refusal
+     * unreachable rather than merely unlikely. A new rule in saveRules() is on
+     * the page by construction.
+     *
+     * Labels are built here rather than through Laravel's attribute names
+     * because "acts.3.summary" is not a place on the page and "Act 4 —
+     * summary" is; the anchor is the field's own id so the line is a link to
+     * the thing that was refused.
+     *
+     * @return array<int, array{key: string, label: string, anchor: string, message: string}>
+     */
+    #[Computed]
+    public function refusedFields(): array
+    {
+        $spineLabels = array_map(
+            static fn (array $field): string => $field['label'],
+            $this->spineReview()['spine'],
+        );
+
+        return RefusedFields::from($this->getErrorBag(), fn (string $key): array => match (true) {
+            $key === 'premise' => ['Premise', 'premise'],
+            $key === 'castAgeProfile' => ['Cast age range', 'cast-age'],
+            str_starts_with($key, 'spine.') => [
+                $spineLabels[substr($key, 6)] ?? ucfirst(str_replace('_', ' ', substr($key, 6))),
+                'spine-'.substr($key, 6),
+            ],
+            (bool) preg_match('/^acts\.(\d+)\.(title|summary|escalation_beat|timeframe)$/', $key, $m) => [
+                sprintf(
+                    'Act %s — %s',
+                    $this->acts[(int) $m[1]]['sequence'] ?? ((int) $m[1] + 1),
+                    str_replace('_', ' ', $m[2]),
+                ),
+                sprintf('act-%s-%d', str_replace('escalation_beat', 'beat', $m[2]), (int) $m[1]),
+            ],
+            default => RefusedFields::plain($key),
+        });
+    }
+
+    public function save(): void
+    {
+        $this->authorizeEdit();
+
+        // A stale refusal must not outlive the press it was about: a save that
+        // now passes must not keep last time's list on the bar.
+        $this->resetErrorBag();
+        unset($this->refusedFields);
+
+        $this->validate(self::saveRules(), [
+            'acts.*.title.max' => 'An act title doubles as a YouTube chapter title; keep it under '
+                .Act::TITLE_MAX_CHARS.' characters.',
+            'acts.*.summary.max' => 'This summary is what the next act is written from, and it has a bound of '
+                .number_format(Act::SUMMARY_MAX_CHARS).' characters — above anything the writer has ever '
+                .'returned. Trim it here, or the story cannot be saved.',
         ]);
 
         $this->story->update([
@@ -316,6 +418,9 @@ class OutlineGate extends Component
                 'summary' => $act['summary'],
                 'escalation_beat' => $act['escalation_beat'],
                 'is_rehook_written' => $act['is_rehook_written'],
+                // Empty stays null: null is "not asked", and an empty string
+                // would be a third kind of nothing the check cannot read.
+                'timeframe' => ($act['timeframe'] ?? '') === '' ? null : $act['timeframe'],
             ]);
         }
 
@@ -698,10 +803,24 @@ class OutlineGate extends Component
             'phase_label' => $act->phase?->label() ?? '',
             'beat_label' => $act->phase?->beatLabel()
                 ?? 'Escalation beat — what this act costs the narrator',
+            // The outline writer's declaration of WHEN the act is set. Null
+            // on every act outlined before the question was asked.
+            'timeframe' => $act->timeframe?->value,
             'title' => (string) $act->title,
             'summary' => (string) $act->summary,
             'escalation_beat' => (string) $act->escalation_beat,
             'is_rehook_written' => (bool) $act->is_rehook_written,
+            // The chapters the act was written as, read-only here: they are
+            // the writer's cut of its own script, and the repair for a bad
+            // one is to rewrite the act. Empty on an act written before
+            // chapters existed, and the card says nothing then rather than
+            // showing an empty list.
+            'chapters' => $act->chapters->map(fn (Chapter $chapter): array => [
+                'sequence' => $chapter->sequence,
+                'title' => (string) $chapter->title,
+                'has_rehook' => $chapter->hasRehook(),
+                'first_sentence' => $chapter->first_sentence,
+            ])->all(),
         ])->all();
     }
 

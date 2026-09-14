@@ -25,6 +25,7 @@ use App\Support\ModelRoster;
 use App\Support\PublishChecklist;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
+use App\Support\RefusedFields;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Throwable;
@@ -577,20 +578,60 @@ class MetadataGate extends Component
         $this->notice = 'Sheet regenerated against the new render. Chapter timestamps rebuilt from the current act timings.';
     }
 
+    /**
+     * The rules save() validates against. Public and static so a test can walk
+     * every key and prove each refusal is visible beside the Save button.
+     *
+     * These two bounds are YouTube's — 100 and 5,000 — and were never sized by
+     * feel: `config/youtube.php` holds them, the generator drops titles past
+     * the hard limit after its call, and ValidateYoutubeMetadata blocks a
+     * description over its limit. What this form had in common with Gate 1
+     * and Gate 2 was not the number but the SILENCE: neither field had an
+     * `@error`, so a refused save said nothing. Largest stored today: title
+     * 88, description 965.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function saveRules(): array
+    {
+        return [
+            'titleSelected' => ['nullable', 'string', 'max:'.config('youtube.limits.title_hard')],
+            'description' => ['nullable', 'string', 'max:'.config('youtube.limits.description')],
+            'publishAtEastern' => ['nullable', 'date_format:Y-m-d\TH:i'],
+        ];
+    }
+
+    /**
+     * Every validation failure on the sheet, labelled and anchored, for the
+     * block beside Save. See RefusedFields.
+     *
+     * @return array<int, array{key: string, label: string, anchor: string, message: string}>
+     */
+    #[Computed]
+    public function refusedFields(): array
+    {
+        return RefusedFields::from($this->getErrorBag(), fn (string $key): array => match ($key) {
+            'titleSelected' => ['Selected title', 'title'],
+            'description' => ['Description', 'description'],
+            'publishAtEastern' => ['Scheduled publish time', 'publishat'],
+            default => RefusedFields::plain($key),
+        });
+    }
+
     public function save(): void
     {
         $this->authorizeEdit();
+
+        // A stale refusal must not outlive the press it was about.
+        $this->resetErrorBag();
+        unset($this->refusedFields);
 
         // Checked here as well as in the validator, because these two have a
         // column behind them: title_selected is varchar(100) precisely because
         // 100 is YouTube's limit, and an over-long title would otherwise reach
         // MySQL and come back as a truncation error rather than as a sentence
         // the operator can act on.
-        $this->validate([
-            'titleSelected' => ['nullable', 'string', 'max:'.config('youtube.limits.title_hard')],
-            'description' => ['nullable', 'string', 'max:'.config('youtube.limits.description')],
-            'publishAtEastern' => ['nullable', 'date_format:Y-m-d\TH:i'],
-        ], [
+        $this->validate(self::saveRules(), [
             'titleSelected.max' => 'YouTube truncates titles at :max characters. Shorten it, or the tail is lost.',
             'description.max' => 'The description limit is :max characters.',
             'publishAtEastern.date_format' => 'Give the publish time as a date and a time, in US Eastern.',

@@ -105,6 +105,20 @@ class MergeAdjacentScenes
             ));
         }
 
+        if ($into->chapter_id !== null && $absorbed->chapter_id !== null && $into->chapter_id !== $absorbed->chapter_id) {
+            // A chapter starts on a sentence and the render times it from its
+            // first scene. Merging across the boundary would fold the next
+            // chapter's opening line into the previous chapter's last still,
+            // and its timestamp would silently move to wherever the merged
+            // scene starts. Same refusal as the act one below, one unit down.
+            throw new RuntimeException(sprintf(
+                'Scene %d ends one chapter and scene %d opens the next. A scene cannot span two '
+                .'chapters: the chapter boundary is a sentence, and its timestamp is its first scene.',
+                $into->sequence,
+                $absorbed->sequence,
+            ));
+        }
+
         if ($into->act_id !== $absorbed->act_id) {
             // Acts are the unit the script is written and chaptered in, and a
             // scene's sentence range is an offset into ONE act's script. A

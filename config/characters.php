@@ -131,4 +131,42 @@ return [
 
     'disk' => env('CHARACTER_DISK', 'characters'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Whether the extraction retry is told what was wrong
+    |--------------------------------------------------------------------------
+    |
+    | OFF, and this reverses a documented decision on measured grounds.
+    |
+    | The retry used to carry a rejection note built from the guard's own rule
+    | list, on the reasoning that "asking again without saying what failed
+    | re-rolls the same mistake at the same price". That is sound a priori and
+    | it is not what happens. Four real attempts on story 32, two runs:
+    |
+    |   run 1 attempt 1   Ma Zhenhua: a folder tucked under one arm
+    |   run 1 attempt 2   Wang Suhua: "round softly sagging-free face read
+    |                     instead as softly rounded"        <- NEW violation
+    |   run 2 attempt 1   Lu Yiwen: "expression"; Kevin Shen: "often"
+    |   run 2 attempt 2   Old Fang: "a square weathered-shaped face"
+    |                                                       <- NEW violation
+    |
+    | Attempt 1 never carried an ageing-texture word. Attempt 2 always did,
+    | and always in a mangled construction built out of the note's OWN
+    | vocabulary -- the model acknowledging the instruction inside the field
+    | text, where an image generator reads it as description. The note does
+    | not repair the cast; it moves the failure to a different character and
+    | supplies the forbidden word to do it with.
+    |
+    | So the retry is a clean re-sample while this is off. That is NOT the
+    | fix -- the fix is a repair scoped to the offending field, designed in
+    | CLAUDE.md and not built -- it is the experiment that separates "the note
+    | poisons the retry" from "a clean sample is rare", which one run of the
+    | scoped repair could not answer.
+    |
+    | Turn it back on to reproduce the contamination.
+    |
+    */
+
+    'repair_with_notes' => (bool) env('CHARACTER_REPAIR_WITH_NOTES', false),
+
 ];

@@ -316,6 +316,32 @@ class MetadataGateLayoutTest extends TestCase
      * The limit is unchanged and still hard: 100 characters, enforced by the
      * validator. This is only about the picture staying honest.
      */
+    /**
+     * A refused save renders above the Save button, carries its own width and
+     * makes no claim the page is not entitled to. The state no other case in
+     * this file builds.
+     */
+    public function test_a_refused_save_lands_above_the_buttons_and_passes_the_page_contracts(): void
+    {
+        $story = $this->storyWithSheet(StoryStatus::MetadataReady, generated: true);
+
+        $component = Livewire::test(MetadataGate::class, ['story' => $story])
+            ->set('titleSelected', str_repeat('a', (int) config('youtube.limits.title_hard') + 1))
+            ->call('save');
+
+        $html = $component->html();
+
+        $refusal = strpos($html, 'class="alert err wide refused"');
+        $save = strpos($html, 'wire:click="save"');
+
+        $this->assertNotFalse($refusal, 'The refusal must render.');
+        $this->assertNotFalse($save);
+        $this->assertLessThan($save, $refusal, 'The refusal must read before the Save button it is about.');
+
+        $this->assertSame([], PageProbe::alertsWithoutTheirOwnWidth($html));
+        $this->assertSame([], PageProbe::claimsNotEntitledTo($html, $component->instance()->voice()));
+    }
+
     public function test_the_title_meter_is_clamped_and_the_overage_is_named(): void
     {
         $story = $this->storyWithSheet(StoryStatus::MetadataReady, generated: true);

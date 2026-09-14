@@ -39,7 +39,67 @@ use RuntimeException;
 class GenerateOutline
 {
     /**
-     * Six for a single narrative, and all three reversal phases still fit.
+     * Five for a single narrative, and all three reversal phases still fit.
+     *
+     * ---------------------------------------------------------------------
+     * SIX -> FIVE, AND THE REASON IS THE CHAPTER, NOT THE ACT
+     * ---------------------------------------------------------------------
+     *
+     * Nothing about the act got longer on purpose. The chapter became the
+     * unit an act is RETURNED as, and the count of them is now derived by the
+     * writer from the length it actually wrote rather than stated to it — so
+     * an act comes back as three chapters instead of two, and a chapter costs
+     * a spoken number, a re-hook and a boundary. Measured on story 31, the
+     * same premise and the same outline as story 30: **1,139 words per act
+     * became 1,473, a 29% rise with nothing in the prompt asking for a word
+     * more**, and six acts of that is 44.4 minutes against a 30-40 window.
+     *
+     * **The act count is the right thing to give, and that is a decision
+     * about which number was measured.** Three numbers could absorb this: the
+     * chapter budget, the word target, or the act count. `chapters.
+     * target_seconds` is now 133 because the reference transcript's fourteen
+     * boundaries mean a mean of 134 and a median of 133 — it is the one
+     * figure here derived from a measurement of the thing itself, so moving
+     * it to fix a runtime would be moving a measurement to make an outcome
+     * pass. The word target is advisory and steers at +0.30, so it cannot
+     * move a runtime at all. The act count multiplies a length the prompt
+     * cannot argue with, which is what makes it the lever — the same
+     * sentence that moved it from seven to six.
+     *
+     * Five acts of story 31's measured length is ~7,360 words and **37.0
+     * minutes**, in the window and near its middle rather than at an edge.
+     *
+     * ---------------------------------------------------------------------
+     * WHAT FIVE COSTS, EXACTLY — AND WHICH TERM SAVES IT
+     * ---------------------------------------------------------------------
+     *
+     * **NOT a reversal phase. The escalation loses the act again, three down
+     * to two.** `ActPhase::planFor(5)` gives escalation 1-2, departure 3,
+     * search 4, refusal 5: departure, search and refusal keep one act each,
+     * exactly as at six and seven. The reversal now occupies three acts of
+     * five.
+     *
+     * **AND AT FIVE THE `$actCount - 2` CLAMP BINDS FOR THE FIRST TIME.**
+     * This is the part that would be easy to miss and it is load-bearing.
+     * The two-thirds point of five acts is act 4; unclamped, a departure in
+     * act 4 of 5 makes act 5 the refusal and there is NO SEARCH ACT AT ALL —
+     * the compressed ending this whole structure exists to replace. The clamp
+     * pulls it back to act 3 and the search survives. At six and seven the
+     * two-thirds point already lands correctly and the clamp is inert, which
+     * is why it has never been the term that decided anything before; it was
+     * written as a guarantee and at five it becomes the active one. Touch
+     * `departureActFor()` and five acts is the count that breaks first.
+     *
+     * What is worth naming rather than hiding: the reversal is now 60% of the
+     * acts, against 50% at six and 43% at seven, and the genre guidance used
+     * to call it "roughly the last third of the runtime". That sentence now
+     * says THE LAST THREE ACTS, which is true by construction at five, six
+     * and seven and does not drift when the count moves again. Two escalation
+     * acts is one rung of the "each act costs more than the last" ladder
+     * before the departure, and that is the thinnest this has ever been — the
+     * betrayal is in the hook, act 1 escalates, act 2 escalates, act 3
+     * leaves. If a story ever reads as leaving too early, this is the number
+     * that did it.
      *
      * ---------------------------------------------------------------------
      * IT WAS SEVEN, AND BOTH REASONS BELONG ON THE RECORD
@@ -82,9 +142,11 @@ class GenerateOutline
      * reference channels in this niche run 44 and 54 minutes. Over the ceiling
      * costs nothing measurable; under the floor costs ad density.
      *
-     * At six, an act of natural length gives 6,738 words and 34.2 minutes.
+     * At six, an act of natural length gives 6,738 words and 34.2 minutes --
+     * a figure measured when an act came back as TWO chapters, and the reason
+     * it no longer holds is under `ScriptSizing::naturalActWords()`.
      */
-    public const DEFAULT_ACTS_SINGLE = 6;
+    public const DEFAULT_ACTS_SINGLE = 5;
 
     /**
      * Five for an anthology, which fights the genre: escalation cannot compound
@@ -193,6 +255,29 @@ class GenerateOutline
             ));
         }
 
+        // Same place and same reason as the act count above: a bound the
+        // schema cannot carry (structured outputs honour neither minItems nor
+        // maxLength), checked against the decoded response after the cost row
+        // is written. Gate 1's form validates these three columns and the
+        // outline is the first thing that writes them; the act-script stage
+        // rewrites `summary` and carries the same check. See Act::textBounds().
+        foreach ($draft->acts as $act) {
+            $over = Act::textOverflows([
+                'title' => $act->title,
+                'summary' => $act->summary,
+                'escalation_beat' => $act->escalationBeat,
+            ]);
+
+            if ($over !== []) {
+                throw new ScriptWriterException(sprintf(
+                    'Act %d of the outline came back with a %s. The outline is one call — re-run it. '
+                    .'The call was billed and nothing was stored.',
+                    $act->sequence,
+                    implode(' and a ', $over),
+                ));
+            }
+        }
+
         $this->locale->assert(
             $draft->proseForInspection(),
             (string) $story->locale_profile,
@@ -230,6 +315,11 @@ class GenerateOutline
                     // and a sequence number cannot say that. Null on an
                     // anthology, where each act runs the whole arc itself.
                     'phase' => $act->phase,
+                    // Whether the act is set in the story's present. Declared
+                    // by the writer, and Gate 1 refuses an escalation act that
+                    // says `prior`: story 28 staged 2015 and 2017 across two of
+                    // its three escalation acts, and the outline had said so.
+                    'timeframe' => $act->timeframe,
                     'title' => $act->title,
                     'summary' => $act->summary,
                     // What this act costs the narrator. Stored separately from
@@ -255,6 +345,16 @@ class GenerateOutline
                 $story->update($spine + (
                     trim($draft->title) !== '' ? ['title' => $draft->title] : []
                 ));
+            }
+
+            // This outline WAS asked for a betrayal scene, whatever it
+            // answered. The flag is a fact about when an outline was written,
+            // frozen by the migration that added the field; a regenerated one
+            // is not that outline any more, and an empty answer from it is a
+            // missing field rather than an unasked one. Not fillable, so
+            // forced — the same reason `sized_against_wpm` is.
+            if ($story->outlined_before_betrayal_scene) {
+                $story->forceFill(['outlined_before_betrayal_scene' => false])->save();
             }
 
             if ($story->status === StoryStatus::Draft) {

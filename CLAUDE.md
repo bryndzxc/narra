@@ -342,6 +342,971 @@ fails on a fourth.
    nobody later consolidates onto it and quietly makes both halves vacuous.
    The fixture lesson applied BEFORE the third time rather than after it.
 
+3c. **ASK WHAT THE NARRATOR MUST PRODUCE IN PERSON. WHEN A DOCUMENT CAN
+   PRODUCE THE WITHHELD INFORMATION, THE WRITER LEAVES THE NARRATOR 800 KM
+   AWAY AND THE PUBLIC PAYOFF ARRIVES AS HEARSAY.** Story 28 was watched
+   end to end with three structural complaints, and all four rendered
+   phase-era stories were measured against them before anything was
+   proposed. The sharpest finding was not on the list. It is the difference
+   between story 25, which works on every measure, and stories 23 and 28,
+   which run the identical arc and do not:
+
+   | story | exposure | narrator present | who produces the withheld information |
+   |---|---|---|---|
+   | 23 | 34:40–39:06, told secondhand | no, 800 km away | a developer's account manager and a roommate |
+   | 25 | 32:56–37:32 | yes, raises his hand at the service door | the narrator: a trust vote "requires the settlor physically present" |
+   | 28 | 38:20–40:30, told secondhand | no | an automated bank notice in a WeChat group |
+
+   Story 23: *"I was eight hundred kilometers away that night, and I did not
+   hear about any of it for nine days."* Story 28: *"my mother had flown down
+   for the new year and told me the whole thing at my kitchen table."* Both
+   spines wrote the narrator out of the room by letting something else carry
+   the fact, and the search prompt then told the writer the narrator "is not
+   watching", so it left him where the departure put him. Story 25's
+   `withheld_information` needs the narrator's BODY, so the writer brought
+   him back, uninvited, in a work jacket, and it is the strongest moment in
+   the four videos.
+
+   **The correction, written the way it was accepted.** Indifference over
+   revenge held up: 25's narrator does not retaliate, he raises his hand.
+   What did not hold up was reading "gone" as "absent from the payoff". The
+   rule is not that she finds him. The search fails, and he chooses the
+   moment he is seen — at the exposure, in the room, unexpected — and she
+   reaches him afterwards because he came. Nothing about the search cost is
+   weakened; the reference channel's own framing, "never expecting to see
+   me", is a narrator turning up. So the arc is right and the staging was
+   passive, and the passivity was decided one field upstream of the exposure.
+
+   **What is in place.** `withheld_information` is asked for with "AND WHAT
+   THE NARRATOR MUST PRODUCE IN PERSON". `stories.narrator_at_exposure` asks
+   how they come to be in the room and what only they produce there;
+   `ValidateOutlineSpine::checkNarratorAtExposure()` refuses a field that
+   reads as the search succeeding (whole-word markers behind the same
+   negation window the announcement check uses, because "she did not find
+   me, I came" is the good case and contains the marker) and then checks it
+   against `withheld_information` by sentence overlap, reporting WHICH
+   sentence is produced. The refusal-phase prompt says the narrator is in the
+   room and chose the moment; the search prompt says the search fails and
+   the narrator "does not intervene" rather than "is not watching", because
+   knowing the banquet date is how 25's narrator caught his train. The
+   genre guidance's fourth movement reads that way now too.
+
+   **THE SECOND FINDING: STORY 28'S PRESENT-DAY BETRAYAL LANDS AT 20:18
+   BECAUSE TWO OF ITS THREE ESCALATION ACTS STAGE 2015 AND 2017 IN FULL.**
+   Measured off the scene offsets the render produced:
+
+   | story | runtime | present-day action begins | inciting betrayal staged | establishment after the hook |
+   |---|---|---|---|---|
+   | 21 | 40:36 | 0:00 | 1:50 | ~1.5 min |
+   | 25 | 39:08 | 1:04 | 1:04 | ~0 |
+   | 23 | 40:57 | 10:38 | 15:01 | 9.3–13.7 min |
+   | 28 | 43:27 | 17:31 | 20:18 | 16.6 min, 38% |
+
+   The premise that the betrayal was never dramatised was wrong: it is
+   staged, and on 28 it is staged for 13:15. The hook opens on it and obeys
+   every rule it has, then act 1 stages the 2015 betrayal (2:50–6:21) and the
+   whole of act 2 is the 2017 one (7:47–17:31). The outline allocated it —
+   act 2's summary reads *"Act 2 tells the second betrayal in full"* — and it
+   was read at Gate 1 and approved, because nothing asked an act WHEN it was
+   set. Two instructions rewarded staging: "name the amounts, the dates, the
+   rooms, the exact words" and "anything vague here gets invented later".
+   Two drivers, not one: a history-shaped premise ("the first time... the
+   second time... the third time"), and a spine that dates the antagonist's
+   line in the past, so the act that stages its first saying goes to history
+   (28's 2017 housewarming toast, 23's Spring Festival table, and story 26's
+   2019 housewarming despite a present-tense premise).
+
+   `acts.timeframe` is the outline writer's declaration per act, `present`
+   or `prior`, from the schema — the expression finding's lesson, a field's
+   surface being 24x a prompt rule's — and `checkTimeframe()` refuses a prior
+   act as a PROBLEM quoting the summary's own first sentence, because the
+   script is written from the summary and nothing else. The genre guidance,
+   the escalation slot guidance, the act system prompt's "name the dates"
+   line and a per-act `timeframeInstruction()` all say the same thing: a
+   prior incident is cited in one sentence with its date inside a present-day
+   act, and the line the antagonist said years ago is quoted there and
+   STAGED at its most recent saying. **Story 25 is the model** — "a wife who
+   earns more" is quoted at 0:18 and staged at 9:17 in a present-day dinner,
+   so the line still lands twice. Story 28's housewarming toast becoming one
+   sentence is the right trade: the exposure replays it anyway.
+
+   **Legacy, in two ages.** Stories 9, 12, 20 and 21 predate the reversal
+   phase and are covered by that one warning; the new field is `later` there.
+   Stories 22 through 28 were outlined with the phase and before either
+   question, and `predatesTimeframeAndPresence()` reports that once — both
+   questions, one sentence — with the field `absent` rather than `missing`.
+   Typing a narrator-at-exposure in by hand ends the excuse and the timeframe
+   check comes back asking for every act to be marked. Nothing is
+   regenerated. `acts.timeframe` is editable at Gate 1 where `phase` is not,
+   because the repair for a refused act is to rewrite its summary as
+   present-day and then SAY so, and an operator with no way to clear the
+   declaration could not approve without regenerating.
+
+   **The consumer question was asked in the change, for both fields:**
+   `actPrompt` (the outline block carries `[ESCALATION · PRESENT]`, the spine
+   block carries "How the narrator is in the room for it", and the act being
+   written gets the timeframe instruction), `sceneContext` (`SET IN:`, so the
+   scene writer does not draw a flashback still for a cited sentence),
+   `FakeScriptWriter` records both at both calls, `StoryFork` copies both,
+   `SchemaEnumDrift::COLUMNS` names the column, and the Gate 1 fixture is
+   asserted unable to hold either state while `storyWithBothPayoffs()` is
+   asserted able to. Four drills, each red in a different test: the check
+   call removed, the DTO field dropped at the act call, the instruction
+   dropped from the prompt, and the negation window replaced by a bare match.
+   The scene arrival test reads the field off the model and cannot go red on
+   the prompt line alone, so the prompt line has its own reflection
+   assertion.
+
+   **Tested on one new story, 29, written to carry both traps.** An en-CN
+   premise shaped like 28's ("The first time she moved my things... The
+   second time...") with a withheld fact a document could carry (a deed in a
+   bank box). The outline came back with every act `present`, a
+   `withheld_information` that answers the question in its own words —
+   *"The deed can be mailed; my signature and my refusal have to walk in"* —
+   a `narrator_at_exposure` that opens *"The search has failed"* and walks
+   in uninvited with the bag from the box, and a refusal that opens *"She
+   reaches me in the corridor outside the private room, because I came, not
+   because she found me."* Gate 1: zero problems, zero warnings, and the
+   presence badge names the sentence produced. Act 1 opens on the hook,
+   is in the present by its second paragraph, and cites 2016 in ONE sentence
+   — *"The first time she moved my things into that room I was twenty-six,
+   it was the autumn of 2016, and I carried every box back myself before
+   midnight"* — where story 28 spent 3:31 staging the same beat.
+
+   The six acts came back at 7,615 words, 38.3 minutes at 199 wpm, every
+   one of them in the present: act 2 opens on a paper train ticket for
+   April 5, act 3 on the May dinner, and the 2015 and 2016 mentions across
+   all six are citations, never a scene. The refusal act is the shape 25
+   has and 23 and 28 do not. The narrator walks into the banquet during the
+   toast — *"Nobody saw me for maybe four seconds"* — turns the lazy Susan
+   so the bag comes round to the head table, says *"Mother. Say it again.
+   The notary is here,"* and she does; then the narrator lays out the
+   certificate and the transfer slips herself and tells the notary, in front
+   of forty-one people, that he will not be getting her signature. The
+   exposure is a scene the narrator lives, not a report. The antagonist
+   reaches her in the corridor afterwards, by the service trolley, and each
+   of four refusals names the moment it answers: March, Qingming, New Year
+   2019, the eight years. It ends within a few sentences.
+
+   Spend for the whole test, outline and six acts: $1.34 across eight calls,
+   one of them an act 3 the locale guard refused for "school district" — a
+   US institution on the en-CN profile, unrelated to this change, re-run
+   once. Story 29 is at `scripted` with no scenes, no assets and nothing
+   paid beyond text, so it is free to keep as the first story written under
+   both rules or to discard.
+
+   **One number from that run to keep in view.** The outline billed 12,001
+   output tokens at the configured MEDIUM effort for 17,231 characters of
+   stored text, 1.4 chars per token — so roughly 7,000 tokens were reasoning,
+   and the call sat at 75% of the 16,000 ceiling. The medium-effort entry
+   below says a medium outline "measures under a third" of that ceiling on
+   story 28; this one did not, on a prompt that grew by ~600 input tokens
+   and asks two more questions. One observation, not a trend, and not acted
+   on: the remedy's own clause says a truncation at the corrected setting
+   is new information to be recorded before retrying, and this is the
+   reading before the truncation.
+
+   **The third complaint is measured and held.** The accomplice — the
+   premise names him in all four stories — shares zero scenes with the
+   narrator in 23, 25 and 28 and never speaks to him; the spine has no column
+   for him and nothing requires the scene. Story 21, the pre-phase story, has
+   the scene this genre is built on and it happened by accident: at 21:54
+   Fang Zheng puts a hand on the narrator's shoulder and introduces him to a
+   buyer as *"Yiran's family driver, very reliable"*, in front of nine
+   people, and the wife does not correct him. That is the template. It is
+   held until the two changes above are measured on a new story, because it
+   needs the present-day escalation room that the timeframe rule creates —
+   28 had one present-day escalation act and there was nowhere to put it —
+   and because it has no model in the corpus beyond that one scene.
+
+3d. **THE CHAPTER IS A UNIT UNDER THE ACT, AND THE WRITER'S NATURAL 1,100 WORDS
+   IS THE THING THAT FITS IT.** Measured on 2026-09-13 against a working video
+   in this niche (34:46, 46.7K subscribers): it announces fourteen chapters,
+   about 2:29 each, plus epilogues. Our four rendered stories:
+
+   | story | acts | shortest | longest | mean | first re-hook after the hook |
+   |---|---|---|---|---|---|
+   | 23 | 6 | 5:54 | 7:40 | 6:49 | 7:21 |
+   | 25 | 6 | 6:12 | 6:48 | 6:31 | 6:45 |
+   | 28 | 6 | 5:58 | 9:44 | 7:15 | 7:47 |
+   | 29 | 6 | 6:02 | 7:06 | 6:22 (est.) | about 7:06 |
+
+   Chapters 2.6 to 2.9 times longer, a third as many re-hook points, and the
+   first one at seven minutes on a format whose one measured failure is a
+   vertical retention drop inside the first three minutes.
+
+   **Fourteen acts was the obvious fix and it is the wrong one.** The act
+   writer returns ~1,100 words whatever it is asked (slope +0.30, recorded
+   under the sizing correction), because the act prompt's machinery — a
+   beat, a re-hook, staging, exact words and dates, a summary — is what
+   produces that length. Fourteen acts of it is a 75-minute video, fourteen
+   sequential calls each carrying up to thirteen running summaries, and Gate
+   1 with fourteen panels to read. Every number keyed on the act count would
+   re-derive, and the phase plan has already moved twice.
+
+   So the act stays the unit the script is WRITTEN in and the chapter is what
+   an act is returned AS: two or three per act, each with a title and its own
+   re-hook, the act's `script` being their texts joined. Six acts of the
+   natural length is about fifteen chapters of ~440 words, 2:15 each at 197
+   wpm. **This is the first time in this project a measurement was designed
+   around rather than fought**: the length nobody could move stops being a
+   defect and becomes the thing the chapter fits.
+
+   What holds it up, and where:
+
+   - `chapters` — `act_id`, `sequence` WITHIN the act, `title`, `rehook_line`,
+     `first_sentence`, `start_ms`/`duration_ms`. The boundary is a 1-indexed
+     sentence offset into the act script, in the same `SentenceSplitter`
+     unit `DraftScenes` cuts scenes in, so nothing holds a second copy of
+     the prose and a chapter and a scene can be compared in one resolution.
+     Sequence within the act so `--acts-only=4` replaces that act's chapters
+     with no story-wide renumber. `scenes.chapter_id` is nullable and set
+     null when its act is rewritten.
+   - The act schema returns `chapters: [{title, rehook_line, text}]`. The
+     count (2-4), the per-chapter word floor (150), the title bound (100)
+     and the join check are enforced in `GenerateActScripts` AFTER the cost
+     row, exactly where the summary bound is, because structured outputs
+     honour neither `minItems` nor `maxLength`. The join check is the one
+     that is not obvious: chapter texts joined must split to the same
+     sentence count as the chapters split one by one, or a chapter that did
+     not end on a terminator has merged into the next and every boundary
+     after it is one sentence late in every consumer downstream.
+   - Every consumer, wired in the same change and each with an arrival
+     assertion, per this file's own rule: the scene prompt states the
+     boundaries and a scene must not straddle one (a straddler is filed
+     under the chapter its FIRST sentence is in and NAMED on the job row —
+     a few seconds of picture, not a re-bill); `ConcatRenderJob` times
+     chapters from scene offsets exactly as it times acts; `YoutubeMetadata::
+     chapters()` reads chapter rows when the story has them and acts when it
+     does not; Gate 1 lists them under each act, read-only; `story:write`
+     prints the count; `story:fork` leaves them behind with the script;
+     `MergeAdjacentScenes` refuses across a boundary the way it refuses
+     across an act. Three drills, each red in its own test.
+   - `config/chapters.php`. `announce` is OFF: whether the reference speaks
+     its chapter titles as narration is a question for the transcript, which
+     had not reached this session when this was built. On, the act writer is
+     told to open every chapter with the spoken title and the "no chapter
+     markers in the prose" rule is lifted for that sentence.
+
+   The `SchemaTest` assertion that no `chapters` table exists was rewritten,
+   not deleted: the rule it protected — timestamps written once, by the
+   render, never copied — still holds. The chapter is the unit now and the
+   act is its container.
+
+   **Two rules that were derived from a channel's framing and applied as
+   structure for four stories, corrected the first time actual material was
+   read.** "The search fails and there is no contact until the exposure" and
+   "no epilogue, end within a few sentences of the last refusal" both came
+   from one reference TITLE — *"never expecting to see me and our son 5
+   years later"* — and were written into `genreGuidance()`, `endingFor()`
+   and the spine checks as the shape of the genre. The first transcript in
+   the niche that was actually read runs the other way on both: the
+   antagonist and the narrator are in the same scene five times after the
+   betrayal, at 9:53, 16:43, 18:21, 27:00 and 28:27, each one worse for
+   her, and the video closes on two point-of-view epilogues, hers alone
+   twenty years on. Measured against those five timestamps, our no-contact
+   rule produced an 11-to-23-minute stretch with nobody on screen but the
+   narrator in every one of the four stories, and the no-epilogue rule ended
+   every one of them on a corridor plea.
+
+   A title is a promise about a payoff; it says nothing about what happens
+   between minute ten and minute thirty. **A rule derived from framing and
+   enforced as structure inherits the framing's resolution**, which is the
+   axis finding one layer out: the checks built on those rules were
+   flawless about the shape they described and silent about the shape the
+   niche actually runs.
+
+   **THE TRANSCRIPT, READ. It is at `docs/refence/transcript-3446.txt`
+   (the folder name is as it was saved).** The five figures the report was
+   built on, aligned against the captions:
+
+   | figure | reported | in the captions |
+   |---|---|---|
+   | the partner enters | 12:16 | named 12:18, on screen 13:04 |
+   | encounter 1 | 9:53 | 9:53-11:35, the box of gifts; "Don't touch me", "Get lost" |
+   | encounter 2 | 16:43 | 16:43-17:21, the campus square; no words, she joins the condom line |
+   | encounter 3 | 18:21 | 18:21-19:50, the cafeteria; "I'm not into threesomes" |
+   | encounter 4 | 27:00 | 27:00-28:24, outside his office in the other city; she kneels |
+   | encounter 5 | 28:27 | 28:27-31:54, the café; "how can you prove that" |
+   | chapters | 14 at ~2:30 | 14 at 1:02, 4:29, 6:34, 8:16, 11:35, 14:37, 16:17, 18:18, 19:54, 22:35, 25:30, 26:25, 28:27, 31:58 — mean 2:13, range 0:22 to 3:31 — plus two point-of-view extras at 32:20 and 34:05 |
+
+   And a sixth encounter the count missed because it IS the betrayal: 1:31
+   to 4:25, the reunion dinner, where the narrator answers back inside the
+   scene — *"Marry you my ass"* at 2:56, *"breakup dinner or a date with
+   your new boy toy"* at 3:30 — and still loses the round.
+
+   **The chapter announcements are spoken.** The captions carry "chapter 1"
+   inline in the stream at 1:02 (*"...You picked the perfect time to be
+   awesome chapter 1 With graduation approaching..."*), lowercased the way
+   the ASR lowercases everything it hears, and the same for every chapter
+   through "chapter 14" and "Extra 1 — Sophia's POV". A bare number, no
+   title. And the cold open comes BEFORE "chapter 1": sixty-two seconds of
+   hook, then the announcement. `chapters.announce` is on, the prompt asks
+   for the number in words as its own sentence, the title stays metadata,
+   and act 1 is told the announcement follows the five beats.
+
+   **The departure question, answered: leaving is not what the middle is
+   built on. It is what makes her position unrepairable at the end.** The
+   reference has TWO departures. The BREAK is announced, early and plainly:
+   he calls her parents and cancels the wedding at 8:46 (25% of runtime),
+   tells her to her face *"we broke up... I hope we never have anything to
+   do with each other"* at 10:45. The RELOCATION is unannounced and late:
+   25:30 (73%), *"asked everyone who knew where I was going not to tell
+   her"*, blocked on every platform at 26:11. Between the two, fourteen
+   minutes — 40% of the video — the narrator is still in the same city,
+   visibly with someone new, and she keeps running into that: encounters 2
+   and 3 exist because he did NOT leave. After the relocation the search is
+   four lines long (28:36-28:43) and it SUCCEEDS, and the success is the
+   cost — she finds him kissing someone on a street in another city and
+   kneels in front of a crowd. Then the café: *"Everything she had done back
+   then had become an irreversible losing move the moment I decided to walk
+   away. Whether she had actually remained faithful could no longer be
+   proven"* (30:56). So leaving did one thing, and it is the payoff's
+   mechanism rather than the middle's: it converted a fight into a fact
+   she can no longer argue with. The middle is carried by contact, and by
+   the partner.
+
+   **Item 2, built.** `genreGuidance()` movements 1-4, `endingFor()` for
+   the escalation, search and refusal phases, the outline prompt's
+   `narrator_at_exposure`, `departure`, `reversal_beats` and `refusal`
+   lines, `ActPhase::guidance()`, the scene-context phase label, Gate 1's
+   help text, and three comments that restated the rule. The escalation
+   act still ends worse off on the LEDGER — `endsWorseForNarrator()` is
+   unchanged and its docblock now says it is about the cost — and the
+   narrator answers back in every scene the antagonist is in: one line,
+   funny, exact, changing nothing about the cost. The search phase puts
+   them in the same scene at least once per act, on her initiative or by
+   chance, in front of people, and the narrator's own life is on screen
+   rather than a paragraph. The search may succeed; the finding costs her
+   and the scene stays the narrator's. `checkNarratorAtExposure()` no
+   longer refuses a found narrator: it records the shape as a note and
+   judges the field on what the narrator produces, which is the half of
+   the rule the transcript confirmed. `ContactThroughTheMiddleTest` holds
+   every one of those sentences by reflection.
+
+   **What item 2 cannot do on its own, stated so the probe is read
+   correctly.** The reference's middle is carried by the partner: two of
+   the five encounters are about Willow on his arm, and the fourth is her
+   seeing him kiss someone. Item 5 is held until the probe measures, so
+   story 30's middle has contact and a narrator answering back and nobody
+   beside him. That is a known gap in the probe, not a finding about the
+   rule.
+
+   **The register, measured against the transcript, and a deliberate
+   deviation.** The reference is stronger than mild: *"Fucking
+   disgusting"* (4:04), *"What the fuck was wrong with her"* (11:35), *"why
+   the fuck did you come sit here"* (19:09), *"a bitch like this"* (3:18).
+   Nothing in its first thirty seconds, which is the one place YouTube
+   reads hardest. The prompt keeps MILD on the ad-suitability argument —
+   the format exists for mid-rolls — and that is a choice made against the
+   reference, recorded as one, and reversible in one paragraph if the
+   measured cost of mild turns out to be the audience.
+
+   **THE PROBE: STORY 30, A FORK OF 29'S PREMISE, RE-OUTLINED AND WRITTEN
+   UNDER ITEMS 1, 2 AND 3 TOGETHER.** $1.23 across eight calls, one of them
+   refused. Six acts, 6,832 words, 34.3 minutes at 199 wpm — in window.
+   Measured with the same counts as the first report, at act level (no
+   scenes exist, so runtime positions are cumulative words at 199 wpm):
+
+   | axis | story 29 (same premise, old rules) | story 30 |
+   |---|---|---|
+   | encounters after the betrayal, in person | 5 (acts 2-4 and the banquet evening), narrator complies in all but the last | 8: acts 2, 3, 4 one each with the narrator answering back and still losing; act 5 two; act 6 two |
+   | first encounter that goes AGAINST her | ~32:10 of 38:15 (84%) | the registry hall at ~25:30 of 34:20 (74%), then the tea shop at ~27:00, the banquet at ~29:30, the corridor at ~32:30 |
+   | longest stretch with no contact | ~11 min | ~3.5 min, act 4's leaving to act 5's registry |
+   | narrator lines, heuristic | 45 | 36, none of them "all right" or "Yes, Mother" |
+   | "Yes, Mother" | 6 | 0 |
+   | "I want to be honest/exact/fair" | 4 | 0 |
+   | profanity, mild or strong | 0 | 0 |
+   | chapters | 0 (6 acts, 6:22 mean) | 12, two per act every time, mean 569 words = 2:52 |
+   | spoken chapter numbers | 0 | 8 of 12 |
+
+   The lines the register asked for arrived, dry rather than crude, and the
+   writer used none of the mild profanity it was allowed: *"The soup needs
+   somebody with no seat. I'm the only one here who qualifies."* *"I've been
+   home four minutes and my apartment already has a job."* *"I'd love to
+   sign away something that was never mine. Truly. Point me at the line and
+   I'll put down whatever name you've been using."* *"It's a lovely room.
+   Enjoy the fish."* *"You're in seat forty-seven. I'm number twelve. You've
+   got time to think about that."* *"That floor is nine degrees and you have
+   a bad knee. Get up. It isn't the room."* And the refusal's last line is
+   the "loss she can no longer repair" the prompt asked for: *"Tell me how
+   you give him back those eight years. You can't. Neither can I. That's
+   why there's nothing to come back to."* The search phase does what the
+   contract now says: she finds the narrator through the building office
+   receipt, sits down beside her in front of forty people, and the clerk
+   tells her "the mother of the eldest son" is not a category; two days
+   later she kneels on wet stone in Pingjiang and two customers film it.
+
+   **Five things the probe found that the counts would not have, in the
+   order they matter.**
+
+   1. **Act 1 did not use the stored hook, and two of its five beats are
+      missing.** Story 29's act 1 opens on `stories.hook` verbatim. Story
+      30's opens mid-scene on the betrayal (beat 2, right), quotes the
+      justification (beat 3, right), and has NO cold action and NO promise
+      of the departure — beat 4's place is taken by an answer-back, which
+      is the new register instruction colliding with the hook's own "not a
+      confrontation" rule inside the one act that carries both. Two
+      instructions now argue in act 1 and the newer one won. One
+      observation; the fix, when it is made, is to say in `hookInstruction()`
+      which of the two the first thirty seconds obey.
+   2. **The spoken chapter number was dropped in exactly the two acts with
+      a special opening instruction** — act 1 (the hook) and act 4 (the
+      departure). Acts 2, 3, 5 and 6 spoke both of theirs, numbered
+      correctly across acts. Nothing checks the announcement at Gate 1; a
+      chapter whose first sentence is not "Chapter N." should be a warning
+      there, and is not yet.
+   3. **The writer chose two chapters per act every time, including at
+      1,195 words.** The prompt states "at this act's length that is 2
+      chapters" from the 985-word target, and the writer obeys the stated
+      number rather than the length it actually wrote. Mean chapter 2:52
+      against a 2:30 target and the reference's 2:13. The projection should
+      be made from the natural length (`ScriptSizing::naturalActWords()`)
+      rather than the target, which at 1,123 words rounds to 2.3 and would
+      still say two — so the honest fix is to ask for three on an act
+      whose target is the natural length, or to say "2 or 3, and 3 when the
+      act runs past a thousand words". Not changed in the probe.
+   4. **The act summary bound fired for the first time on a real act, and
+      the distribution had already moved before today.** `Act::SUMMARY_MAX_
+      CHARS = 3000` was derived on 61 acts with a maximum of 2,026. Story
+      29's summaries, written this morning under the timeframe and presence
+      prompt, ran 1,920 to 2,666; story 30's ran 2,448 to 2,954 and act 3's
+      first attempt came back at 3,121 and was refused, billed ($0.15), and
+      passed on the retry at 2,742. Each prompt addition asks the summary to
+      carry more ("what was said" now includes the narrator's lines). Per
+      the bound's own docblock this is information about the writer and not
+      a reason to move the number; the lever is the summary instruction —
+      "3-5 sentences" is being read as three paragraphs — and it was not
+      touched in the probe.
+   5. **The narrating-the-narration ban was obeyed on its listed phrases and
+      the tic came back in a new coat.** Zero "I want to be honest"; five
+      "I want you to understand / know / have / hold onto that number".
+      Story 29 had none of that form. A ban written as a list of phrases is
+      matched as a list of phrases, which is `CharacterTextGuard`'s lesson
+      about `weathered` one field over; the form to ban is the narrator
+      addressing the listener about how to read the narration.
+
+   Two further readings, on the record: the search act's "the narrator's own
+   life is ON SCREEN, not a paragraph" produced a paragraph — the rented
+   room, the noodles, Grace on Sundays, sleeping through the night — which
+   is what a middle with nobody beside the narrator has to offer, and is
+   the gap item 5 is held for. And the outline billed 13,269 total tokens at
+   medium effort, about 11,000 of them output, 68% of the 16,000 ceiling:
+   the second medium outline in a row above two-thirds, which the ceiling
+   watch says to treat as a trend on the third. **The third reading arrived
+   on story 32 and it BREAKS the trend rather than confirming it: 4,832
+   output tokens, 30% of the 16,000 ceiling, on a prompt that had grown
+   again.** Three readings are 75%, 68%, 30%. Nothing is raised, and the
+   watch is closed rather than left standing, because two readings that
+   agreed and one that does not is variance and not a trend — which is the
+   answer the watch existed to get.
+
+   Story 30 is at `outlined` with six scripts and twelve chapters, no cast,
+   no scenes and no paid asset, so it is free to keep as the first story
+   written under all three items or to discard.
+
+   **FINDINGS 1, 2, 3 AND 4 ARE BUILT; 5 IS THE PROMPT HALF ONLY. Each has
+   its own entry under "Where bugs actually live" and the four headlines
+   are:** act 1 is the only act where three opening instructions meet and
+   nothing had asked whether they can all hold at once, which is why a
+   contract that was built and measured lost to a prompt edit made
+   elsewhere; a stated FIGURE steers weakly and a stated COUNT steers
+   absolutely, which is why the chapter count moved from a number in the
+   prompt to a division the writer does against the text it wrote; a ban
+   written as a list of phrases is always one rewrite behind, so the
+   narrating ban names the move; and a chapter that never says its number
+   is invisible in the database, so Gate 1 reads the prose. Finding 5 is
+   corrected in the prompt and has NO mechanism behind it — that is
+   deliberate and said out loud in its entry, because a request with no
+   invariant reads as a guard while doing nothing.
+
+   **Two things carried forward as watches rather than acted on.** The act
+   summary bound fired for the first time on a real act and every prompt
+   addition since has asked the summary to carry more — this change adds
+   nothing to what a summary must hold, but the pressure is one-way and
+   `Act::SUMMARY_MAX_CHARS` is not to be moved to fit a result. And the
+   outline ran at 68% of its ceiling, the second medium run in a row above
+   two-thirds; a third is the trend, and it should be RAISED then rather
+   than absorbed. Neither is touched here.
+
+   **THE SECOND PROBE: STORY 31, A FORK OF STORY 30'S OUTLINE, WRITTEN UNDER
+   FINDINGS 1-4.** $1.55 across eight act calls, six kept and two refused by
+   the summary bound. **The outline was deliberately NOT regenerated** and
+   that is the experiment rather than a saving: all four changes are in the
+   act prompt, and `story:fork` exists to hold an outline fixed while one
+   thing varies — comparing acts written against two different outlines
+   "measures nothing", in that command's own words. The premise chain is
+   unbroken, 29 -> 30 -> 31, and story 30's `hook` travelled with the fork,
+   which matters because the hook is the field act 1 dropped.
+
+   | | story 30 | story 31 |
+   |---|---|---|
+   | act 1 opens on the stored hook | no — invented its own opening | **yes, verbatim** |
+   | hook beats present | 3 of 5 — no cold action, no departure promise | **5 of 5** |
+   | chapters | 12 — two per act, every act | **19 — 3,3,3,3,4,3** |
+   | chapters that speak their number | 8 of 12 | **19 of 19** |
+   | mean chapter | 569 words, 2:52 | **465 words, 2:20** (reference 2:13) |
+   | `rehook_line` holding only "Chapter N." | 8 of 12 | **0 of 19** |
+   | narrating-the-narration moves | 5 | **1** |
+   | Gate 1 | 5 warnings | **1** |
+   | the registry hall, the first encounter that costs her | 26.2 min of 34.3 (76%) | 33.4 min of 44.4 (**75%**) |
+   | words / runtime at 199 wpm | 6,832 / 34.3 min | 8,835 / **44.4 min** |
+
+   Act 1's opening is the whole of finding 1 answered in one paragraph: the
+   stored hook verbatim, one sentence of setup, the betrayal at the kitchen
+   table, the justification quoted — *"A woman who married up should be
+   grateful for the company," she said* — then **a cold action and not an
+   answer-back**, *"I said that sounded fair, got up, rinsed my bowl, and set
+   it in the rack"*, then the departure promised, *"started counting the days
+   until the Tuesday nobody would be able to find me."* Then, on its own line,
+   **"Chapter one."** — after the hook, where the reference puts it. The
+   answer-back arrives on the next page, in the same act, where it belongs:
+   *"I said that in 2016 she had already moved my clothes and my books into
+   that same small room while I was at work."* Both rules held, in the act
+   that could previously only obey one.
+
+   **THE SIDE EFFECT, AND IT IS THE BIGGEST NUMBER ON THE PAGE: ACTS GREW 29%
+   AND THE VIDEO IS NOW OVER THE CEILING.** 1,139 words per act became 1,473,
+   and 34.3 minutes became 44.4 against a 30-40 window. Nothing asked for
+   more words; what changed is that an act is now cut into three chapters
+   instead of two, and a chapter costs a spoken number, a re-hook and a
+   boundary. **The writer's "natural act length" turns out not to be a
+   property of the writer — it is a property of how many openings the act is
+   asked to write**, which is a correction to `naturalActWords()`'s own
+   docblock: 1,123 words was measured at two chapters per act and is not a
+   constant across chapter counts.
+
+   By this file's own rule that is acceptable and it is not invisible. The
+   floor is a preference and the 8-minute mid-roll threshold is the only law;
+   the reference channels run 44 and 54 minutes; over the ceiling costs
+   nothing measurable and under it costs ad density. **The target does NOT
+   move to match this**, and `story:write` correctly reports "in target: NO".
+   What would want re-deriving, if 44 minutes is judged too long, is the ACT
+   COUNT — five acts of three chapters is 37 minutes — and not the chapter
+   budget, which is the one number here that now comes from a measurement.
+
+   **The summary bound fired twice on this run, against once on story 30's,
+   and that is the watch item moving.** Act 1 came back at 3,111 characters
+   and act 4 at 3,233, both refused, both re-run, about $0.45 of the $1.55.
+   The summary INSTRUCTION is byte-identical to story 30's — nothing in this
+   change asks a summary to carry more — so the honest reading is that
+   summaries scale with the act, and the act grew 29%. Per the bound's own
+   docblock that is information about the writer and not a reason to move the
+   number. The lever named there is still the untouched one: "3-5 sentences"
+   is being read as three paragraphs.
+
+   **No outline was generated, so the ceiling watch gets no third reading and
+   stays at two.** That is worth saying rather than leaving as a gap: the
+   trend is still one run from being called, and this probe could not have
+   called it either way.
+
+   Story 31 is at `outlined` with six scripts and nineteen chapters, no cast,
+   no scenes and nothing paid beyond text.
+
+   **THE THIRD PROBE: STORY 32, FIVE ACTS.** $1.09 across six calls — one
+   outline and five acts — and **not one summary refused**, against two on
+   story 31 at six acts. Forked from story 31 for the premise and the
+   settings; the outline had to be regenerated because a five-act outline is
+   a five-act outline, so the act STRUCTURE is the variable and the premise
+   is the constant, as it has been since story 29.
+
+   | | story 30 | story 31 | story 32 |
+   |---|---|---|---|
+   | acts | 6 | 6 | **5** |
+   | runtime at 199 wpm | 34.3 min | 44.4 min — over | **39.1 min — in window** |
+   | words | 6,832 | 8,835 | 7,774 (target band 5,500-8,000) |
+   | chapters | 12 | 19 | **16 — 3,3,3,4,3** |
+   | chapters that speak their number | 8 of 12 | 19 of 19 | **16 of 16** |
+   | mean chapter | 2:52 | 2:20 | **2:26** (reference 2:13) |
+   | `rehook_line` holding only "Chapter N." | 8 | 0 | **0** |
+   | narrating-the-narration moves | 5 | 1 | **0** |
+   | in-person encounters | 10 | 11 | **14** |
+   | longest stretch with no encounter | 3.2 min | 4.0 min | **3.3 min** |
+   | first encounter that costs her, in person | 76% | 75% | **72%** |
+   | Gate 1 | 5 warnings | 1 warning | **0 problems, 0 warnings** |
+   | summary-bound refusals | 1 of 6 | 2 of 6 | **0 of 5** |
+   | spend | $1.23 | $1.55 | **$1.09** |
+
+   The phase plan came back exactly as `ActPhase::planFor(5)` computes it —
+   escalation, escalation, departure, search, refusal, every act `present` —
+   and act 1 opens on the stored hook verbatim with all five beats and
+   "Chapter one." after them. Nothing regressed on any axis the previous two
+   probes moved.
+
+   **The act length rose again and it was predicted rather than discovered.**
+   1,555 words per act against story 31's 1,473. Five acts divide the same
+   35-minute target into 1,393 words each instead of 1,161, and the target
+   steers at +0.30, so +232 asked buys about +70 written. 1,473 + 70 = 1,543
+   against 1,555 observed. **That is the first time in this project the
+   act-length model has been used to predict rather than to explain**, and it
+   is worth more than the six minutes it accounts for: the two terms are now
+   separable, one advisory and one absolute, and both were needed to land
+   39.1 minutes instead of 37.0.
+
+   The consequence is that five acts sits nearer the ceiling than the 37.0 the
+   change was argued on. It is in the window and it is the right side of it by
+   this file's own rule, and there is no headroom left: an act count of five
+   is the floor of what keeps the reversal, so a story that needs to be
+   SHORTER has to give ground on the chapter budget, which is the measured
+   number, or on the runtime window, which is a preference.
+
+   **Zero summary refusals is one observation and not yet a result.** Three of
+   the previous twelve acts broke the bound and none of these five did, on
+   longer acts than any of them — which is the direction the five-sentence
+   shape was meant to move it, and the sample is five. Watch the next run
+   before calling it.
+
+   Story 32 is at `scripted` with five scripts and sixteen chapters, no cast,
+   no scenes and nothing paid beyond text.
+
+3e. **THE BETRAYAL IS A SCENE, NOT A DISCOVERY. SEVEN STORIES FOUND THEIRS OR
+   HEARD IT IN PRIVATE, AND THE WRITER WAS OBEYING AN INSTRUCTION WHEN IT DID.**
+   Story 32 was read and cancelled at cast extraction: the structure was right
+   and the thing that makes these videos work was missing. Measured on the
+   seven phase-era stories before anything was built — rendered offsets for
+   23, 25 and 28, word offsets at 199 wpm (≈) for the rest:
+
+   | story | justification first staged | who hears it | first public saying | the betrayal |
+   |---|---|---|---|---|
+   | 23 | ≈6:10, a flashback | alone, in a courtyard | never before the exposure | found: a roommate's photos |
+   | 25 | 5:33 | the narrator, in bed | 9:17, eleven at dinner | found: a cc'd booking |
+   | 28 | 20:41 | two, kitchen table | never before the exposure | said, in private |
+   | 29 | ≈4:30 | kitchen doorway | ≈11:24 | private eviction |
+   | 30 | ≈0:50 | kitchen table | ≈8:40 | private |
+   | 31 | ≈2:20 | kitchen table | ≈9:20 | private |
+   | 32 | ≈5:40 | kitchen; the husband says it | ≈10:40, 22 people | private |
+
+   No accomplice is in a room with the narrator in any of them. Two smaller
+   readings: 23's hook claims "eleven people listening" and act 1 stages the
+   line alone in a courtyard; the half of 25's justification that is ABOUT the
+   betrayal ("four days in Sanya with the deputy") is never said aloud at all.
+
+   **The cause was a sentence.** Hook beat 3 told the outline and act 1 that
+   the justification lands "once here in a single sentence and again in act 2
+   or 3 at length", and 29-32 did exactly that: one line in the hook, the
+   first public saying at a banquet in act 2. The refusal bullet pointed back
+   at "act 2 or 3" too. All three now point at the betrayal scene.
+
+   **The reference, time-aligned, 1:02-4:29** (docs/refence/transcript-3446.txt):
+   she arrives late to a reunion dinner of nine holding another man's hand
+   (1:31); the room goes silent (1:49); a friend asks "Who's this? Your
+   younger brother?" (2:05); "He's my boyfriend," one word at a time (2:09);
+   the friend's boyfriend starts to stand and the narrator holds him down, "Let
+   me handle this myself" (2:20); the narrator's first line is a question, "do
+   you even know what you're saying?" (2:31); the justification, to his face,
+   "I want to see a different view before I get married... it won't affect our
+   wedding" (2:41-2:53); "Our wedding? Marry you my ass" (2:56) — NARRATION,
+   followed by "In my head I slapped myself"; the spoken line back, "are you
+   staying for a breakup dinner or going out on a date with your new boy toy?"
+   (3:23-3:37); the man nods and leaves when she whispers (3:38); the
+   justification AGAIN, to the friend (3:48-4:03); "you've even managed to turn
+   my own best friend against me" (4:03) — the round lost. **The accomplice
+   never speaks in the whole video.** He is silent beside her at 16:53 and
+   18:21, holds her back at 19:41, and is revealed a fake at 29:29.
+
+   **Two corrections came out of reading the material rather than a summary
+   of it**, and both were in the prompt:
+
+   - The accomplice is PRESENT, not speaking. The field asks for him in the
+     room and explicitly not for lines.
+   - "Marry you my ass" was cited in `genreGuidance()` as the model of a
+     narrator answering back. It is what he THINKS. The prompt now carries the
+     distinction, not a swapped example: the crude line is thought, the
+     controlled line is said, and the pairing — 2:56 against 3:30 — is what
+     makes a narrator fun to be inside without making them a ranter.
+
+   **What is in place.** `stories.betrayal_scene`, required in the outline
+   schema, asked for as "THE BETRAYAL AS A SCENE, NOT A DISCOVERY". The
+   consumer question, asked for every reader in the change:
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline prompt + schema | the bullet; hook beat 2 compresses it; beats 3 and 4 point at it | `BetrayalSceneTest` |
+   | act 1 prompt | "CHAPTER ONE IS THE BETRAYAL SCENE", inside `hookInstruction()` after the number and before the stored hook | `ActOneOpeningContractTest` |
+   | every act prompt | the spine line "Where she first said it aloud", so act 3 does not re-stage its first saying and the refusal can hand it back | reflection |
+   | act 1 scene call | "THE BETRAYAL SCENE (who is in the room)", so the accomplice and witnesses are drawn | fake record + reflection |
+   | refusal check | `earlierMoments()` names "the betrayal scene" | `BetrayalSceneTest` |
+   | Gate 1 | editable, labelled, a "says aloud" badge naming the justification sentence | Livewire |
+   | `story:fork` | copies the field and the outline's age | `BetrayalSceneTest` |
+   | `ExtractCharacters` | nothing — it reads scripts, not the spine | answered, not wired |
+
+   **Beat 4 was the collision that act 1 would have had.** "The confrontation
+   is the final act, and spending it here spends the video" is a general claim
+   a writer can extend to chapter one, and the reference has a confrontation at
+   1:31 that spends nothing — because the narrator loses it. It now reads THE
+   RECKONING is the final act, and a round the narrator loses is not the
+   reckoning. The cold action in the beats is untouched.
+
+   **Four Gate 1 checks in `checkBetrayalScene()`, all warnings, each its own
+   repair**: nobody watching (`AUDIENCE_MARKERS`, which deliberately omits
+   `room`, `table`, `family` and `dinner` — a kitchen table is made of those
+   words, and reusing `WITNESS_MARKERS` passes exactly the scene the check is
+   for; drilled); the justification not said (overlap, naming WHICH sentence);
+   the betrayal found (`DISCOVERY_MARKERS` behind the negation window — a
+   warning on the operator's word, because not every premise can stage a
+   public betrayal and a problem would refuse stories the genre allows); and
+   act 1's summary not staging it (three distinctive words with proper nouns
+   removed, because two stories' worth of names would pass any pair of
+   summaries; drilled — with names counted, the red case passes). **Unchecked,
+   said out loud:** that the person it is done with is in the room. A name
+   cannot be told from a mention.
+
+   **The legacy age is a COLUMN, and that is the first time.** The two earlier
+   ages are inferred from the acts because every later outline carries a tell
+   the Action or the schema writes. This field's only marker is itself, and
+   empty is the value a legacy story and a broken new outline share. So the
+   migration froze the fact at the one moment it was knowable —
+   `outlined_before_betrayal_scene`, true on every story that had acts, by
+   predicate rather than by id list — `GenerateOutline` clears it, a fork
+   carries it, and typing the field in ends the excuse.
+
+   **And the shared page fixture went red at all eleven statuses the moment the
+   field existed**, because it was left describing a pre-phase outline that
+   somehow had been asked for a betrayal scene — a state that cannot exist —
+   and the missing-field problem filled the group the empty-track contract
+   needs empty. The fixture question from further up this file, answered by a
+   failing test rather than by remembering to ask it. The fixture now says its
+   age, and `test_the_betrayal_fixture_can_express_every_state` asserts both
+   fixtures' shapes.
+
+   **The epilogue, fixed while in there.** `endingFor(Refusal)` still said "no
+   epilogue" after 3d recorded that the transcript closes on one. It now
+   allows a short time-jump epilogue in the narrator's own voice, and names the
+   reference's single working sentence: a year later, at his wedding, "Sophia
+   was the only one who didn't show up." **The two point-of-view extras after
+   it (32:20 Sophia, 34:05 Willow) are NOT asked for**: they are a second and
+   third narrator, and whether the format takes those is a decision, not a
+   correction. The phaseless branch keeps "no epilogue" on purpose, asserted.
+
+   Sixteen drills, all red for the reason they name, runner in a file with
+   literal patches. 1,175 tests before, 1,208 after.
+
+   **THE PROBE: STORY 33, A FRESH en-CN PREMISE, NOT A FORK.** $1.18 across
+   seven calls, one refused. Five acts, 7,614 words, 38.3 minutes at 199 wpm,
+   in window. Stopped at `outlined` for Gate 1; no cast.
+
+   **READ THE CONFOUNDS BEFORE THE NUMBERS. Three things moved, not one.**
+
+   1. **The premise was written to contain the scene.** The operator asked
+      for one incident, a narrator who answers back and loses, and a public
+      setting — and the premise dramatises the betrayal at the banquet in its
+      own first sentence. A field and a premise that agree cannot be
+      separated: a strong chapter one here is evidence the pipeline CAN stage
+      the scene when both ask for it, not that the field alone would move a
+      discovery-shaped premise.
+   2. **Narrator gender × betrayal type is a combination no earlier story
+      had.** Recorded precisely, because the first reading of it was wrong:
+      the probe was flagged as the first female narrator, and it is not —
+      stories 29-32 are all narrated by a daughter-in-law. What is new is a
+      woman narrating a PARTNER betrayal: 23, 25 and 28 are men betrayed by a
+      partner, 29-32 are women wronged by a mother-in-law. If 33 reads
+      differently, that combination is a live explanation beside the scene.
+   3. **The act 1 prompt changed between the first act-1 call and the kept
+      one** (below). Acts 2-5 never carried the changed sentence.
+
+   And one thing to settle before narration, not a text finding: the story's
+   voice is the default, Brian, a male narrator voice, on a woman's first
+   person. 29-32 never reached narration, so this has never been heard.
+
+   | axis | reference | story 32 | story 33 |
+   |---|---|---|---|
+   | the betrayal | done, at a dinner of nine | private, kitchen table | **done, at a banquet of five tables + three clients** |
+   | "Chapter one." | 1:02 | — | **1:00** |
+   | antagonist enters with the accomplice | 1:31 | — | **2:04** |
+   | a witness asks who she is | 2:05 | — | **2:36** ("Elder Brother, who is this?") |
+   | justification first said aloud, in public | 2:44 | ≈10:40 | **2:52** |
+   | the crude thought | 2:56 "Marry you my ass" | — | **3:01** "Partnership my ass." |
+   | the spoken line back | 3:30 | — | **3:06** children's table / the cake |
+   | round lost | 4:03 | — | **3:24** "the laugh turned around in the air and came down on me" |
+   | accomplice speaks | never | — | **once, at the exposure: "I resign. Effective now."** |
+   | justification said again in public | 3:48, to the friend | — | 33:08, at the exposure; handed back in the refusal at 36:24 |
+   | in-person encounters after the betrayal | 6 | 14 | **11** (my reading) |
+   | longest stretch with no encounter | — | 3.3 min | **~5.5 min**, the departure night to the tea house |
+   | first encounter that costs HER | — | 72% | **70%**, the tea house |
+   | hook beats | — | 5 of 5 | **5 of 5**, cold action not an answer-back |
+   | chapters / spoken numbers / re-hook = "Chapter N." | 14 | 16 / 16 / 0 | **16 / 16 / 0** |
+   | mean chapter | 2:13 | 2:26 | **2:23** |
+   | act 1 words (mean of all acts) | — | 1,512 (1,555) | **1,610 (1,523)** |
+   | profanity | strong | 0 | **1, "my ass", in thought, at 3:01** |
+   | narrating-the-narration moves | — | 0 | **0** |
+   | epilogue | a year later, one sentence doing the work | none asked | **a year later, the red envelope returned unopened** |
+   | summary-bound refusals | — | 0 of 5 | **0 of 5** |
+   | outline output | — | 30% of ceiling | **35%** |
+   | Gate 1 | — | 0 / 0 | **0 problems, 1 warning — a false positive, below** |
+
+   **The scene landed on the reference's clock to within a minute at every
+   beat**, and the thinks/says split came back exactly as asked: the crude
+   line as narration, then "What I said was," then the controlled one. Act 1
+   grew about 100 words over 32's act 1 and the story came in 0.8 minutes
+   SHORTER than 32, so the runtime risk named before the build did not
+   arrive on this run.
+
+   **FOUR FINDINGS FROM READING IT, in the order they matter.**
+
+   1. **My own sentence collided with the chapter count, and the contract
+      test written that morning to catch exactly this could not see it.** The
+      betrayal block closed on "the scene is the chapter". The first act-1
+      call returned ONE chapter of 479 words that stopped before the
+      antagonist entered — 1,449 output tokens against 3,400-7,700 on every
+      act of 31 and 32 — with a summary calling the act "the chapter", and was
+      refused by the 2-4 bound, billed $0.1154, stored nothing. The archive
+      made it a read rather than a guess. `ActOneOpeningContractTest` asserted
+      the scene's POSITION against three opening rules and never asked whether
+      it claimed the act's LENGTH, which is the fourth rule it touches. The
+      sentence now says THE SCENE IS CHAPTER ONE, NOT THE WHOLE ACT, a test
+      holds it, and the old sentence drills red. One observation; the wording
+      plainly allowed the reading.
+   2. **A permission became a motif.** "They do not need a line" was read as
+      "they have no lines": every act summary from 1 to 4 carries "Vivian Xu
+      has not spoken a single quoted word" as a fact the next act must not
+      contradict, the narrator remarks on it in act 4, and she speaks once, at
+      the exposure. It works on the page and it matches the reference, but it
+      was not asked for, and it is the stated-count finding one step softer: a
+      stated ALLOWANCE, carried forward in the running summary, steers like an
+      instruction.
+   3. **Gate 1's one warning is an over-report.** The departure check fired on
+      "announces" — Qiao Meilan announcing, at the family meeting, that the
+      narrator will step aside. The narrator's departure is unannounced. The
+      announcement markers have no subject, so an antagonist's announcement in
+      the same field reads as the narrator's. Not fixed: a warning that fires
+      on the good case is how a detector stops being read, and this is its
+      first live instance.
+   4. **The refusal badge names the wrong moment.** The refusal answers the
+      chair, "the sensible one" and "don't spoil my birthday" — the betrayal
+      scene, in its words — and Gate 1 says "answers the grievance", because
+      `checkRefusal()` reports the FIRST moment that clears two shared words,
+      not the best one, and the grievance describes the same banquet. The new
+      moment is shadowed by an older one in list order. Not fixed.
+
+   **One inconsistency the outline carries and nothing can see:** the
+   departure field and the premise say "three weeks after the banquet"; the
+   acts date the banquet March and the leaving August 3. The act-1 writer
+   silently rewrote the hook's "three weeks later" to "before the summer was
+   out".
+
+   **Gate 1 approved on the operator's read (2026-09-14); cast and scenes
+   drafted, stopped at `scenes_drafted`.** $0.61 over eleven calls: one cast
+   extraction and five acts at two calls each, because Haiku was discarded on
+   all five — 0 of 43 now. 202 scenes, twelve characters, Vivian Xu in 20.
+   The betrayal scene reached the pictures intact, which is the consumer the
+   scene-call line exists for: the entrance hand in hand (scene 14), the chair
+   pulled out with the narrator still in the next one (15), the cousin asking
+   (16), Director Fang's cup (18), and "Partnership my ass" drawn as a cutaway
+   with nobody in frame (20) — the thought kept out of the room in pictures as
+   well as in prose.
+
+   **The voice, measured before narration and not set.** Five female voices
+   on the account — Sarah, Laura, Jessica, Matilda, Bella — and no voice but
+   Brian measured on any locale. What an unmeasured female narrator changes,
+   read off the code rather than assumed:
+
+   - **The script: nothing.** Story 33 is frozen at `sized_against_wpm` 199.
+   - **The estimates do NOT fall back to 160.** `EstimateSceneAssets`,
+     `story:write` and the runtime projection read `bestKnownWpm()`, which for
+     an unmeasured voice takes the highest rate measured on the locale —
+     Brian's 199. So the page will show 38.3 minutes for a narrator nobody has
+     timed: a borrowed figure, not a fallback one.
+   - **The pace guard: detects, cannot enforce.** `expectedWpm()` is the one
+     reader of 160, and on an unmeasured pair a drift is reported and never
+     cancels the batch. The audio is unaffected; the runtime is a guess until
+     `narration:measure` runs. At 175 wpm the video is 43.5 minutes, at 220 it
+     is 34.6.
+   - **Credits: nothing.** Billed per character, not per voice.
+   - **The channel.** "A channel keeps one narrator" becomes two. Recorded as a
+     standing decision to make once — one fixed voice per narrator gender —
+     rather than a pick per story.
+
+   **And the sentence the operator reads at dispatch is false for this story.**
+   `NarrationPace::unmeasured()` said "scripts are sized against 160 wpm (the
+   fallback) until one exists", printing `expectedWpm()`. Story 33 was sized
+   against 199, and the estimate beside it reads 199 too. A figure claim about
+   the wrong column, on the spend screen — and false on every en-CN story, not
+   only this one, because sizing never reads the fallback while any voice is
+   measured on the locale. **Fixed.** The sentence now names three figures as
+   what they are: the rate THIS script was sized against (the preflight hands
+   the story over; a null reads "not recorded"), the rate estimates borrow and
+   whose it is, and the guard's fallback. Story 33 reads "sized against 199
+   wpm; runtime estimates borrow 199 wpm, the best rate measured on en-CN by
+   another voice; the pace guard has only the 160 wpm fallback — none of them
+   is this narrator's figure". Two red/green cases and a call-site assertion
+   in `NarrationPaceTest`, three drills red.
+
+   **Voice set to Sarah (`EXAVITQu4vr4xnSDxMaL`) before any narration**, and
+   fixed as the channel's female narrator — see Voice under Target audience.
+   `narration:measure` runs on story 33 when its narration batch finishes.
+
+   **The two Gate 2 advisories, read scene by scene before approval, and both
+   over-report.** Of 13 "restates its narration": most are narration that
+   DESCRIBES a picture (the hall, the price tag, the cake slice, the table of
+   witnesses at the exposure), where the frame restating it is the right
+   frame; the ones that are genuinely a picture of a sentence are #25 (the
+   noodle strand, a literal of a line about a custom) and #72 (a second
+   close-up of the same printed "Legal representative" line as #41). Of 21
+   "hedged": eight rest the whole face on the hedge (#27, #45, #70, #75, #79,
+   #107, #127, #195) and are the blank-face risk; eight carry a strong named
+   expression with one hedged detail ("eyes wide, mouth slightly parted in
+   shock"); and **four are not hedges at all** — `half` matches
+   "half-standing", "half-smile" twice and "half-lidded", which are named
+   expressions and a posture. A hedge list matched whole-word cannot see a
+   compound.
+
+   **BOTH GATE 2 ADVISORIES OVER-REPORT: 5 OF 13 AND 8 OF 21 WERE REAL. An
+   advisory an operator learns to skim is on its way to being ignored**, and
+   this is the over-report direction this file already warns about for
+   audits, landing on the operator's own page. The restatement check cannot
+   tell narration that DESCRIBES a picture from narration a picture merely
+   illustrates, and that is a judgement, so it stays an advisory the operator
+   reads. The hedge half was mechanical and is fixed: `mentionsHedge()` refuses
+   a match joined to a hyphen, scoped to the hedge list only — `mentions()`
+   also decides the face and setting cues, and widening its boundary there
+   would have made two other advisories quieter as a side effect. Red/green
+   pair in `GuardsGoRedTest`, drilled both ways (the old matcher, and `half`
+   dropped from the list).
+
+   **Edited on the operator's word, through `ImagePromptBuilder::rewrite()`
+   with every stored tail verified byte for byte:** #25 reframed to Sophie at
+   the back table while the head table raises its cups; eight expressions
+   named at their real strength (#27, #45, #70, #75, #79, #107, #127, #195).
+   Story 33 now reads 11 restating and 10 hedged.
+
+   **#72 COULD NOT GET A FACE, AND THE REASON IS A GATE 2 LIMIT, NOT A
+   CHOICE.** It was drafted with nobody in frame, so its stored prompt has no
+   cast block, and the editor puts the new frame in front of the stored tail
+   and never rebuilds it. A frame naming Sophie there would reach the
+   generator with no description of her — a face invented once, on one still
+   in 202. It was reframed as the studio floor after hours, lamp on at her
+   desk, nobody in the room. **The Gate 2 editor cannot add a character to a
+   scene**, and nothing on the page says so.
+
+   **NOTHING COUNTS HOW OFTEN A STORY SHOWS PAPERWORK.** The only related
+   check is the whole-story cutaway share, which warns above 60% and has never
+   fired. Measured with a word-list heuristic written for the question
+   (a paper noun in the frame's first eight words, and nobody in frame or a
+   close-up) — rough, checked by hand against known frames, not a detector:
+
+   | story | scenes | paperwork stills | densest 40 scenes | adjacent pairs |
+   |---|---|---|---|---|
+   | 12 | 148 | 24 (16.2%) | 10 | 1 |
+   | 21 | 270 | 24 (8.9%) | 8 | 7 |
+   | 23 | 257 | 25 (9.7%) | 7 | 6 |
+   | 25 | 250 | 35 (14.0%) | **11, from scene 1** | 9 |
+   | 28 | 203 | 17 (8.4%) | 9 | 3 |
+   | 33 | 202 | 15 (7.4%) | 6, scenes 20-59 | 1 |
+
+   Story 25 opened on a slideshow of documents: twelve of its first-act stills
+   are paperwork. Story 33's cluster is #20, 26, 35, 41, 54, 59 across acts 1-2,
+   which is the "three document stills in two acts" finding at its real size.
+   This genre's payoff IS a document, so the count is not a defect on its own;
+   a run of them is. Not built — the heuristic needs its own known-answer pair
+   before it could be an advisory, and an advisory that over-reports is the
+   finding above.
+
+   **Seen on the way, not changed: `reversal_beats` is at 1,750 of its 2,000
+   form bound** (max over ten stories; p50 1,507). That is the Gate 1 summary
+   shape — a form rule sized by feel against a field a writer produces with no
+   stated bound — at 88%. The refusal is no longer silent since `RefusedFields`,
+   so it would be seen, but the next long search will be refused at save.
+
 4. **Narration is generated per scene, never as one 40-minute file.** One giant TTS
    call means one bad sentence forces a full re-bill. Per-scene audio is
    re-generatable in isolation and concatenated at mux time.
@@ -421,6 +1386,28 @@ that differs, and for `en-US` it turned out to be empty.
 **Voice**
 - American English TTS voices only. Neutral-to-warm narration.
 - Store `voice_id` per story so a channel keeps one consistent narrator.
+- **ONE VOICE PER NARRATOR GENDER, FIXED FOR THE CHANNEL. Never picked per
+  story.** Decided 2026-09-14 on story 33, the first woman narrating a partner
+  betrayal, where the alternative was 38 minutes of a man reading "my husband
+  sat his mistress in my chair".
+
+  | narrator | voice | voice_id | measured |
+  |---|---|---|---|
+  | male | Brian — deep, resonant, comforting | `nPczCjzI2devNBz1zQrb` | 197.00 en-US, 199.49 en-CN |
+  | female | Sarah — mature, reassuring, confident | `EXAVITQu4vr4xnSDxMaL` | not yet — `narration:measure` after story 33's batch |
+
+  "A channel keeps one narrator" became two, deliberately, and this table is
+  what stops it becoming five. **What is NOT mechanised, said so the rule is
+  not read as enforced:** `providers.default_voice_id` is still Brian, the
+  new-story form has no narrator-gender input, and nothing selects Sarah on
+  its own. A woman's story is moved with `voices:list --set=<story>
+  --voice=EXAVITQu4vr4xnSDxMaL` BEFORE narration — after it, every paid scene
+  is stale and re-bills. A config key for the female voice was not added,
+  because a key nothing reads is a documented guard with nothing behind it;
+  the mechanism, when it is wanted, is a narrator field on the new-story form
+  that picks from this table.
+- Until Sarah is measured, her stories' runtime estimates borrow Brian's
+  locale rate and the pace guard cannot enforce. See 3e.
 
 **Scheduling**
 - Peak US viewing is roughly 6–10 PM Eastern. Manila is UTC+8; US Eastern is
@@ -464,7 +1451,8 @@ package in one stage keeps the operator flow simple.
 - Limit 5,000 characters.
 
 **Chapters**
-- Derived from `acts` — one chapter per act, using the act title.
+- Derived from `chapters` — two or three per act, using the chapter title —
+  and from `acts` on a story written before chapters existed (see 3d).
 - YouTube's rules, enforced in code before output:
   - First chapter must be `00:00`.
   - Minimum 3 chapters.
@@ -558,7 +1546,19 @@ checklist_state (json),
 status, created_at, updated_at
 ```
 
-Chapters are derived from `acts`, not stored twice.
+Chapter timestamps are the render's numbers, written once. They live on
+`chapters` (two or three per act, see 3d) and, on a story written before that
+table existed, on `acts`; the sheet reads whichever the story has and never
+both.
+
+**chapters**
+```
+id, story_id, act_id, sequence (int, within the act),
+title, rehook_line (nullable),
+first_sentence (int — 1-indexed offset into acts.script, SentenceSplitter unit),
+start_ms (nullable — filled after render), duration_ms (nullable)
+```
+`scenes.chapter_id` is nullable and points here.
 
 ---
 
@@ -789,7 +1789,8 @@ Written for Phase 1, but Phase 0 code should not contradict it.
 id, title, premise, cast_age_profile (nullable),
 hook,
 narrator_grievance, antagonist_justification,
-withheld_information, exposure_moment,
+betrayal_scene, outlined_before_betrayal_scene (bool, default false),
+withheld_information, exposure_moment, narrator_at_exposure,
 departure, reversal_beats, refusal,
 format (enum: single, anthology),
 locale_profile (default 'en-US'), voice_id,
@@ -1763,6 +2764,195 @@ Closed since:
   no protection.** A fact in prose fires once, at the moment somebody happens to
   be looking at it for a different reason; the question has to be asked out loud
   during the change, or a mechanism has to ask it.
+
+- **THE ARROW REVERSED A SECOND TIME: A FORM VALIDATING A FIELD THAT TWO
+  STAGES WRITE, WITH ONLY ONE OF THEM IN MIND WHEN THE LIMIT WAS SET.** Story
+  28, 2026-09-12. Gate 1's Approve did nothing — no transition, no error, no
+  message anywhere on the page — and the outline was good. The status was
+  `outlined`, six acts, six scripts, both `render_jobs` rows succeeded, and
+  `approveGate()` would have passed. What refused it was one line in `save()`,
+  which `approve()` calls first:
+
+  ```php
+  'acts.*.summary' => ['nullable', 'string', 'max:2000'],
+  ```
+
+  Act 4's summary was **2,026 characters**. Not the operator's text and not
+  the outline's: `GenerateActScripts` REPLACES each act's outline summary with
+  the summary the act writer returns, because the next act needs the truth
+  rather than the plan. That prompt asks for "3-5 sentences" against a bare
+  string schema, and act 4 came back in exactly five sentences. The writer did
+  what it was asked; the limit was sized — by feel — for the OUTLINE writer's
+  "3-5 sentences", and nobody had measured the act writer's. Measured, on 61
+  acts:
+
+  | | p50 | p90 | p99 | max |
+  |---|---|---|---|---|
+  | act-writer summaries (script present) | 1,459 | 1,815 | 1,968 | **2,026** |
+  | outline summaries (no script yet) | 970 | 1,057 | — | 1,179 |
+
+  So 2,000 was comfortably above the outline stage and inside the act stage's
+  tail. **The next largest across twelve stories are 1,968 (story 21) and
+  1,933 (story 23), both published — within 2% of the same wall on shipped
+  work.** And the reopen was incidental: the code writes the acts BEFORE Gate
+  1 (`WriteScript` is permitted at `draft` and `outlined` and refused from
+  `scripted`; `NextAction` at `outlined` says "read the outline and the act
+  scripts, then approve"), so scripts present at `outlined` is the ORDINARY
+  state of this gate and any story whose writer returned 2,001 characters
+  could not be approved, reopen or no reopen. The only approve test builds
+  three factory acts with no scripts — the one state that cannot express it.
+
+  This is the `duration_ms`-in-two-tables finding with the arrow reversed:
+  there, a field restored in one place had a second copy nobody asked about;
+  here, a field VALIDATED in one place had a second WRITER nobody asked about.
+  The question is the same and it has to be asked out loud during the change:
+  **who else writes the field this rule reads, and what does that writer
+  actually produce.**
+
+  Three layers, all fixed, and the value was NOT trimmed:
+
+  - **The value.** The cap moved to `Act::SUMMARY_MAX_CHARS = 3000` — ~1.5x
+    the observed maximum, ~1.6x the p99, and under two thirds of the shortest
+    act script on record, so a summary cannot quietly become a second script.
+    It is derived from the act writer's distribution, not raised to fit one
+    result: the summary is the running context that keeps 7,000 words
+    coherent, and trimming it to fit a textarea would have spent coherence to
+    save a form field. Story 28's act 4 stands at 2,026 and now validates.
+    The title (100, YouTube's) and the escalation beat (1,000) moved onto the
+    same model as constants, so all three form rules read the model and a
+    test asserts the identity.
+  - **The source.** The bound is stated in BOTH prompts and enforced in the
+    Action against the decoded response, after the cost row — exactly where
+    and why the outline's act count is enforced. **It is NOT a schema
+    constraint, and the request assumed it could be.** Structured outputs do
+    not honour `maxLength` (the official SDKs strip it and validate
+    client-side), and `expression` and `rehook_line` are not schema-bound
+    either; a `maxLength` written into `actSchema()` would be a 400 on every
+    act call or a limit that reads as enforced and is not. A test asserts
+    neither schema carries one, so nobody "fixes" it in. An over-long summary
+    now refuses the act loudly, names the length and the bound, and stores
+    nothing; the outline call does the same for all three fields.
+  - **The silence** — see the next entry, because it is a different defect
+    and it is live elsewhere.
+
+  Drilled, each red then green: one over the bound at the form, one over at
+  the act call (refused, not stored) and exactly at it (stored), an outline
+  act over it (refused, no acts written), and the bar-level contract below.
+
+- **LIVEWIRE'S VALIDATION REFUSAL IS A THIRD PATH, AND IT REACHES NEITHER
+  `GateVoice`, NOR `$problem`, NOR A MODAL. ANYWHERE THAT PATH IS LIVE, THE
+  SAME SILENCE IS AVAILABLE — AND IT IS LIVE ON GATE 2 TODAY.**
+
+  `SupportValidation::exception()` catches the `ValidationException`, fills
+  the component's error bag, stops propagation and answers **200**. Nothing is
+  logged, no modal opens, no exception reaches a handler. The one surface a
+  validation refusal has is an `@error` directive beside its field. Gate pages
+  had a whole vocabulary for refusing and none of it is on that path:
+
+  | refusal | mechanism | where it lands |
+  |---|---|---|
+  | capability | `abort(403)` | a Livewire error modal |
+  | dispatch | `DispatchRefusedException` | `$problem`, an `.alert.err` at the top |
+  | **validation** | **error bag, 200** | **`@error` beside the field, or nowhere** |
+
+  Story 28's act summary never had an `@error` — in any version of the blade
+  back to the redesign — and there was no `$errors->any()` block anywhere in
+  the views. So the press re-rendered a page byte-identical to the one before
+  it. **Even a present `@error` would have been useless**: the field was three
+  screens above the sticky bar the press happened in.
+
+  **The fix renders the error bag whole, inside `.gatebar`, every key** —
+  labelled by act sequence rather than array index, each line a link to the
+  field. Whole rather than a list somebody typed, so a rule added to
+  `saveRules()` is on the bar by construction; `OutlineGateTest` walks every
+  rule, violates it, and asserts its message reaches the bar, and fails if it
+  cannot derive a violation for a new rule rather than counting it covered.
+  `OutlineGateLayoutTest` builds the refused state — the one state no fixture
+  in that file could build, which is how the missing `@error` went unrendered
+  by any test for a phase — and asserts document order (inside the bar, before
+  Save), `wide`, and no `GateVoice` fragment. It does NOT go through
+  `GateVoice`: the voice phrases capability and position, and "this field was
+  refused" is a fact about the request, not a claim about the gate.
+
+  **The sweep, every `validate()` in the console against its blade:**
+
+  | page | rule keys with NO renderer | was it firing? |
+  |---|---|---|
+  | Gate 1 `save()` | none, now | fixed above |
+  | **Gate 2 `saveScene()`** | **`imagePrompt` (max 2,000), `motion`** | **YES, on 1,495 of 1,693 scenes. Fixed below, and not by raising the cap.** |
+  | Gate 4 `save()` | `titleSelected` (max 100), `description` (max 5,000) | not today — largest stored 88 and 965 — fixed below |
+  | New story | `format` (`in:single,anthology`) | cannot fail from the UI; a select |
+
+  **All three now render the error bag whole through one component,
+  `<x-refused-save>`, from one builder, `App\Support\RefusedFields`** — inside
+  Gate 1's sticky bar, inside Gate 2's editing row above its Save, above Gate
+  4's Save sheet. A page that wants the block asks for every error; a key it
+  did not label still renders under its raw name rather than being dropped.
+  Each page's rules are a public static (`saveRules()`, `sceneRules()`) and a
+  test walks every key, violates it, and asserts the message reaches the
+  block — failing rather than skipping if it cannot derive a violation for a
+  new rule.
+
+- **GATE 2 WAS MEASURING THE OPERATOR AGAINST THE APP'S OWN CONSTANT. 2,532 OF
+  A 3,008-CHARACTER PROMPT WAS TEXT NOBODY ON THAT PAGE WROTE OR COULD
+  CHANGE.** The Gate 1 finding one field over, and larger: `edit()` loaded
+  the WHOLE stored `image_prompt` into one textarea and `saveScene()`
+  validated it at a literal 2,000. Reproduced on story 12, scene 1 (3,186
+  chars): a narration-only edit was refused with no message and did not
+  persist. Measured over 1,681 stored prompts, by section:
+
+  | | p50 | p90 | p99 | max |
+  |---|---|---|---|---|
+  | whole prompt | 3,008 | 3,281 | 3,566 | 4,206 |
+  | everything the operator did not write (cast + style + constraints) | 2,838 | 3,084 | 3,335 | 3,973 |
+  | frame — authored | 140 | 173 | 241 | 311 |
+  | expression — authored | 48 | 73 | 92 | 117 |
+
+  The art style constant alone is 2,226 characters and the constraints 306.
+  So the answer to "should the field carry the style block" is no, and not as
+  a cap decision: **the editor edits the two sections the operator writes —
+  the frame and the expression — and `ImagePromptBuilder::rewrite()` puts
+  them back in front of the stored tail byte for byte.** The cast block, the
+  style and the constraints are the frozen cast text and two config values,
+  identical across the story, and the editor's own help text already warned
+  that editing the cast block there is how a face drifts at scene 90.
+
+  **The tail is the STORED one, never rebuilt from config.** Rebuilding would
+  hand one edited scene the current art style while its 250 neighbours keep
+  the one they were drafted under — a single still in a different look, on a
+  story `ScenesGate::styleBlock()` reports as carrying one style. A drifted
+  style is that report's business; an edit must not fix one scene of it.
+  Drilled by corrupting the kept sections: the byte-for-byte test goes red.
+
+  **The bounds are derived from the authored distributions, one constant
+  each on the Scene model:** `FRAME_MAX_CHARS = 600` (~2x the 311 maximum;
+  ~100 words against a prompt asking 25-45, so the operator can say more
+  than the writer without a frame becoming a paragraph of scene) and
+  `EXPRESSION_MAX_CHARS = 250` (~2x the 117 maximum). Zero stored scenes
+  exceed either. Same three layers as the act summary: the form rule reads
+  the constant, the scene prompt states both bounds, `DraftScenes` refuses an
+  act whose writer exceeds one after the cost row, and a test asserts the
+  scene schema carries no `maxLength`. Narration keeps its floor and no
+  ceiling: it is the video.
+
+  **Gate 4 got the silence layer and only that.** Its two bounds are
+  YouTube's, from `config/youtube.php`, and were never sized by feel: the
+  generator drops titles past the hard limit after its call and
+  `ValidateYoutubeMetadata` blocks an over-long description. What the form
+  shared with the other two was that neither field had an `@error`. Both
+  have one now, the block renders above Save sheet, and since `approve()`
+  saves first a refused approve says "not crossed" beside the button.
+
+  **One thing seen and left alone, on the record.** `ClaudeMetadataWriter`'s
+  title schema carries `maxLength` on both title arrays, with a comment
+  saying the lengths are "unreachable rather than checked". The API
+  documents `maxLength` as unsupported, and metadata has generated
+  successfully with it in place — so it is being tolerated, not enforced.
+  The app does not rely on it: `GenerateMetadata` filters titles past the
+  hard limit after the call. It is left because removing it changes a
+  prompt-cached schema on a stage that works and the filter behind it is
+  correct; it should not be read as the guard, and the anti-`maxLength`
+  test is deliberately not extended to that writer until it is removed.
 
 - **A PARTIAL SCENE RE-DRAFT COLLIDED WITH ITSELF, AND ITS OWN TEST FILE COULD
   NOT EXPRESS THE FAILURE.** `story:scenes --acts=` had never worked on a real
@@ -4020,7 +5210,813 @@ Closed since:
   attempts before it hit the ceiling. The failures survive in `failed_jobs`
   and the log, not on the story's own stage list.
 
+- **TWO REMEDY STRINGS HAVE NOW GIVEN ADVICE THE DATA CONTRADICTS, AND BOTH
+  WERE WRITTEN BEFORE ANYTHING WAS MEASURED.** This is the finding; the scene
+  stage below is only its second instance.
+
+  | stage | what the remedy said | what measurement said |
+  |---|---|---|
+  | `generate_outline` | "generation variance: RE-RUN IT FIRST" | the ceiling was being filled by reasoning at effort `high`; the re-run was followed on story 28 and cost $0.84 for no outline. One medium-effort run fixed it |
+  | `draft_scenes` | "the lever is the ACT LENGTH upstream, not anything here — raise `ANTHROPIC_MAX_TOKENS_SCENES`" | ~71% of the call was reasoning; act length is a term and not the lever; and raising the ceiling makes the failure DEARER, because a truncated call bills at whatever the ceiling is |
+
+  The scene remedy was wrong a third time, in a detail nobody would check: it
+  cited "story 21 act 3, 14,031 output tokens". Act 3 came back at 8,321. The
+  14,031 was act SIX.
+
+  **The shape, which is what makes this a class rather than two mistakes.** A
+  remedy is written when a stage is BUILT, from a plausible model of why it
+  would one day fail. It is read exactly once per incident, at the only moment
+  anyone acts on it, by someone who has just lost a call and is deciding what
+  to do next. Both were plausible. Both named a knob that was not the cause,
+  and one named an env var this app does not read. **A remedy is a claim about
+  CAUSE, made in prose, and nothing in this project checks that kind of claim**
+  — the axis question again, one layer out from a guard: `TruncationMessageTest`
+  asserts the remedy REACHES the message and has no opinion about whether it is
+  true.
+
+  What the corrected ones do differently, and it is the only protection
+  available short of measuring every stage in advance:
+
+  - **Each names the measurement it came from**, with the numbers, so the next
+    reader can see what it rests on rather than trusting it.
+  - **Each names the observation that would REFUTE it.** Both now say that a
+    truncation at the corrected setting is new information — something has
+    moved — and should be recorded before retrying. A remedy that cannot be
+    wrong is the documented-guard shape in prose.
+  - **Neither says to raise the ceiling.** That was the reflex in both, and it
+    is backwards in both: the failure is billed at the ceiling.
+
+  **The ceilings stay at 16,000 for the same reason in both places.** A
+  corrected outline measures under a third of it and a low-effort scene call
+  should too, so a truncation is a signal rather than something headroom
+  quietly absorbs.
+
+- **NOBODY CHOSE ADAPTIVE THINKING ON THE SCENE STAGE. IT ARRIVED BECAUSE THE
+  CLIENT SENDS NO `thinking` PARAMETER AND SONNET 5 DEFAULTS IT ON.** The
+  outline's defect one stage over, found the same way — by a truncation — and
+  on the one stage in the pipeline whose job is mechanical: cut an act that
+  already exists into scene ranges and describe each frame.
+
+  `TalksToClaude::call()` builds `output_config` and nothing else, so every
+  Sonnet call in this app has been running adaptive thinking since it was
+  written. It is not a setting anyone picked and it is not visible in config —
+  the absence of a parameter is the whole cause, which is why no amount of
+  reading `config/providers.php` would have shown it.
+
+  **Measured on story 28 act 1, where the discarded Haiku attempt is a free
+  control** — the same act, the same schema, no thinking:
+
+  | | chars of JSON | output tokens | chars per token |
+  |---|---|---|---|
+  | Haiku 4.5 (no thinking) | 17,143 | 4,227 | 4.06 |
+  | Sonnet 5 (adaptive, medium) | 16,090 | 13,720 | 1.17 |
+
+  About **9,800 of Sonnet's 13,720 tokens — 71% — were not the scene list.** On
+  the act that truncated the figure is ~11,600 of 16,000, against a complete
+  scene list that measures ~4,900.
+
+  **`fallback_effort` is `low`, not `thinking: disabled`, and the reason is
+  measured rather than stylistic.** Disabling thinking is accepted on Sonnet 5
+  and would cut more. It is refused here because **no thinking is a measured
+  failure mode on this exact call**: Haiku 4.5 runs with no thinking, it is the
+  PRIMARY on this stage, and it has been accepted on 0 of the last 38 acts. The
+  fallback exists precisely because the no-thinking attempt was not good
+  enough, so answering a truncation by removing thinking from the fallback too
+  would be answering it with the thing that already failed. `low` is the only
+  setting between the two we have data for. Two lesser reasons: disabling
+  thinking has its own documented failure modes — internal tags leaking into
+  the visible response — which on a machine-parsed JSON stage is a decode
+  failure and a re-bill; and `fallback_effort` already exists and is
+  env-tunable, so this is one value, rehearsable and revertible, where
+  disabling would be a new request field and a new axis nothing else uses.
+
+  ---------------------------------------------------------------------------
+  **WHAT STORY 12 SETTLED, AND WHAT IT DID NOT. THE SECOND HALF MATTERS MORE.**
+  ---------------------------------------------------------------------------
+
+  Two whole-story re-drafts, same story, same prompt, same code, differing only
+  in `fallback_effort`. $0.84 for both. A control run was needed because the
+  scene prompt gained character bounds the same morning, and comparing across
+  that would have been the mixed-story defect this file already records against
+  story 12 itself.
+
+  | | B, medium (control) | C, low |
+  |---|---|---|
+  | sonnet output p50 / max | 3,718 / 5,708 | 3,378 / 4,152 |
+  | max as % of the 16,000 ceiling | 36% | 26% |
+  | scenes | 163 | 148 |
+  | scene words p50 | 30 | 36 |
+  | scenes under 8 words | 6.1% | 4.1% |
+  | static share | 11.7% | 11.5% |
+  | frame p50, chars / words | 156 / 27 | 146 / 25 |
+  | expression block on peopled frames | 92.6% | 94.2% |
+  | names what the face is DOING | 77.0% | 74.8% |
+  | hedged, of blocks | 21.2% | 21.6% |
+  | Gate 2 warnings | 5 | 4 |
+
+  **The quality axes are flat, and that is what the run was for.** Nothing moved
+  more than a couple of points, and the two that moved most moved in opposite
+  directions — expression coverage up, "names what the face is doing" down —
+  which is the shape of noise rather than of an effect.
+
+  **IT DOES NOT ESTABLISH THE TOKEN SAVING, and reading it as though it does
+  would be this file's own most repeated mistake.** One run per arm, no
+  replicate. The only same-effort pair available — the historical draft against
+  the control, both medium — moved the max from 8,892 to 5,708, a 36% swing
+  with the effort UNCHANGED, which is larger than the 27% between medium and
+  low. Story 12 cannot separate the effort effect from run-to-run variance and
+  is not evidence about the size of it.
+
+  What establishes the MECHANISM is the story 28 control above — the same act,
+  the same schema, thinking against no thinking, 4.06 against 1.17 chars per
+  output token. That is a within-call comparison and is not subject to this.
+
+  **And story 12 is a weak proxy for the failure anyway.** Its acts are 828-955
+  words; story 28's are 1,203-1,863 and the one that truncated is 1,863. The
+  headroom question is answered by story 28 when it is retried, not here.
+
+  **One movement to watch that is not a quality axis.** Scenes fell 163 to 148
+  and scene length rose 30 to 36 words — fewer, longer stills. That is a pacing
+  and image-spend change rather than a defect (36 words is ~11 s at 197 wpm,
+  inside the 8-16 s band the render was measured against), but 148 sits under
+  the 150-250 the format budgets, and the SAME movement appeared between the
+  historical draft and the control with no effort change at all, 175 to 163.
+  Watch it on the next full-length story rather than reading it as an effect.
+
+- **THE QUALITY GATE IS APPLIED TO THE CHEAP MODEL AND NEVER TO THE EXPENSIVE
+  ONE, AND THE EXPENSIVE ONE WOULD FAIL IT TOO. This is the answer to "is Haiku
+  incapable", and it is no.**
+
+  `ClaudeScriptWriter::scenes()` runs `unusableReason()` on the FIRST attempt,
+  falls back when it fires, and never re-runs it. `DraftScenes` re-checks
+  exactly one of the four axes on the final draft — tiling, which refuses. The
+  other three are measured only against the attempt that gets thrown away.
+
+  Measured on the accepted, shipped drafts — Sonnet's output, per act, against
+  the very ceilings Haiku is rejected on:
+
+  | story | worst act, short scenes (ceiling 5%) | worst act, static (ceiling 15%) |
+  |---|---|---|
+  | 12 | 11.1% | 20.8% |
+  | 21 | 10.0% | 16.7% |
+  | 23 | 7.5% | 30.2% |
+  | 25 | 7.3% | 23.3% |
+  | 26 | 9.1% | 37.5% |
+  | 27 | 8.7% | 25.5% |
+
+  **All six of those stories have an act over both ceilings.** Story 9 is left
+  out of the table because it was drafted before the short-scene and static
+  checks existed; measured anyway it is 0% short and 23.3% static, so it
+  breaches one of the two as well. The 0-of-38 record is therefore not a
+  statement about Haiku's relative quality; it is a statement about which model
+  gets measured with a refusal.
+
+  **The static one is invisible rather than merely tolerated**, and that is the
+  sharper half. `ValidateSceneDrafts` checks the same thresholds at Gate 2 from
+  the same config keys, but STORY-WIDE where the fallback gate is PER ACT.
+  Story 12's worst act is 20.8% static; its story average is 11.7%; so no
+  warning renders. An act that would have refused the cheap model passes
+  silently in the expensive one's output because five other acts dilute it.
+
+  **Two of the three soft axes are also never REQUESTED.** The scene prompt
+  says "aim for roughly 30 words per scene" and the motion guidance says use
+  static "sparingly" and "vary it". The gate says ≥8 words on 95% of scenes,
+  ≤15% static and ≤55% any single preset. No number in the gate appears in the
+  prompt. A model is being refused for missing a target it was never given —
+  and the expensive model only clears the short-scene ceiling by about a point
+  when it clears it at all.
+
+  Not fixed here, because there are three defensible repairs and picking one is
+  an editorial call: state the numbers in the prompt, re-run the gate on the
+  fallback's output too, or make Gate 2's motion checks per-act so the final
+  draft is judged the way the discarded one is. The first is free and would
+  probably move the most.
+
+- **MY OWN COUNT OF THAT RECORD WAS WRONG, AND IT WAS WRONG THE WAY THIS FILE
+  KEEPS RECORDING.** I first reported Haiku losing "31 of 38 acts", i.e. winning
+  7. The 7 were story 21, whose draft predates reason-logging: its log says
+  "(first attempt discarded, fell back)" and my regex looked for "(fell back:".
+  **A story that could not record a reason was counted as a story with no
+  reason to record** — absence read as agreement, in a probe, again. Counted
+  from the ledger instead, where a lone `draft_scenes` row means accepted and a
+  pair means it fell back, the record is **0 of 38**.
+
+  The ledger defect below corrupted the same count in the other direction:
+  story 28 act 2 has one row because the Haiku row was never written, so it
+  read as a Haiku win.
+
+- **A DISCARDED SCENE ATTEMPT LEFT NO LEDGER ROW WHEN THE FALLBACK THREW.**
+  `scenes()` bills Haiku, keeps its usage in `$discarded`, calls Sonnet, and
+  hands both back in a `SceneDraftSet` for `DraftScenes` to record. A throw
+  means there is no set to hand back, so the Haiku usage dies with the
+  exception — story 28 act 2, about $0.035, billed and absent. The Sonnet half
+  of the same act WAS recorded, by the truncation path added last week, which
+  is the only reason the gap was visible at all: one row where there should be
+  two.
+
+  Same shape as the truncated outline calls: a call that happened and left no
+  row, non-negotiable #4. Fixed by giving `TalksToClaude` a usage-taking
+  `recordSpendWithNoAction()` — the body `recordFailedCallSpend()` already had
+  — and calling it from the fallback's catch. The decode is inside the try for
+  the same reason: a response that arrives and will not parse is one more way
+  to leave the first call unrecorded.
+
+  Asserted at the CALL SITE on comment-stripped source, because the failing
+  path needs two live streams and `scenes()` builds both from a real client —
+  the `truncationMessage()` lesson, where a correct builder was unreachable
+  from its caller.
+
+- **`image_prompt` HAS A READER NOBODY COULD HAVE ENUMERATED: A VENDOR'S
+  CONTENT CLASSIFIER, WHICH SEES THE FRAME AND NEVER THE NARRATION THAT MAKES
+  THE PICTURE BENIGN. AND IT WAS RIGHT ABOUT WHAT IT SAW.** Story 28 scene 17,
+  2026-09-12. fal returned HTTP 422 `content_policy_violation`, reason
+  `partner_validation_failed` — ByteDance's checker rather than fal's own — and
+  no still was generated.
+
+  The frame:
+
+  > Amy on the bedroom floor, back against the wardrobe, knees drawn up, face
+  > swollen and wet, Nathan standing over her, unmoving.
+
+  The narration it was cut from is a CONFESSION: she sat down on the floor and
+  told him all of it herself, before anyone else could, and then cried for two
+  hours until her face was swollen. **Nothing about the words is wrong, and the
+  checker is not wrong either.** Stripped of the narration — which is the only
+  form the checker ever receives — a woman on the floor with a swollen face and
+  a motionless man standing over her is the composition of an assault aftermath.
+  The picture carried a meaning the text did not, and the text was not there to
+  correct it.
+
+  **This is the shared-string finding with the arrow reversed, and the reversal
+  is the whole entry.** That finding says a writer cannot enumerate the readers
+  of `image_prompt` from where it stands, and names four — `ThumbnailFraming`,
+  `ValidateSceneDrafts`, `ScenesGate::styleBlock()`,
+  `ImagePromptBuilder::frameFrom()`. All four are ours, all four are greppable,
+  and the remedy offered was to name the readers in the change. **This reader is
+  not in the repository.** It is a vendor's classifier, it arrived with no
+  release note, it reads the string by a rule nobody here can inspect, and it is
+  the only reader that can REFUSE rather than merely misread. A roster assembled
+  by grepping this codebase was complete and still missed it, so "name the
+  readers" is necessary and is not sufficient: the question has to include who
+  reads this string OUTSIDE this application.
+
+  **What the corpus establishes, and what it cannot.** 1,857 scenes carry a
+  prompt and 1,707 had already generated, which makes them a control group: a
+  word that appears in a bought still cannot by itself be the trigger.
+  `swollen` appears ONCE in 1,857 scenes — here, twice inside the one prompt.
+  Every other marker in the class has passed: `standing over` 5 of 6, strike
+  verbs 6 of 6, raised hands and fists 4 of 4, throats 3 of 3, `on the floor`
+  19 of 20, crying 14 of 16, child or baby 15 of 15. **There is no genre word to
+  ban.** This genre writes violence, children and blood constantly and they
+  generate.
+
+  What the corpus CANNOT do is isolate the cause, and that is reported rather
+  than guessed. Scenes combining a person DOWN with crying: zero generated
+  successfully, because there are none — the refused frame is the only one. It
+  is therefore unique on two axes at once, the word and the configuration, so
+  nothing in the data separates them and only fal could. What the passing set
+  does show is the shape: every bought `on the floor` scene has the person
+  seated or kneeling of their own accord, or is about an object, and story 28's
+  own scene 18 — *"both seated on the floor near dawn"* — passed. The
+  distinguishing feature of the refused one is ONE PERSON DOWN AND ANOTHER
+  STANDING OVER THEM.
+
+  **Repaired as composition, not as vocabulary.** The frame now has her seated
+  mid-sentence with her hands open and him sitting on the tile facing her,
+  leaning in, listening; the expression keeps the crying, because that is the
+  beat the scene exists for, and drops `swollen`. The picture now carries what
+  the narration carries. Renaming one word on the same composition would have
+  been treating the detector as the defect — and the composition was the defect,
+  which is why the checker firing was a correct reading of a real problem.
+
+  **No guard was built, and the base rate is why.** One scene in 1,857 is
+  ~0.05%, about one per seven or eight stories, measured off a single event. A
+  denylist would have to refuse words that have passed hundreds of times. What
+  is free and was done instead: every token in the rewrite was counted against
+  the 1,707-scene control group before saving, and three with no precedent —
+  `crouched`, `arm's`, `heel` — were replaced with constructions that had
+  already generated, `kneeling on the tile` being live in story 27. The repaired
+  frame was accepted on the first attempt, for $0.0350.
+
+  ---------------------------------------------------------------------------
+  **THE PRACTICE: WHEN REPAIRING A KNOWN FAILURE, PREFER CONSTRUCTIONS THE
+  CORPUS HAS ALREADY BOUGHT.**
+  ---------------------------------------------------------------------------
+
+  **Unseen is not risky; it is untested** — and those are different enough that
+  the distinction only earns its keep in one specific place. Novel wording is
+  fine everywhere in this pipeline, constantly, and 1,857 scenes are full of it.
+  What makes a repair different is that the subject is already KNOWN to have
+  tripped something, so a retry carries two unknowns at once: whether the thing
+  being fixed was fixed, and whether the new phrasing introduces a second
+  problem. Reusing wording with a purchase history removes the second one for
+  nothing, and leaves a failed retry meaning exactly one thing.
+
+  It costs a query against assets already paid for, which is the cheapest
+  evidence in this project and the only kind that comes from outside our own
+  reasoning — the same argument as rule 3, pointed at prompt text. Generalised:
+  **on a retry of anything expensive, change one thing and make every OTHER
+  thing something with a record of working.** It is not a rule about images or
+  about classifiers; it is what makes the second attempt a measurement rather
+  than a second guess.
+
+- **`nonprintable-scan` REPORTED "0 finding(s)" ON A RUN MADE MINUTES AFTER 148
+  LINES OF GENERATED PROSE WERE APPENDED TO `CLAUDE.md`, AND IT HAD NOT LOOKED
+  AT `CLAUDE.md`.** Its default paths were `app, config, database, routes,
+  tests, tools`; this file lives at the repository root and `docs/` was not on
+  the list either. The extension filter had accepted `md` all along — nothing
+  ever pointed the tool at the two `md` targets that matter.
+
+  **The zero was honest and was still read as broader than it was.** The tool
+  prints its coverage one line above the count — *"392 file(s) scanned across:
+  app, config, database, routes, tests, tools"* — so the information needed to
+  discount the zero was on screen, in the same output, and the zero is what
+  registered. That is worth separating from a tool that lies: this one told the
+  truth and the truth was in the wrong position relative to the verdict.
+
+  **It is the probe rule, turned on an instrument instead of a measurement.** A
+  probe that reports an absence must first be shown able to report a presence —
+  and the subject here was the file being edited, which the instrument could not
+  see at all. The sharper version, because this tool exists specifically to
+  police GENERATED SOURCE: prose assembled in long generated blocks is the
+  authoring route that produced all four known instances of the byte, so
+  `CLAUDE.md` was not an incidental gap in the coverage, it was one of the most
+  exposed surfaces in the repository and the least watched.
+
+  Closed both ways. `docs` and `CLAUDE.md` are in the default sweep, which now
+  reports 394 files and names both; and a path that is a FILE is now a legal
+  target, since a directory list can never reach a file at the root. Drilled
+  four ways rather than assumed: the single-file branch pointed at the known
+  offender (1 finding) and at the clean half beside it (0), and a 0x08 planted
+  in a scratch `docs/*.md` file, detected and then removed with the sweep
+  returning to zero. The last of those is the one that matters, because it
+  proves the tool can report a presence in a MARKDOWN file — which is the exact
+  claim its zero on this file now rests on.
+
+  **What was NOT done: making the verdict line restate the coverage.** It was
+  the obvious second fix and it is the weaker one — it would have made the
+  report harder to misread while leaving the file genuinely unscanned. Widening
+  the subject beats annotating the blind spot.
+
+- **ACT 1 IS THE ONLY PLACE THREE OPENING INSTRUCTIONS MEET, AND NOTHING HAD
+  EVER ASKED WHETHER THEY CAN ALL HOLD AT ONCE. A CONTRACT THAT WAS BUILT AND
+  MEASURED WAS OVERRIDDEN BY A PROMPT EDIT MADE SOMEWHERE ELSE.** Found by
+  reading story 30's act 1 rather than by any check; the suite, four audits
+  and every test belonging to all three instructions were green throughout.
+
+  Story 30's act 1 did not use `stories.hook`, and two of the hook's five
+  beats are missing. Beat 4 — ONE SMALL, COLD ACTION, whose own sentence says
+  "not a confrontation, not a speech, not a threat" — came back as an
+  answer-back. Beat 5's closing promise of the departure was not written at
+  all. And the spoken chapter number went missing from the whole act. Story
+  29, same premise, opened act 1 on the stored hook verbatim.
+
+  **Three instructions reach into those first thirty seconds, and each is
+  correct, current, and measured against a real video:**
+
+  | # | where it lives | what it says | where it came from |
+  |---|---|---|---|
+  | 1 | `hookInstruction()` | five beats; beat 4 is a COLD ACTION and never a confrontation, because the confrontation is the final act and spending it here spends the video | the five-beat reading of stories 12 and 21 |
+  | 2 | `endingFor(Escalation)` | the narrator answers back in EVERY SCENE the antagonist is in | the transcript: a narrator who says "Yes, Mother" loses the audience in three minutes |
+  | 3 | `chapterInstruction()` | every chapter opens by SPEAKING ITS NUMBER | the transcript: 62 seconds of cold open, then "chapter 1" |
+
+  **What makes act 1 different is not that it has more rules. It is that the
+  antagonist SPEAKS INSIDE THE HOOK.** Beat 3 is her justification, quoted —
+  that is the beat's whole content. So the hook contains a scene the
+  antagonist is in, rule 2's "every scene" reaches inside rule 1's beats by
+  its own plain words, and the two then disagree about what the narrator does
+  there: rule 1 says a cold action and explicitly not a line, rule 2 says a
+  line. **They are not ambiguous together. They are contradictory together,
+  and neither knew the other existed.** Rule 2 arrived after the beats in the
+  prompt and won.
+
+  Act 4 is the same shape one rung down and it lost the same way: it carries
+  the departure's own opening instruction alongside the chapter announcement,
+  and it is the other act of six that announced nothing. **Two acts of six
+  had a second instruction about how they open, and those are exactly the two
+  that dropped one.**
+
+  **WHY NO TEST COULD SEE IT, WHICH IS THE PART THAT GENERALISES.** All three
+  instructions have tests and all three were green:
+  `ChapterUnitTest` asserts the announcement is asked for,
+  `ContactThroughTheMiddleTest` asserts the answer-back is asked for,
+  `OutlineSpineTest` asserts the beats are asked for. **Every one of them
+  asserts that its own instruction is PRESENT. Not one asserts that another
+  instruction present in the same prompt leaves it followable.** Three checks
+  on three subjects, none on the interaction, and the interaction is where the
+  defect lives — the axis question from further up this file, pointed at a
+  prompt instead of at a clause or a guard. A prompt is not a list of rules; it
+  is one instruction assembled from parts, and the parts are only individually
+  tested.
+
+  **The fix is a single owner and a named exception on both sides.**
+  `hookInstruction()` owns act 1's opening ORDER and opens by naming all three
+  rules and saying which wins for as long as the beats last; `endingFor()`
+  states the same exception on the answer-back itself, for a writer reading
+  top to bottom; `chapterInstruction()` hands act 1 over to the opening block
+  rather than restating the rule, so the two cannot drift the way the
+  extraction retry note and `CharacterTextGuard` did. Beat 4's wording is
+  UNTOUCHED — softening it to admit an answer-back was the other available
+  repair and it is the wrong one, because the reason the confrontation cannot
+  live in the opening has not changed.
+
+  The stored hook now closes the block as an order ("WRITE IT — expand it into
+  the five beats above… Do not replace it with an opening of your own") rather
+  than trailing it as "the hook this outline asks for", which reads as a
+  reference; and the opening block is the LAST thing in every act prompt,
+  where the two blocks that displaced it used to sit. **Ordering is not the
+  mechanism** — the words are — but an instruction about the first thirty
+  seconds should not be the furthest thing in the prompt from the request that
+  follows it.
+
+  `ActOneOpeningContractTest` is the check that did not exist: it asserts all
+  three are present (so the collision assertions cannot go vacuous), then
+  asserts each PAIR resolves. Six drills, each confirmed red.
+
+  **THE STANDING QUESTION, and it is cheap: when adding an instruction that
+  says EVERY or ALWAYS, ask which block already claims that territory.** Rule
+  2 said "every scene the antagonist is in" and rule 3 said "every chapter",
+  and both were written by someone looking at the middle of a story. The
+  opening is a scene and a chapter, and it already had an owner.
+
+- **A STATED FIGURE STEERS WEAKLY; A STATED COUNT STEERS ABSOLUTELY. The same
+  prompt held one of each and only one of them was being obeyed.**
+
+  The act word target moves the writer by a fitted +0.30 — a hundred more
+  words asked buys about thirty — and that is recorded above as the reason the
+  target is advisory. The chapter count sat four lines away in the same
+  prompt, phrased as "at this act's length that is 2 chapters", computed from
+  that same advisory target. **It was obeyed 6 times out of 6**, at every act
+  length story 30 produced, from 1,052 to 1,195 words. The act that ran to
+  1,195 words divides honestly into three and came back as two.
+
+  The difference is not importance. **A count is discrete and a writer can
+  satisfy it exactly, so it stops being advice and becomes an instruction** —
+  and it was an instruction derived from the one number in the prompt known to
+  be wrong.
+
+  So the prompt states the DIVISOR and the bounds and asks for the division to
+  be done afterwards, against the text that exists. The worked example is
+  anchored on `ScriptSizing::naturalActWords()` — what the writer is measured
+  to produce — because an example built from the target would be the stated
+  count again wearing a different hat.
+
+  **The derivation alone would have changed nothing, and saying so is the
+  honest half of this entry.** At the old 150-second chapter budget a
+  1,123-word act divides into 2.25 and rounds to two: an honest derivation
+  returns exactly the number the stated one did. `chapters.target_seconds`
+  moved to 133 in the same change, and **that is a corrected INPUT rather
+  than a target moved to match a result** — 150 came from a first reading of
+  the reference that said "about 2:29 each", taken before the transcript was
+  here; the transcript carries the fourteen boundaries and they mean a mean of
+  134 seconds and a median of 133.
+
+  **Section 3d had the right number all along and the config did not.** 3d
+  says six acts of the natural length is "about fifteen chapters of ~440
+  words, 2:15 each at 197 wpm". 440 words at 197 wpm IS 134 seconds. The
+  prose that justified the design and the constant that drove the prompt
+  disagreed by 11% from the day both were written, and nothing compares a
+  spec sentence against a config value.
+
+- **THE NARRATING-THE-NARRATION BAN WAS OBEYED BY PHRASE AND DODGED BY FORM,
+  AND THE MEASUREMENT IS A CLEAN PAIR BECAUSE THE PREMISE WAS HELD CONSTANT.**
+
+  | | "I want to be honest / exact / clear / fair" | "I want you to understand / know / have / hold onto" |
+  |---|---|---|
+  | four stories, before the ban | 16 | — |
+  | story 29 | 4 | 0 |
+  | story 30, with those four phrases banned by name | **0** | **5** |
+
+  The ban worked perfectly on its own terms and the forbidden thing did not
+  stop — it changed coat, on the next story, on the same premise. That is
+  `CharacterTextGuard` matching `weathered` as a literal while the model
+  reached for a synonym, one field over, and it is the general property of any
+  rule written as a list: **a list of phrases is always one rewrite behind,
+  and a ban that is obeyed literally reads as a rule that worked.**
+
+  The prompt names the MOVE now — any sentence whose subject is the telling
+  instead of the events, including the listener being told what to understand,
+  know, notice, remember or hold on to — and says out loud that there is no
+  list. The four old phrasings survive as examples of the form.
+
+  **It has no mechanism and that is stated rather than left to be assumed.**
+  This is the request half only. A guard on it would be false-positive-prone
+  in exactly the way the hedge ban is — "I want you to have the number" is the
+  move and "I wanted her to understand" is a scene — so what decides whether
+  the wording is enough is the next measurement, not a green test. Named here
+  so the sentence is not read as coverage.
+
+- **A CHAPTER THAT NEVER SAYS ITS NUMBER IS INVISIBLE IN THE DATABASE: THE
+  ROWS ARE PRESENT, TITLED, SEQUENCED AND BOUNDARIED.** Story 30 announced
+  eight of its twelve chapters. Nothing on the Gate 1 page could say so — it
+  lists the chapters an act came back as, and all twelve were there with
+  titles.
+
+  `ValidateOutlineSpine::checkChapterAnnouncements()` reads the PROSE: it
+  resolves each chapter's boundary through the same `SentenceSplitter` the
+  boundary was computed in, and reports three states separately, because they
+  are three different repairs — nothing spoken (an instruction that lost a
+  collision), the wrong number (the known limit of rewriting one act in the
+  middle of a story), and the number spoken late (a marker nobody can
+  navigate to).
+
+  A WARNING rather than a problem, and not as a severity judgement: the
+  problems panel is headed "The outline is missing part of its structure" and
+  holds spine fields and act declarations, while this is a finding about
+  returned prose whose nearest sibling — an act with no re-hook — is already a
+  structural warning. Two findings of one kind in two panels is how an
+  operator learns to read neither.
+
+  Silent with announcements off, and silent on an act with no chapters, which
+  is every story written before the table existed — `YoutubeMetadata::
+  chapters()` reads acts for those by design, so reporting it would put a
+  finding nobody can act on onto twenty stories.
+
+  **The one chapter allowed to announce late is act 1's first**, because the
+  cold open precedes "chapter 1" in the reference and in our own contract. A
+  check demanding the number as the first sentence everywhere would report the
+  correct shape as the defect on every story, which is how a guard gets
+  switched off inside a week. It has its own green case.
+
+  **`rehook_line` was quietly broken by the same rule and nobody had asked.**
+  The schema asks for "the chapter's opening line, quoted back exactly"; with
+  the number spoken first, four of story 30's twelve chapters stored "Chapter
+  three." as their re-hook. So `acts.is_rehook_written` — which is
+  `$chapters[0]->rehookLine !== ''` — said YES on acts whose recorded opening
+  line was a chapter marker, Gate 1's re-hook advisory could not fire on them,
+  and `story:write` counted them as written. The ask now says the re-hook is
+  the sentence AFTER the number and never the announcement. **That is the
+  consumer question paying off in the direction it usually does: a field's
+  MEANING changed when a neighbouring rule was turned on, and the field's
+  readers were never asked.**
+
+  One owner for the sentence: `App\Support\ChapterAnnouncement` writes it into
+  the prompt and reads it back at the gate, so a check looking for "Chapter
+  five." while the prompt has started asking for "Chapter 5." is not a state
+  this can reach. The fake announces by default, because a fake whose chapters
+  never announced would make the new check report every fixture story in the
+  suite. Five red/green cases, all drilled.
+
+- **A DRILL WENT RED, PROVED NOTHING, AND I NEARLY WROTE IT DOWN AS A PASS:
+  GIT BASH REWROTE THE PATCH TEXT IN TRANSIT.** The backslash entry above says
+  an escape consumed between the author and the file produces code that is
+  valid, runs, and is wrong in a way no reader can see. This is the same
+  mechanism with a different layer, and it landed on the one thing in this
+  project whose whole job is to be trusted when it fails.
+
+  The drill replaced a call with `'// drilled out'`. What reached the file was
+  `/ drilled out` — a parse error. The suite reported **4 failed, 2 passed**,
+  which looks exactly like a guard going red, and two of those four were the
+  GREEN halves of the pair, which is the only reason it was questioned at all.
+
+  Measured directly rather than reasoned about:
+
+  ```
+  python -c "print(sys.argv[1:])"  '// drilled out'  '/tmp/x'  '//x'  'a//b'
+  -> ['/ drilled out', 'C:/Users/.../Temp/x', '/x', 'a//b']
+  ```
+
+  MSYS translates an argument that BEGINS with a slash: a leading `//`
+  collapses to `/`, and a leading `/tmp` becomes a Windows path. Interior
+  slashes are untouched, which is why this has never bitten a file path and
+  why it is invisible until the argument is source text. `MSYS2_ARG_CONV_EXCL='*'`
+  disables it.
+
+  Two rules, and the first is the one that costs nothing:
+
+  1. **Never pass patch text — or any string that may begin with a slash —
+     through a shell argument.** Put it in the script, as a literal. The
+     careful re-run that produced the correct answer differed from the broken
+     one in exactly that: the `//` sat inside the Python heredoc instead of in
+     `argv`. The drill runner is a FILE now, in the scratchpad, with every
+     needle and replacement as a literal in it.
+  2. **A drill that goes red is a claim about the drill until the failure is
+     read.** This file already says to suspect the drill first, and every
+     earlier instance was a drill aimed at the wrong thing. This one was aimed
+     correctly and was corrupted in transit — so the test is not "did it go
+     red" but "did it go red FOR THE REASON IT NAMES", and a parse error and a
+     detected defect are indistinguishable in a summary line. The runner
+     reports any drill whose output contains a parse error as invalid rather
+     than as red.
+
+- **A CONSTANT THAT IS ACTUALLY A FUNCTION OF SOMETHING NOBODY VARIED IS THE
+  SAME SHAPE AS A CHECK THAT CANNOT FIRE. `naturalActWords()` WAS ONE FOR A
+  PHASE, AND IT IS THE SHARPEST FINDING IN THIS AREA.**
+
+  For a phase this file said, in its own words, that the act writer "produces
+  ~1,100 words almost regardless of what the prompt asks for". That is a
+  sentence about the MODEL, and it was well earned: five observations, word
+  targets varied deliberately from 800 to 1,120, a least-squares slope of
+  +0.30 fitted across them, one unconfounded act isolated and named. It is the
+  most carefully measured number in this project and it is the basis for the
+  act count, the runtime projection on two money screens, and the worked
+  example in the chapter prompt.
+
+  **Every one of those five acts came back as one or two chapters, because
+  until 2026-09-13 the prompt STATED the chapter count and the writer obeyed
+  it absolutely.** The variable was pinned in every observation. Story 31
+  unpinned it — the count is derived by the writer from the length it actually
+  wrote — and the same premise, the same outline, the same model and the same
+  effort returned three chapters per act and **1,473 words**:
+
+  | chapters/act | words/act | measured on |
+  |---|---|---|
+  | 2 | 1,123 | 2026-09-05, one act, en-US |
+  | 3 | 1,473 | 2026-09-13, six acts, story 31, en-CN |
+
+  29%, from a term nobody knew was in the expression. A chapter costs a spoken
+  number, a re-hook and a boundary, so the count of them is part of the length
+  — and the "natural act length" is not a property of the writer at all.
+
+  **WHY THIS IS THE SAME DEFECT AS A CHECK THAT CANNOT FIRE, AND NOT MERELY AN
+  ANALOGY.** Both look settled for identical reasons: nothing has ever moved
+  them, so nothing has ever disagreed with them, and **an absence of
+  disagreement reads as confirmation**. That is this file's most repeated
+  sentence — absence read as agreement — pointed at a MEASUREMENT instead of
+  at a guard. Five observations all agreeing is not five pieces of evidence
+  about the model when all five hold the same hidden variable fixed; it is one
+  piece of evidence, repeated, about one corner of the space. The careful part
+  of the original measurement — varying the word target across five stories —
+  is what made it look thorough, and the variable it varied was the one that
+  barely mattered.
+
+  It is also more dangerous than a dead check, because a constant gets
+  ARITHMETIC done to it. A guard that cannot fire is silent. This number was
+  multiplied by an act count on the new-story form and at Gate 1, and after
+  the chapter change every one of those projections read 25% short while
+  looking exactly as authoritative as before.
+
+  **The repair is the CONDITION, not a better number.** Two points do not fit
+  a line and none is fitted. `render.script.measured_act_words_chapters`
+  records how many chapters the figure was measured under, beside the figure;
+  `ScriptSizing::naturalActWordsMeasuredAtChapters()` reads it; and
+  `measurementStillHolds()` asserts that the configured chapter budget still
+  divides the measured length into that number. So moving
+  `chapters.target_seconds` without re-measuring goes RED in
+  `ActCountTest` instead of quietly invalidating every runtime on the console.
+  Drilled both ways: revert the figure to 1,123, or push the budget to 180
+  seconds, and the assertion fires.
+
+  **And a test was carrying the same defect in a worse form.**
+  `ActCountTest` hard-coded `$natural = 1123` as a local variable, and
+  `RuntimeProjectionTest` asserted `6738` and `6895` as literals. A
+  measurement transcribed into an assertion is a measurement that cannot be
+  corrected: at five acts the stale figure projects 28.2 minutes, so the test
+  written to prove the act count lands in the window would have failed the
+  CORRECT act count and been "fixed" by moving the act count back. All three
+  read off `ScriptSizing` now.
+
+  **The standing question, which is cheap and general: when a measurement is
+  quoted as a property of something, ask what was held fixed in every
+  observation.** Not "was it measured carefully" — this one was — but "what
+  did the measurement never vary". The answer is usually in the prompt, the
+  config or the fixture, and it is usually the thing somebody thought was
+  settled.
+
+- **SIX ACTS -> FIVE, AND AT FIVE A CLAMP THAT HAS NEVER DECIDED ANYTHING
+  BECOMES THE ONLY THING HOLDING THE ARC TOGETHER.**
+
+  The chapter change made acts 29% longer, so six acts is 44.4 minutes against
+  a 30-40 window. Three numbers could have absorbed that and the choice is the
+  entry: **`chapters.target_seconds` is now the one figure here derived from a
+  measurement of the thing itself** — the reference transcript's fourteen
+  boundaries, mean 134 and median 133 — so moving it to fix a runtime would be
+  moving a measurement until an outcome passes. The word target steers at
+  +0.30 and cannot move a runtime at all. **The act count multiplies a length
+  the prompt cannot argue with**, which is the same sentence that moved it
+  from seven to six. Five acts of the measured length is 37.0 minutes.
+
+  **What five costs, exactly: one escalation act, three down to two. No phase.**
+  `ActPhase::planFor(5)` is escalation 1-2, departure 3, search 4, refusal 5 —
+  departure, search and refusal keep one act each, as at six and seven. The
+  reversal is now three acts of five.
+
+  **AND THE `$actCount - 2` CLAMP BINDS FOR THE FIRST TIME.** This is the part
+  worth the entry. The two-thirds point of five acts is act 4; a departure
+  there makes act 5 the refusal and there is **no search act at all** — the
+  compressed ending the whole phase structure exists to replace. The clamp
+  pulls it back to act 3 and the search survives. At six and seven the
+  two-thirds point already lands on `count - 2`, so the clamp changed nothing
+  and spent two act-count moves as a guarantee nobody could watch working.
+  This file already recorded that it "actually bites at four and five acts";
+  what is new is that four and five stopped being hypothetical. **Five is now
+  the count that breaks first if `departureActFor()` is ever loosened**, and
+  `ActCountTest` asserts the unclamped plan loses the search phase rather than
+  leaving that in a docblock.
+
+  Two things named rather than hidden. The reversal is 60% of the acts against
+  50% at six and 43% at seven, so `genreGuidance()` no longer says the
+  reversal is "roughly the last third of the runtime" — it says THE LAST THREE
+  ACTS, which is true by construction at five, six and seven and does not
+  drift when the count moves again. And two escalation acts is one rung of the
+  "each act costs more than the last" ladder before the departure, the
+  thinnest this has ever been: if a story ever reads as leaving too early,
+  this is the number that did it.
+
+- **THE SUMMARY BOUND'S LEVER, PULLED — AND THE REASON IT WAS THE RIGHT ONE IS
+  A FINDING FROM THIS SAME PASS.** The bound has fired three times in twelve
+  acts: story 30's act 3 at 3,121 characters, story 31's act 1 at 3,111 and
+  act 4 at 3,233. Each refusal is a billed call that stores nothing — about
+  $0.45 of story 31's $1.55, and it gets worse rather than better as acts grow,
+  because a summary scales with the act it summarises. It was the most
+  expensive untouched lever in the pipeline.
+
+  **The bound did not move, and the ask was not trimmed.** `Act::
+  SUMMARY_MAX_CHARS` is derived from the act writer's own distribution and the
+  summary is the running context that keeps 7,000 words coherent; this file's
+  rule is that trimming it spends coherence to save a form field.
+
+  What changed is the SHAPE, and the diagnosis came from the chapter-count
+  finding one field over. The old ask was "3-5 sentences on what happened in
+  the act". **That is a stated COUNT, and a stated count steers absolutely —
+  so it was obeyed.** The writer returned three to five sentences every single
+  time, including at 3,233 characters. What nobody stated is how large a
+  sentence may be, and the quantity that overflows is characters. **The
+  instruction was counting the one thing that was never the problem.**
+
+  So the summary is now five sentences with a JOB each — what happened, what
+  was said with the line quoted, what it cost and to whom, where things stand,
+  what the next act must not contradict — plus "FIVE SENTENCES, NOT FIVE
+  PARAGRAPHS". Same facts, and a sentence with one thing to do is bounded by
+  having one thing to do. Asserted in `ActTextBoundsTest` and drilled; whether
+  it works is the next run's refusal count, which is a measurement and not a
+  green test.
+
 Still open, none blocking, all findable here rather than one gate at a time:
+
+- **The one-voice-per-narrator-gender rule has no mechanism — the console-audit
+  shape. Costed 2026-09-14, not built.** Today the default is Brian and a
+  woman's story is right only if somebody remembers `voices:list --set` before
+  narration; story 33 was caught by a person reading it.
+
+  *A — a narrator field on the new-story form.* `providers.narrator_voices`
+  (`male` => Brian, `female` => Sarah) beside `default_voice_id`;
+  `CreateStory` takes a narrator key and resolves the voice at insert,
+  refusing an unknown key; a required radio on `NewStory` with a rule in
+  `saveRules`-style walked by the form test, and the existing narrator panel
+  keyed off the selection; `story:write --premise` gains a REQUIRED
+  `--narrator` (a default there is the per-story pick in disguise). No new
+  column: `voice_id` is the record of the choice, which is the stored-decision
+  rule. Consumers already right: `story:fork` copies `voice_id`,
+  `PreflightAssetDispatch` checks the id is on the account, `voices:list --set`
+  stays the override. About 150 lines, eight tests, one blade change (so the
+  class and theme audits matter), $0. **What it does not catch:** the wrong
+  radio pressed. It removes the default trap, which is the failure that
+  actually happened.
+
+  *B — the check that catches the failure itself.* At asset dispatch, compare
+  the narrator character's gender with the voice's. Needs a narrator marker on
+  the cast (`characters.is_narrator`, from the extraction schema — a cached
+  schema change), the vendor's gender label as data (it arrives today only
+  inside a display string, so `SpeechSynthesizer::voices()` widens and every
+  fake with it), and a WARNING in the preflight — a deliberate cross-gender
+  narration is legal. About 250 lines, a provider contract change, an
+  extraction prompt change. Upstream of the spend and catches a wrong pick as
+  well as a forgotten one.
+
+  Recommendation: A before the next woman's story; B only if a mismatch
+  reaches dispatch after A exists.
+
+- **THE GATE 2 EDITOR CANNOT CHANGE WHO IS IN A PICTURE, IN EITHER DIRECTION,
+  AND THE EDITOR IS THE ONE PLACE ON THE PAGE THAT DOES NOT SHOW IT. Sized
+  2026-09-14, not built.** Who is drawn is decided at draft and lives in two
+  places: the cast block inside the stored prompt, and `scene_character`.
+  `ImagePromptBuilder::rewrite()` keeps the first byte for byte and the save
+  never touches the second. So:
+
+  - **Adding** a name to a frame reaches the generator with no description
+    and no reference sheet — an invented face. Found on story 33 #72, which
+    was reframed as an empty room for exactly this reason.
+  - **Removing** a name is the sharper half and the likelier edit: the
+    character's description stays in the prompt and `ResolveSceneReferences`
+    still attaches their sheet from the pivot, so a frame edited to take
+    somebody out is conditioned on their face anyway.
+
+  The ROW shows the cast as "+ Name" chips in frame view; the inline editor,
+  where the frame is actually changed, hides them, and its help text says the
+  cast block is "added after this on save, exactly as stored" — true, and
+  silent about what that means for a name typed in or taken out.
+
+  *Step 1 — say it, ~40 lines, $0.* The cast chips inside the editor with one
+  sentence (these descriptions and reference sheets go with this scene
+  whatever the frame says), and a save-time notice when the edited frame names
+  a cast member the scene does not carry, resolved through
+  `ImagePromptBuilder::explain()` so an ambiguous name is reported rather than
+  guessed. One layout assertion, one red/green pair.
+
+  *Step 2 — make it editable, ~120 lines, $0, no migration, no provider
+  change.* A checkbox list of the story's cast in the editor; the save syncs
+  `scene_character` by id and `rewrite()` gains the cast section — found by its
+  label, rebuilt from the frozen `characters.description`, with the style and
+  constraints sections still taken from the stored prompt and never from
+  config. Refuse more characters than `ImageGenerator::maxReferences()` at save
+  rather than at dispatch. Every other reader follows the pivot and is right by
+  construction: `ResolveSceneReferences`, `ThumbnailFraming`, the sheet
+  estimate's scene counts, the cast check in `ValidateSceneDrafts`. About eight
+  tests, led by the tail staying byte-identical with the cast swapped.
+
+  None of story 33's ten edits hit either half: #25 names Sophie, who was
+  already its cast; #72 names nobody and carries nobody.
 
 - **NOTHING STOPS A GATE APPROVAL AND AN ASSET DISPATCH WHILE A DRAFT OF THOSE
   SAME SCENES IS IN FLIGHT, AND THE DRAFT THEN DELETES THE ROWS THAT WERE PAID
@@ -4937,10 +6933,13 @@ Still open, none blocking, all findable here rather than one gate at a time:
 - **AND NO ASSERTION HAD EITHER. Same rule, and it had cost more.** The entry
   above generalises three defects in the tools; this is the same generalisation
   one level up, and it should be read as part of it rather than as a separate
-  lesson. **Nine self-defeating checks so far, and not one was found on
-  purpose. Four of the nine were found only because something ADJACENT was
+  lesson. **Thirteen self-defeating checks so far, and not one was found on
+  purpose. Six of the thirteen were found only because something ADJACENT was
   being changed** — which is the part that should be uncomfortable, because
   there is no reason to think the adjacent change was the last one.
+
+  **Twelve of the thirteen are defects in code somebody here wrote. The
+  thirteenth is not** — see the rows below the table.
 
   | # | the check | why it was green about nothing |
   |---|---|---|
@@ -4955,6 +6954,59 @@ Still open, none blocking, all findable here rather than one gate at a time:
   | 9 | `alertsWithoutTheirOwnWidth`, on Gate 1's re-hook advisory | the Gate 1 case built ONE act, at sequence 1, and the check exempts act 1; `pageFixtureFor()` wrote a re-hook on both of its acts. **No test in the suite had ever rendered that element**, and it was live on story 22 at the 96ch cap |
 
   | 10 | `PartialSceneRedraftTest`, six cases, on a `--acts=` re-draft that had never worked | its three acts carry a ~30-word script each, which at `words_per_scene: 30` is ONE scene per act. The collision needs TWO. **The fixture was not missing a field — it was too SMALL** |
+
+  | 11 | `test_the_narrating_ban_names_the_move`, asserting a phrase the prompt really does contain | the guidance is a wrapped heredoc and the needle straddled a line break. Number 6 again, in a test written by somebody who had read number 6 that morning |
+  | 12 | the in-person encounter probe, reporting a 12.6-minute stretch with no contact in story 31 | it required the antagonist's NAME, and the scene inside that stretch is written entirely as "she". **It reported an absence across a scene that is nothing but presence** |
+  | 13 | a guard drill that went RED and proved nothing | the patch text never reached the file. Git Bash rewrote `'// drilled out'` to `'/ drilled out'` in transit; the suite reported "4 failed, 2 passed", which is what a working guard looks like |
+
+  **NUMBER 13 IS THE FIRST ONE THAT IS NOT OUR CODE'S FAULT, AND THAT MAKES IT
+  THE HARDEST OF THE THIRTEEN.** Every other row is a defect somebody here
+  wrote: a wrong regex, a fixture too small, a needle that straddles a line, a
+  belief about a compiler that was never checked. All of them are fixable by
+  being more careful in the file you are looking at.
+
+  This one is not in any file. The drill was aimed correctly, the needle
+  matched once, the replacement was right, and the tool reported the guard
+  going red. What happened is that **MSYS translates an argument that BEGINS
+  with a slash** — a leading `//` collapses to `/`, a leading `/tmp` becomes a
+  Windows path — so the patch reached the file as a syntax error and the
+  "failure" was a ParseError. Measured, not inferred:
+
+  ```
+  python -c "print(sys.argv[1:])"  '// drilled out'  '/tmp/x'  '//x'  'a//b'
+  -> ['/ drilled out', 'C:/Users/.../Temp/x', '/x', 'a//b']
+  ```
+
+  **No amount of care inside the test would have caught it**, which is what
+  separates it from the twelve above. The test file was never wrong. The
+  drill's INTENT was never wrong. The transport between them changed the text,
+  and a `Tests: 4 failed` line cannot distinguish a guard catching a defect
+  from a parser rejecting a broken file. The only reason it was questioned is
+  that two of the four failures were the GREEN halves of the pair — a guard
+  that reports the good case too is reporting something other than the thing
+  it names.
+
+  Three things follow, and the first is the cheap one:
+
+  1. **Never pass patch text, or any string that may begin with a slash,
+     through a shell argument.** Put it in a script file as a literal. The
+     drill runner is a file now for exactly this reason, and so is every
+     multi-line patch in this session.
+  2. **A drill that goes red is a claim about the drill until the failure is
+     READ.** "Suspect the drill first" was already the rule here, and every
+     earlier instance was a drill aimed at the wrong thing; this is the first
+     aimed correctly and corrupted in flight. The runner now reports any drill
+     whose output contains a parse error as INVALID rather than as red.
+  3. **A red/green PAIR is what made it visible.** A drill with only a red
+     half would have passed inspection. The pair exists because a rule that
+     reports everything satisfies RED — and here the thing reporting
+     everything was the PHP parser.
+
+  This is the same family as the backslash-consumed-in-transit entry further
+  up: a layer between the author and the file changes the text, and what lands
+  is valid, runs, and is wrong in a way no reader can see. That entry is about
+  source; this one is about the instrument that checks source, which is a
+  worse place for it.
 
   **Number 10 is a different mechanism from the rest and that is why it is worth
   its own paragraph.** Every earlier fixture defect here is a fixture that OMITS
@@ -5585,6 +7637,80 @@ Still open, none blocking, all findable here rather than one gate at a time:
   it. Left open because widening a provider contract is a pipeline change and
   it was found during a visual redesign; the fix is three methods on two
   classes.
+
+- **A 422 AND A TIMEOUT ARE STRUCTURALLY IDENTICAL, AND ONE RETRY BUTTON
+  RE-DISPATCHES BOTH. One is free and succeeds; the other cannot succeed
+  however many times it is pressed.** Story 28, 2026-09-12: scene 131 a cURL 28
+  timeout, scene 17 a `content_policy_violation`. Both landed as
+  `render_jobs.status = failed`, `stage = images`, on the same page, under the
+  same heading. Scene 131 retried clean on the first attempt for $0.0350; scene
+  17 would have refused again, and would refuse every time, because the checker
+  is deterministic on the same prompt.
+
+  `FalSeedreamImageGenerator::run()` throws one `RuntimeException` for every
+  failed response whatever the status code, so there is no column, no enum case
+  and no exception subclass separating "the network dropped" from "this prompt
+  will never be accepted". Gate 2 prints the stage label `Images` and the first
+  300 characters of the error for both — which does carry the difference, the
+  words "flagged by a content checker" survive the truncation — and the button
+  above them reads `Retry failed scenes` and re-dispatches the whole outstanding
+  set.
+
+  **The premise to correct, because it runs the other way.** A 422 writes NO
+  cost row. Story 28 holds 201 `generate_image` rows and $7.0350 against 201
+  successes; the two failures are absent, because the throw in `run()` precedes
+  pricing. So pressing retry on a refusal is not a second charge in this ledger
+  — it is a cycle that cannot succeed. Whether fal bills for a rejected 422 is
+  a question only their usage page can answer, which is rule 3: our ledger is
+  our own bookkeeping, and an internal zero is not an external zero.
+
+  **What telling them apart would take**, and it is small:
+
+  - A typed exception. The HTTP status is in hand at the throw site and ends up
+    only in a string. `ContentRefusedException` beside the generic one, thrown
+    when the status is 422 and the body names `content_policy_violation`, is the
+    whole mechanism.
+  - A third scene state. `SceneStatus::Failed` means "try again"; a refusal
+    means "this prompt needs editing before anything is dispatched". Without the
+    distinction `SceneChangeSet` keeps the refused scene in the retry set for
+    ever, which is exactly what makes the button wrong.
+  - A button that says which. `Retry failed scenes (1 of 2 — scene 17 needs its
+    frame edited first)` rather than one verb for two states.
+
+  Not built, and the frequency is the argument: one refusal in 1,857 scenes,
+  about one per seven or eight stories. What is NOT an argument for waiting is
+  the cost of pressing it, which is zero dollars and a cycle — the reason to
+  build it is that the button currently promises something it cannot deliver,
+  and the operator has to read a 300-character provider error to find that out.
+
+- **A BATCH ROW THAT CAN NEVER FINISH — SECOND INSTANCE, HARMLESS TWICE, AND
+  THE SPEC LINE IS NOW HALF-TRUE IN CODE.** Story 28's asset batch stands at
+  `total 406, pending 2, failed 2, finished_at NULL` and will stand there for
+  ever, beside story 23's `total 514, failed 258, finished_at NULL` recorded
+  further up this file.
+
+  The mechanism, read off the framework rather than inferred:
+  `DatabaseBatchRepository::incrementFailedJobs()` writes
+  `'pending_jobs' => $batch->pending_jobs` — unchanged. A failed job increments
+  the failure count and never decrements the pending count, so a batch holding
+  any permanent failure never reaches `pending_jobs = 0`, never sets
+  `finished_at`, and its completion callback never fires.
+
+  **Harmless both times, for a reason nobody chose.** Story 28's reconcile hangs
+  off the TIMINGS batch, which had no failures and did finish, so
+  `DispatchAssetGeneration::reconcile()` ran, flagged the two scenes and parked
+  the story at `assets_generating` exactly as designed. The asset batch's row is
+  therefore cosmetic — and it means the batch progress display for stories 23
+  and 28 reads 404/406 and 256/514 permanently. That is luck about which batch
+  carries the callback, not a property of the design. Move the reconcile onto
+  the asset batch and it stops running at all.
+
+  **The spec line is the part worth correcting.** "Batch failure policy: if 3
+  scenes out of 200 fail image generation, the batch should complete and flag
+  them for retry, not fail the whole video." The flagging works. **The batch
+  does not complete, and cannot.** The intent is delivered by a reconcile on a
+  different batch from the one the sentence describes, so a sentence that reads
+  as a description of the mechanism is only a description of the outcome.
 
 **A guard can be measuring correctly and still be certain about the wrong
 thing.** `NarrationPace` compared story 21's en-CN narration against 197 wpm

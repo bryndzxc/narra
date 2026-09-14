@@ -5,14 +5,20 @@ namespace App\Actions;
 use App\Contracts\ScriptWriter;
 use App\Enums\RenderStage;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\Providers\ChapterDraft;
+use App\Support\Providers\ScriptWriterException;
 use App\Support\ScriptSizing;
+use App\Support\SentenceSplitter;
+use App\Support\TextBounds;
 use Closure;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -39,6 +45,10 @@ class GenerateActScripts
         private readonly ScriptWriter $writer,
         private readonly LocaleGuard $locale,
         private readonly RecordProviderCost $costs,
+        // The same splitter DraftScenes cuts scenes with, so a chapter's
+        // first_sentence and a scene's sentence range are the same unit by
+        // construction rather than by two parsers agreeing.
+        private readonly SentenceSplitter $splitter,
     ) {}
 
     /**
@@ -98,6 +108,10 @@ class GenerateActScripts
             // needed it. The phase is new and would have gone the same way.
             escalationBeat: (string) $act->escalation_beat,
             phase: $act->phase,
+            // Wired to this consumer in the same change that added it, and
+            // recorded by the fake, because the two fields above were each
+            // found missing here a phase after they were added.
+            timeframe: $act->timeframe,
         ))->all();
 
         $targetWords = $this->targetWordsPerAct($story, $acts->count());
@@ -138,6 +152,36 @@ class GenerateActScripts
             // Billed before validation, because it was billed before validation.
             $this->costs->handle($story, $draft->usage);
 
+            // The writer's summary REPLACES the outline's below, and Gate 1's
+            // form validates whatever is stored. Story 28's act 4 came back at
+            // 2,026 characters against a form rule of 2,000 and the gate could
+            // not be approved — text the operator never typed, refused by a
+            // rule sized for a different stage. The bound is one constant now
+            // (Act::SUMMARY_MAX_CHARS), stated in the prompt, and enforced HERE
+            // rather than at the schema, because structured outputs do not
+            // honour maxLength and the outline's act count is enforced the same
+            // way for the same reason. After the cost row, like the act count:
+            // a refusal is loud and the ledger still says what it cost.
+            if ($over = Act::textOverflows(['summary' => $draft->summary])) {
+                throw new ScriptWriterException(sprintf(
+                    'Act %d came back with a %s. The call was billed and the act is NOT stored; '
+                    .'re-run this act (story:write --acts-only=%d). The prompt states the bound, so '
+                    .'a writer exceeding it is new information about the writer, not a reason to '
+                    .'raise the bound.',
+                    $act->sequence,
+                    implode(', ', $over),
+                    $act->sequence,
+                ));
+            }
+
+            // The chapter shape, the same way and for the same reason: stated
+            // in the prompt, unenforceable at the schema, checked after the
+            // cost row. The boundaries are computed here too, because a
+            // chapter whose text does not end on a sentence would merge into
+            // the next when the texts are joined, and the only place that can
+            // be seen is beside the splitter that will cut the scenes.
+            $boundaries = $this->chapterBoundaries($act, $draft);
+
             // Loudly, and here rather than at Gate 1. An operator reading 7,000
             // words will not reliably catch one "sari-sari store"; a US viewer
             // will catch it immediately.
@@ -147,15 +191,33 @@ class GenerateActScripts
                 "act {$act->sequence} generation"
             );
 
-            $act->update([
-                'script' => $draft->script,
-                // The outline summary is replaced by what was actually written.
-                // They diverge — the act is written from the outline but does
-                // not always land exactly on it — and the next act needs the
-                // truth, not the plan.
-                'summary' => $draft->summary !== '' ? $draft->summary : $act->summary,
-                'is_rehook_written' => trim($draft->rehookLine) !== '',
-            ]);
+            DB::transaction(function () use ($act, $draft, $story, $boundaries): void {
+                $act->update([
+                    'script' => $draft->script,
+                    // The outline summary is replaced by what was actually written.
+                    // They diverge — the act is written from the outline but does
+                    // not always land exactly on it — and the next act needs the
+                    // truth, not the plan.
+                    'summary' => $draft->summary !== '' ? $draft->summary : $act->summary,
+                    'is_rehook_written' => trim($draft->rehookLine) !== '',
+                ]);
+
+                // Replaced whole. A rewritten act is a new set of boundaries,
+                // and the scenes pointing at the old ones are set null by the
+                // foreign key — they are about to be re-drafted anyway.
+                $act->chapters()->delete();
+
+                foreach ($draft->chapters as $index => $chapter) {
+                    Chapter::create([
+                        'story_id' => $story->id,
+                        'act_id' => $act->id,
+                        'sequence' => $index + 1,
+                        'title' => $chapter->title,
+                        'rehook_line' => trim($chapter->rehookLine) !== '' ? $chapter->rehookLine : null,
+                        'first_sentence' => $boundaries[$index],
+                    ]);
+                }
+            });
 
             $priorSummaries[] = $this->summaryFor($act->refresh());
             $drafts[] = $draft;
@@ -163,15 +225,112 @@ class GenerateActScripts
             $progress?->__invoke($act, $draft, sprintf('%s words', number_format($draft->wordCount())));
 
             $job->note(sprintf(
-                'Act %d of %d — %s words%s.',
+                'Act %d of %d — %s words in %d chapters%s%s.',
                 $act->sequence,
                 $acts->count(),
                 number_format($draft->wordCount()),
+                count($draft->chapters),
                 trim($draft->rehookLine) !== '' ? ', rehook written' : ', NO REHOOK',
+                $this->chaptersWithoutRehook($draft) === []
+                    ? ''
+                    : ', NO RE-HOOK on chapter '.implode(', ', $this->chaptersWithoutRehook($draft)),
             ));
         }
 
         return $drafts;
+    }
+
+    /**
+     * Where each chapter starts in the joined script, as 1-indexed sentence
+     * offsets, after refusing the shapes the prompt states are not allowed.
+     *
+     * Every refusal here is thrown AFTER the cost row — the call was billed
+     * whatever it returned — and stores nothing, the way the summary bound
+     * above does. The prompt states every one of these bounds, so a writer
+     * exceeding one is new information about the writer, not a reason to
+     * move the bound.
+     *
+     * @return array<int, int>  chapter index => first sentence
+     */
+    private function chapterBoundaries(Act $act, ActScriptDraft $draft): array
+    {
+        $count = count($draft->chapters);
+        $min = (int) config('chapters.min_per_act', 2);
+        $max = (int) config('chapters.max_per_act', 4);
+        $minWords = (int) config('chapters.min_words', 150);
+
+        $refuse = function (string $what) use ($act): never {
+            throw new ScriptWriterException(sprintf(
+                'Act %d came back with %s. The call was billed and the act is NOT stored; re-run '
+                .'this act (story:write --acts-only=%d). The prompt states the bound, so a writer '
+                .'exceeding it is new information about the writer, not a reason to move the bound.',
+                $act->sequence,
+                $what,
+                $act->sequence,
+            ));
+        };
+
+        if ($count < $min || $count > $max) {
+            $refuse(sprintf('%d chapter(s) against a bound of %d-%d per act', $count, $min, $max));
+        }
+
+        $boundaries = [];
+        $cursor = 1;
+
+        foreach ($draft->chapters as $index => $chapter) {
+            if ($chapter->title === '') {
+                $refuse(sprintf('no title on chapter %d', $index + 1));
+            }
+
+            if ($over = TextBounds::overflows(['title' => Chapter::TITLE_MAX_CHARS], ['title' => $chapter->title])) {
+                $refuse(sprintf('chapter %d whose %s', $index + 1, implode(', ', $over)));
+            }
+
+            if ($chapter->wordCount() < $minWords) {
+                $refuse(sprintf(
+                    'chapter %d at %d words against a floor of %d',
+                    $index + 1,
+                    $chapter->wordCount(),
+                    $minWords,
+                ));
+            }
+
+            $boundaries[$index] = $cursor;
+            $cursor += count($this->splitter->split($chapter->text));
+        }
+
+        // The boundaries are offsets into the JOINED script, and they are only
+        // right if joining did not merge a sentence across a chapter edge.
+        // Splitting the chapters one at a time and splitting their join must
+        // count the same sentences; if they do not, some chapter's last
+        // sentence has no terminator and its boundary would land one sentence
+        // late in every consumer downstream.
+        if ($cursor - 1 !== count($this->splitter->split($draft->script))) {
+            $refuse(sprintf(
+                'chapter texts that do not join cleanly (%d sentences chapter by chapter, %d joined); a '
+                .'chapter did not end on a complete sentence',
+                $cursor - 1,
+                count($this->splitter->split($draft->script)),
+            ));
+        }
+
+        return $boundaries;
+    }
+
+    /**
+     * @return array<int, int>  1-based chapter numbers with no opening line
+     */
+    private function chaptersWithoutRehook(ActScriptDraft $draft): array
+    {
+        $missing = [];
+
+        foreach ($draft->chapters as $index => $chapter) {
+            if (trim($chapter->rehookLine) === '') {
+                $missing[] = $index + 1;
+            }
+        }
+
+        return $missing;
     }
 
     /**

@@ -427,6 +427,16 @@ class GateLayoutContractTest extends TestCase
             'reversal_beats' => null,
             'refusal' => null,
 
+            // And outlined before the betrayal scene was asked, which every
+            // pre-phase outline was. Without it the field reads MISSING, the
+            // spine-problems group fills, and the empty-track contract has no
+            // void to find — which is how this was noticed: adding the field
+            // turned `test_the_page_fixture_leaves_one_advisory_group_empty`
+            // red at all eleven statuses. The fixture had not been given a
+            // new state; it had been left describing one that cannot exist.
+            'betrayal_scene' => null,
+            'outlined_before_betrayal_scene' => true,
+
             // THE FIXTURE MUST BE ABLE TO EXPRESS "THIS SCRIPT WAS SIZED", or
             // the claim check below cannot see Gate 1's sizing panel at all.
             // Found by drilling a DIFFERENT test: replacing that panel's voice

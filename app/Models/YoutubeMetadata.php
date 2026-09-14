@@ -245,6 +245,24 @@ class YoutubeMetadata extends Model
      */
     public function chapters(): array
     {
+        // The chapter rows, where the story has them: two or three per act,
+        // timed by the render exactly as the acts are. A story written
+        // before chapters existed has none and its acts ARE its chapters,
+        // which is the shape this derivation had for a phase.
+        $chapters = $this->story->chapters()->get();
+
+        if ($chapters->isNotEmpty()) {
+            return $chapters
+                ->filter(fn (Chapter $chapter): bool => $chapter->start_ms !== null)
+                ->map(fn (Chapter $chapter): array => [
+                    'timestamp' => $chapter->chapterTimestamp(),
+                    'title' => $chapter->title,
+                    'start_ms' => $chapter->start_ms,
+                ])
+                ->values()
+                ->all();
+        }
+
         return $this->story->acts
             ->filter(fn (Act $act): bool => $act->start_ms !== null)
             ->map(fn (Act $act): array => [

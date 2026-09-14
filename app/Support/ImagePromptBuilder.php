@@ -108,6 +108,60 @@ class ImagePromptBuilder
 ', $prompt, 2)[0]);
     }
 
+    /**
+     * A stored prompt with its two AUTHORED sections replaced and everything
+     * else kept byte for byte.
+     *
+     * The inverse-and-forward of build() for the Gate 2 editor. Of the five
+     * sections build() joins, the frame and the expression are the two written
+     * per scene; the cast block, the art style and the constraints are the
+     * frozen cast text and two config constants, identical across the story.
+     * The editor used to load all five into one textarea and validate the lot
+     * at 2,000 characters, on prompts whose median is 3,008 — 2,532 of which
+     * is the app's own two constants. The operator was measured against text
+     * they did not write and could not change from there.
+     *
+     * So the editor edits the frame and the expression, and this puts them
+     * back in front of the tail exactly as it was stored. THE TAIL IS THE
+     * STORED ONE, NOT config's. Rebuilding from config would give an edited
+     * scene the CURRENT art style while its 250 neighbours keep the one they
+     * were drafted under — one still in a different look, on a story
+     * ScenesGate::styleBlock() reports as carrying a single style. A drifted
+     * style is that report's business; an edit must not quietly fix one scene
+     * of it.
+     *
+     * Same normalisation as build(): the frame and expression collapse to one
+     * line each, the expression gets the label and a terminal stop, and empty
+     * sections are dropped. An empty stored prompt with an empty frame comes
+     * back empty, which the caller stores as null.
+     */
+    public function rewrite(string $storedPrompt, string $frame, string $expression): string
+    {
+        $sections = array_values(array_filter(
+            array_map('trim', explode("\n\n", str_replace("\r\n", "\n", trim($storedPrompt)))),
+            fn (string $section): bool => $section !== '',
+        ));
+
+        $kept = [];
+
+        foreach ($sections as $index => $section) {
+            // The first section is the frame, wherever the expression sits.
+            if ($index === 0 || str_starts_with($section, self::EXPRESSION_LABEL)) {
+                continue;
+            }
+
+            $kept[] = $section;
+        }
+
+        $frame = trim((string) preg_replace('/\s+/u', ' ', $frame));
+        $expression = trim((string) preg_replace('/\s+/u', ' ', $expression));
+
+        return implode("\n\n", array_filter(
+            [$frame, $this->expressionBlock($expression), ...$kept],
+            fn (string $section): bool => $section !== '',
+        ));
+    }
+
     /** The label the expression block is written behind. Stated once. */
     private const EXPRESSION_LABEL = 'The expression on the faces in this image: ';
 

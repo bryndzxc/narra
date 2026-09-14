@@ -86,6 +86,7 @@ class SchemaEnumDrift extends Command
     public const COLUMNS = [
         ['stories', 'format', \App\Enums\StoryFormat::class],
         ['stories', 'status', \App\Enums\StoryStatus::class],
+        ['acts', 'timeframe', \App\Enums\ActTimeframe::class],
         ['scenes', 'motion_preset', \App\Enums\MotionPreset::class],
         ['scenes', 'status', \App\Enums\SceneStatus::class],
         ['audio_tracks', 'status', \App\Enums\AssetStatus::class],

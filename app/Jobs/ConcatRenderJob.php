@@ -7,6 +7,7 @@ use App\Actions\ConcatVideoClips;
 use App\Actions\PadSceneAudio;
 use App\Enums\RenderStage;
 use App\Models\Act;
+use App\Models\Chapter;
 use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\SceneAudio;
@@ -144,6 +145,9 @@ class ConcatRenderJob extends RenderStageJob
                 'scene_id' => $scene->id,
                 'scene_audio_id' => $audio->id,
                 'act_id' => $scene->act_id,
+                // Null on a scene drafted before chapters existed; the act
+                // timing below is what such a story's chapter list reads.
+                'chapter_id' => $scene->chapter_id,
                 'sequence' => $scene->sequence,
                 'act_sequence' => $scene->act->sequence,
                 'slug' => $workspace->sceneSlug($scene),
@@ -243,10 +247,29 @@ class ConcatRenderJob extends RenderStageJob
             $acts[$actId] ??= ['start_frames' => $scene['offset_frames'], 'frames' => 0];
             $acts[$actId]['start_frames'] = min($acts[$actId]['start_frames'], $scene['offset_frames']);
             $acts[$actId]['frames'] += $scene['frames'];
+
+            // The same arithmetic one level down. A chapter's start is the
+            // offset of its first scene, in frames, and its duration is its
+            // scenes' frames summed — the render's numbers, written once,
+            // exactly as the act's are.
+            $chapterId = $scene['chapter_id'] ?? null;
+
+            if ($chapterId !== null) {
+                $chapters[$chapterId] ??= ['start_frames' => $scene['offset_frames'], 'frames' => 0];
+                $chapters[$chapterId]['start_frames'] = min($chapters[$chapterId]['start_frames'], $scene['offset_frames']);
+                $chapters[$chapterId]['frames'] += $scene['frames'];
+            }
         }
 
         foreach ($acts as $actId => $timing) {
             Act::query()->whereKey($actId)->update([
+                'start_ms' => (int) round($timing['start_frames'] / $fps * 1000),
+                'duration_ms' => (int) round($timing['frames'] / $fps * 1000),
+            ]);
+        }
+
+        foreach ($chapters ?? [] as $chapterId => $timing) {
+            Chapter::query()->whereKey($chapterId)->update([
                 'start_ms' => (int) round($timing['start_frames'] / $fps * 1000),
                 'duration_ms' => (int) round($timing['frames'] / $fps * 1000),
             ]);

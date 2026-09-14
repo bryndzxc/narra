@@ -318,6 +318,55 @@ class OutlineGateLayoutTest extends TestCase
      * carry the finding D1 was about. Whether the locale group has anything is
      * the caller's choice, so both shapes of the row can be built.
      */
+    /**
+     * A refused save renders inside the sticky bar, carries its own width, and
+     * makes no claim the page is not entitled to.
+     *
+     * This is the one state of the page no other case in this file can build —
+     * every fixture here saves cleanly — which is exactly how the summary's
+     * missing `@error` went unrendered by any test for a phase. The state is
+     * built on purpose: one act summary one character over the bound.
+     *
+     * Position is asserted by document order: the refusal must come AFTER the
+     * bar opens and BEFORE its Save button, or it is not where the press was.
+     */
+    public function test_a_refused_save_lands_inside_the_gate_bar_and_passes_the_page_contracts(): void
+    {
+        $component = Livewire::test(OutlineGate::class, ['story' => $this->outlinedStory()])
+            ->set('acts.3.summary', str_repeat('x', Act::SUMMARY_MAX_CHARS + 1))
+            ->call('save');
+
+        $html = $component->html();
+
+        $bar = $this->positionOf($html, 'class="gatebar"');
+        $refusal = $this->positionOf($html, 'class="alert err wide refused"');
+        $save = $this->positionOf($html, 'wire:click="save"');
+
+        $this->assertLessThan($refusal, $bar, 'The refusal must be inside the gate bar, not above it.');
+        $this->assertLessThan($save, $refusal, 'The refusal must read before the Save button it is about.');
+
+        $this->assertSame(
+            [],
+            PageProbe::alertsWithoutTheirOwnWidth($html),
+            'The refusal alert must carry `wide` — it sits beside full-width controls.',
+        );
+
+        $this->assertSame(
+            [],
+            PageProbe::claimsNotEntitledTo($html, $component->instance()->voice()),
+            'The refusal wording must not trip a GateVoice fragment.',
+        );
+
+        // The field-level copy exists too, directly after the textarea it is
+        // about — nothing but the closing tag and Livewire's own block markers
+        // (`<!--[if BLOCK]><![endif]-->`) may sit between them.
+        $this->assertMatchesRegularExpression(
+            '/id="act-summary-3"[^>]*>[^<]*<\/textarea>\s*(?:<!--.*?-->\s*)*<div class="error">/',
+            $html,
+            'The summary textarea must carry its own @error, which it never had.',
+        );
+    }
+
     private function outlinedStory(
         StoryStatus $status = StoryStatus::Outlined,
         bool $locale = true,

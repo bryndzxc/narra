@@ -727,27 +727,54 @@
                                 <span class="seq">{{ $scene->sequence }}</span>
                                 <div class="body">
                                     <div class="field">
-                                        <label>Narration</label>
-                                        <textarea wire:model="narration" rows="3"></textarea>
+                                        <label for="scene-narration">Narration</label>
+                                        <textarea id="scene-narration" wire:model="narration" rows="3"></textarea>
                                         @error('narration') <div class="error">{{ $message }}</div> @enderror
                                     </div>
 
+                                    {{--
+                                        THE TWO AUTHORED SECTIONS, AND ONLY THOSE.
+
+                                        This was one textarea holding the whole stored prompt —
+                                        frame, expression, cast block, art style, constraints — and
+                                        validated at 2,000 characters. The style block alone is
+                                        2,226. 1,495 of 1,693 scenes could not be saved, silently.
+                                        The operator writes the frame and the expression; the rest is
+                                        frozen text and config, kept byte for byte on save, and the
+                                        "full" prompt view above shows it. See
+                                        ImagePromptBuilder::rewrite().
+                                    --}}
                                     <div class="field">
-                                        <label>Image prompt</label>
-                                        <textarea wire:model="imagePrompt" rows="6"></textarea>
+                                        <label for="scene-frame">Frame &mdash; the composed shot
+                                            <span class="right muted mono small">{{ mb_strlen($frame) }}/{{ \App\Models\Scene::FRAME_MAX_CHARS }}</span>
+                                        </label>
+                                        <textarea id="scene-frame" wire:model="frame" rows="3"></textarea>
+                                        @error('frame') <div class="error">{{ $message }}</div> @enderror
                                         <div class="muted small mt-1">
-                                            The whole stored prompt, including the cast block and the style
-                                            block the rows summarise. Reaches a paid API and, slugged, the
-                                            filesystem. Keep character descriptions consistent with the
-                                            locked seeds &mdash; drift here is what makes a face change at
-                                            scene 90.
+                                            What is in the picture, not what the line says. The cast
+                                            block, the art style and the constraints are added after
+                                            this on save, exactly as stored &mdash; do not re-describe a
+                                            character here; drift in the description is what makes a
+                                            face change at scene 90.
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <label for="scene-expression">Expression &mdash; what the faces are doing
+                                            <span class="right muted mono small">{{ mb_strlen($expression) }}/{{ \App\Models\Scene::EXPRESSION_MAX_CHARS }}</span>
+                                        </label>
+                                        <textarea id="scene-expression" wire:model="expression" rows="2"></textarea>
+                                        @error('expression') <div class="error">{{ $message }}</div> @enderror
+                                        <div class="muted small mt-1">
+                                            Named plainly, at the strength it actually is. Empty for a
+                                            cutaway or a shot with nobody in it.
                                         </div>
                                     </div>
 
                                     <div class="row">
                                         <div style="width:180px">
-                                            <label>Motion</label>
-                                            <select wire:model="motion">
+                                            <label for="scene-motion">Motion</label>
+                                            <select id="scene-motion" wire:model="motion">
                                                 @foreach ($motions as $preset)
                                                     <option value="{{ $preset->value }}">{{ $preset->value }}</option>
                                                 @endforeach
@@ -759,6 +786,14 @@
                                             <label><input type="checkbox" wire:model="isThumbnailCandidate"> <span>Thumbnail candidate</span></label>
                                         </div>
                                     </div>
+
+                                    {{-- A refused save says so HERE, beside the button that was
+                                         pressed, from the whole error bag. Livewire answers a failed
+                                         validation with a 200 and nothing else. --}}
+                                    @if ($errors->any())
+                                        <x-refused-save :fields="$this->refusedFields()"
+                                                        heading="Scene {{ $scene->sequence }} not saved." />
+                                    @endif
 
                                     <div class="row mt-3">
                                         <button class="primary" wire:click="saveScene">Save scene</button>

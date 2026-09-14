@@ -3,6 +3,7 @@
 namespace App\Support\Providers;
 
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 
 /**
  * One act's place in the outline, before any of it has been written.
@@ -26,6 +27,14 @@ use App\Enums\ActPhase;
  * previous version could only ask "is this the last act" and answered every
  * other act with "end worse off than it started" — right for act 2 and the
  * precise opposite of what act 6 of a seven-act story needs.
+ *
+ * `timeframe` is whether the act is set in the story's present or before it,
+ * declared by the outline writer. Story 28 spent two of its three escalation
+ * acts staging 2015 and 2017 and its present-day betrayal landed at 20:18;
+ * the outline had allocated that and nothing could refuse it. Carried here
+ * because the act writer reads it too — an act marked present is told that a
+ * prior incident gets one sentence — and a field wired to one consumer and
+ * not the other is the shape `escalationBeat` was found in.
  */
 final class ActOutline
 {
@@ -36,5 +45,7 @@ final class ActOutline
         public readonly string $escalationBeat = '',
         /** Null on an anthology, where every act runs the whole arc itself. */
         public readonly ?ActPhase $phase = null,
+        /** Null when the outline was written before the question was asked. */
+        public readonly ?ActTimeframe $timeframe = null,
     ) {}
 }

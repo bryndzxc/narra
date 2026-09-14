@@ -9,6 +9,7 @@ use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 use App\Enums\Gate;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
@@ -291,8 +292,17 @@ class OutlineSpineTest extends TestCase
 
         app(GenerateOutline::class)->handle($story);
 
-        $this->assertSame(6, $story->acts()->count());
-        $this->assertSame(6, GenerateOutline::defaultActCountFor($story));
+        // Read off the constant rather than restated here. `ActCountTest` is
+        // the one place that pins the NUMBER; a second literal is a second
+        // place to correct when it moves, and it has now moved twice.
+        $this->assertSame(
+            GenerateOutline::DEFAULT_ACTS_SINGLE,
+            $story->acts()->count(),
+        );
+        $this->assertSame(
+            GenerateOutline::DEFAULT_ACTS_SINGLE,
+            GenerateOutline::defaultActCountFor($story),
+        );
     }
 
     public function test_the_acts_are_laid_out_across_the_four_phases(): void
@@ -310,17 +320,23 @@ class OutlineSpineTest extends TestCase
 
         app(GenerateOutline::class)->handle($story);
 
+        // The plan for whatever the default count is, not a transcription of
+        // it. What this test is FOR is that the outline persists the plan
+        // `ActPhase` computes; which phases that plan contains at a given
+        // count is `ActCountTest`'s subject and is asserted there.
         $this->assertSame(
-            [
-                1 => ActPhase::Escalation,
-                2 => ActPhase::Escalation,
-                3 => ActPhase::Escalation,
-                4 => ActPhase::Departure,
-                5 => ActPhase::Search,
-                6 => ActPhase::Refusal,
-            ],
+            ActPhase::planFor(GenerateOutline::DEFAULT_ACTS_SINGLE),
             $story->acts()->orderBy('sequence')->get()->pluck('phase', 'sequence')->all(),
         );
+
+        // And all three reversal phases are present whatever the count is.
+        foreach ([ActPhase::Departure, ActPhase::Search, ActPhase::Refusal] as $phase) {
+            $this->assertContains(
+                $phase,
+                $story->acts()->orderBy('sequence')->get()->pluck('phase')->all(),
+                sprintf('%s is missing from the default act plan.', $phase->value),
+            );
+        }
     }
 
     public function test_an_anthology_act_carries_no_phase(): void
@@ -352,10 +368,13 @@ class OutlineSpineTest extends TestCase
 
         $calls = collect($this->writer->calls)->where('method', 'actScript')->keyBy('sequence');
 
+        $count = GenerateOutline::DEFAULT_ACTS_SINGLE;
+        $departure = ActPhase::departureActFor($count);
+
         $this->assertSame('escalation', $calls[1]['phase']);
-        $this->assertSame('departure', $calls[4]['phase']);
-        $this->assertSame('search', $calls[5]['phase']);
-        $this->assertSame('refusal', $calls[6]['phase']);
+        $this->assertSame('departure', $calls[$departure]['phase']);
+        $this->assertSame('search', $calls[$departure + 1]['phase']);
+        $this->assertSame('refusal', $calls[$count]['phase']);
 
         $this->assertTrue(
             $calls->every(fn (array $call): bool => trim((string) $call['escalation_beat']) !== ''),
@@ -402,7 +421,7 @@ class OutlineSpineTest extends TestCase
         $this->assertNotEmpty($calls, 'No scene call was recorded at all.');
 
         $this->assertSame('escalation', $calls[1]['phase']);
-        $this->assertSame('refusal', $calls[6]['phase']);
+        $this->assertSame('refusal', $calls[GenerateOutline::DEFAULT_ACTS_SINGLE]['phase']);
 
         $this->assertTrue(
             $calls->every(fn (array $call): bool => trim((string) $call['escalation_beat']) !== ''),
@@ -590,6 +609,309 @@ class OutlineSpineTest extends TestCase
 
         $this->assertStringContainsString('Reversal beats is missing', implode(' ', $review['problems']));
         $this->assertStringContainsString('Refusal is missing', implode(' ', $review['problems']));
+    }
+
+    // -- When an act is set, and the narrator at the exposure ----------------
+    //
+    // Two fields from one measurement, both the shape of `is_hook`: something
+    // the genre needs that nothing asked for. Story 28's present-day betrayal
+    // lands at 20:18 because two of its three escalation acts stage 2015 and
+    // 2017 in full, and the outline had said so in a summary nothing could
+    // refuse. Stories 23 and 28 both hear about their own exposure from
+    // somebody who was there, because a document produced the withheld
+    // information and the narrator was 800 km away. Story 25 does neither,
+    // and is the story that works.
+
+    public function test_the_outline_stores_the_timeframe_and_the_narrator_at_exposure(): void
+    {
+        $story = $this->draftStory();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh();
+
+        $this->assertNotSame('', trim((string) $story->narrator_at_exposure));
+
+        $this->assertTrue(
+            $story->acts()->get()->every(fn (Act $act): bool => $act->timeframe === ActTimeframe::Present),
+            'Every act the outline wrote should carry the timeframe it declared.',
+        );
+    }
+
+    /**
+     * The consumer question, asked in the change that added the field rather
+     * than a phase later. Both `escalation_beat` and `phase` were found
+     * missing at this call after being wired everywhere else.
+     */
+    public function test_the_act_writer_is_handed_the_timeframe_and_the_narrator_at_exposure(): void
+    {
+        $story = $this->draftStory();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh()->approveGate(Gate::Outline);
+
+        $this->writer->calls = [];
+
+        app(GenerateActScripts::class)->handle($story->refresh());
+
+        $calls = collect($this->writer->calls)->where('method', 'actScript');
+
+        $this->assertNotEmpty($calls);
+        $this->assertTrue(
+            $calls->every(fn (array $call): bool => $call['timeframe'] === 'present'),
+            'An act was written without being told when it is set.',
+        );
+        $this->assertTrue(
+            $calls->every(fn (array $call): bool => trim((string) $call['narrator_at_exposure']) !== ''),
+            'An act was written without knowing how the narrator is in the room for the exposure. '
+            .'The escalation acts plant what the narrator will produce; the search acts must not '
+            .'have her find it.',
+        );
+    }
+
+    public function test_the_scene_writer_is_handed_the_timeframe(): void
+    {
+        $story = $this->draftStory();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh()->approveGate(Gate::Outline);
+        app(GenerateActScripts::class)->handle($story->refresh());
+
+        Character::factory()->for($story)->create(['name' => 'Dana Whitfield']);
+        Character::factory()->for($story)->create(['name' => 'Erin Whitfield']);
+
+        $this->writer->calls = [];
+
+        app(DraftScenes::class)->handle($story->refresh());
+
+        $calls = collect($this->writer->calls)->where('method', 'scenes');
+
+        $this->assertNotEmpty($calls);
+        $this->assertTrue(
+            $calls->every(fn (array $call): bool => $call['timeframe'] === 'present'),
+            'The scene writer is the stage that would draw a flashback still for a cited sentence, '
+            .'and it was not told the act is set in the present.',
+        );
+    }
+
+    /**
+     * The prompt half of the same question. The fake records what it is
+     * HANDED; this asserts what the real builder SAYS with it, through the
+     * same private method the worker calls.
+     */
+    public function test_the_act_prompt_states_the_timeframe_and_the_narrator_at_exposure(): void
+    {
+        $story = $this->draftStory();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh();
+
+        $act = $story->acts()->where('sequence', 2)->first();
+        $outline = $story->acts()->orderBy('sequence')->get()->map(fn (Act $entry): ActOutline => new ActOutline(
+            sequence: $entry->sequence,
+            title: (string) $entry->title,
+            summary: (string) $entry->summary,
+            escalationBeat: (string) $entry->escalation_beat,
+            phase: $entry->phase,
+            timeframe: $entry->timeframe,
+        ))->all();
+
+        $writer = new ClaudeScriptWriter(
+            app(Client::class),
+            app(LocaleGuard::class),
+            app(CharacterTextGuard::class),
+        );
+
+        $method = new ReflectionMethod($writer, 'actPrompt');
+        $prompt = $method->invoke($writer, $story, $outline[1], $outline, ['Act 1 happened.'], 985);
+
+        $this->assertStringContainsString('SET IN THE STORY\'S PRESENT', $prompt);
+        $this->assertStringContainsString('How the narrator is in the room for it:', $prompt);
+        $this->assertStringContainsString('[ESCALATION · PRESENT]', $prompt);
+
+        $priorSummaries = array_fill(0, count($outline) - 1, 'An act happened.');
+        $final = $method->invoke($writer, $story, $outline[count($outline) - 1], $outline, $priorSummaries, 985);
+
+        $this->assertStringContainsString('THE NARRATOR IS IN THE ROOM FOR IT', $final);
+        // The found shape is legal since the transcript was read; what the
+        // prompt must still say is that the scene is the narrator's.
+        $this->assertStringContainsString('or she came to where they are', $final);
+        $this->assertStringContainsString('The narrator decides where and how long they talk', $final);
+
+        // The scene call too. The fake's record for that call reads the
+        // timeframe off the Act model, so it cannot go red if this line is
+        // dropped from the prompt; this can.
+        $context = (new ReflectionMethod($writer, 'sceneContext'))->invoke($writer, $story, $act);
+
+        $this->assertStringContainsString('SET IN: the story\'s present', $context);
+    }
+
+    public function test_an_act_set_in_the_past_is_a_problem_that_quotes_the_summary(): void
+    {
+        $story = $this->outlinedStory();
+        $story->acts()->where('sequence', 2)->update([
+            'timeframe' => ActTimeframe::Prior,
+            'summary' => 'Act 2 tells the second betrayal in full. February 2017, eleven months after '
+                .'the funeral, she came into the bathroom and told him about the man from Suzhou.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $problems = implode(' ', $review['problems']);
+
+        $this->assertStringContainsString('Act 2 is set before the story\'s present', $problems);
+        $this->assertStringContainsString('Act 2 tells the second betrayal in full', $problems);
+    }
+
+    public function test_a_half_declared_outline_is_a_problem(): void
+    {
+        $story = $this->outlinedStory();
+        $story->acts()->where('sequence', 3)->update(['timeframe' => null]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertStringContainsString(
+            'Act(s) 3 do not say whether they are set',
+            implode(' ', $review['problems']),
+        );
+    }
+
+    public function test_a_missing_narrator_at_exposure_is_a_problem_on_an_outline_that_was_asked(): void
+    {
+        $story = $this->outlinedStory();
+        $story->update(['narrator_at_exposure' => '']);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertStringContainsString(
+            'Narrator at the exposure is missing',
+            implode(' ', $review['problems']),
+        );
+        $this->assertSame('missing', $review['spine']['narrator_at_exposure']['state']);
+    }
+
+    public function test_the_narrator_at_exposure_names_what_only_they_produce(): void
+    {
+        $story = $this->outlinedStory();
+
+        $review = app(ValidateOutlineSpine::class)->handle($story);
+
+        $this->assertSame('ok', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertNotEmpty(
+            $review['spine']['narrator_at_exposure']['produces'] ?? '',
+            'The field must name WHICH sentence of the withheld information the narrator produces '
+            .'in person. "They produce something" is worth less than "they produce the care home fees".',
+        );
+    }
+
+    public function test_a_narrator_at_exposure_that_shares_nothing_with_the_withheld_information_is_flagged(): void
+    {
+        $story = $this->outlinedStory();
+        $story->update([
+            'narrator_at_exposure' => 'I turn up at the reception unexpected and stand at the back '
+                .'of the hall while the toasts are read, and nobody knows I am there until the end.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertStringContainsString(
+            'names nothing that only they can produce',
+            implode(' ', $review['warnings']),
+        );
+    }
+
+    /**
+     * A found narrator is NOT weak any more, and the reason is on the record
+     * in CLAUDE.md 3d: "the search fails" was derived from a reference title,
+     * and the first reference transcript read has her find him — begging the
+     * student records office — and kneel in public when she does. What the
+     * field still has to do is name what the narrator produces; the overlap
+     * check decides that, and the found shape is recorded as a note.
+     */
+    public function test_a_narrator_the_search_found_is_noted_and_judged_on_what_they_produce(): void
+    {
+        $story = $this->outlinedStory();
+        $story->update([
+            'narrator_at_exposure' => 'The investigator she paid finally tracked me down to the care '
+                .'home, and she brought me to the reception herself to put the fees on the table.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('ok', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertStringContainsString('tracked me down', (string) $review['spine']['narrator_at_exposure']['found']);
+        $this->assertStringNotContainsString('reads as the search succeeding', implode(' ', $review['warnings']));
+    }
+
+    public function test_a_found_narrator_who_produces_nothing_is_still_weak(): void
+    {
+        // The found shape is legal; producing nothing is not. The second half
+        // of the check is what a found narrator is now judged on.
+        $story = $this->outlinedStory();
+        $story->update([
+            'narrator_at_exposure' => 'The investigator she paid finally tracked me down and she '
+                .'brought me to the hall herself, where I stood at the back and watched.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('weak', $review['spine']['narrator_at_exposure']['state']);
+        $this->assertStringContainsString('names nothing that only they can produce', implode(' ', $review['warnings']));
+    }
+
+    public function test_a_narrator_who_was_not_found_passes(): void
+    {
+        // The good case contains the marker, negated. "She did not find me. I
+        // came." is exactly what the field should say.
+        $story = $this->outlinedStory();
+        $story->update([
+            'narrator_at_exposure' => 'She never found me. I came to the reception on my own, chose '
+                .'the moment, and put the care home fees from the same account on the table myself.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame('ok', $review['spine']['narrator_at_exposure']['state']);
+    }
+
+    public function test_an_outline_written_before_the_timeframe_was_asked_says_so_once(): void
+    {
+        // Stories 22 through 28: outlined with the reversal phase, before
+        // either question existed. One warning naming both, no problems, and
+        // the field reads as absent rather than missing.
+        $story = $this->outlinedStory();
+        $story->acts()->update(['timeframe' => null]);
+        $story->update(['narrator_at_exposure' => '']);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertSame([], $review['problems']);
+        $this->assertStringContainsString(
+            'generated before two questions were asked of it',
+            implode(' ', $review['warnings']),
+        );
+        $this->assertSame('absent', $review['spine']['narrator_at_exposure']['state']);
+    }
+
+    public function test_typing_the_narrator_at_exposure_in_by_hand_brings_the_timeframe_check_back(): void
+    {
+        $story = $this->outlinedStory();
+        $story->acts()->update(['timeframe' => null]);
+        $story->update([
+            'narrator_at_exposure' => 'I come to the reception uninvited and put the care home fees '
+                .'from the same account on the table myself. She did not find me.',
+        ]);
+
+        $review = app(ValidateOutlineSpine::class)->handle($story->refresh());
+
+        $this->assertStringContainsString(
+            'No act says whether it is set in the story\'s present',
+            implode(' ', $review['problems']),
+        );
+        $this->assertStringNotContainsString(
+            'generated before two questions were asked',
+            implode(' ', $review['warnings']),
+        );
     }
 
     public function test_gate_one_lets_the_operator_write_the_reversal(): void
@@ -879,8 +1201,18 @@ class OutlineSpineTest extends TestCase
         $prompt = $this->actPrompt($story, $act, 985);
 
         $this->assertStringContainsString('THIS ACT OPENS THE VIDEO', $prompt);
-        $this->assertStringContainsString('THE HOOK THIS OUTLINE ASKS FOR', $prompt);
+        $this->assertStringContainsString('THIS IS THE OPENING THE OUTLINE WROTE FOR THIS STORY', $prompt);
         $this->assertStringContainsString(trim((string) $story->hook), $prompt);
+
+        // AND IT IS THE LAST THING IN THE PROMPT BEFORE THE REQUEST. Story 30
+        // dropped the stored hook while it sat mid-prompt, trailing the beats
+        // as "the hook this outline asks for" with the answer-back rule and
+        // the chapter announcement arriving after it.
+        $this->assertGreaterThan(
+            mb_strpos($prompt, 'WRITE THIS ACT AS CHAPTERS'),
+            mb_strpos($prompt, 'THIS IS THE OPENING THE OUTLINE WROTE FOR THIS STORY'),
+            'The stored hook must come after the blocks that displaced it.',
+        );
     }
 
     /**

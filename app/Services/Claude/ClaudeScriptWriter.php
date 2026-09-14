@@ -5,14 +5,19 @@ namespace App\Services\Claude;
 use Anthropic\Client;
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
+use App\Enums\ActTimeframe;
 use App\Enums\MotionPreset;
 use App\Enums\StoryFormat;
 use App\Models\Act;
+use App\Models\Chapter;
+use App\Models\Scene;
 use App\Models\Story;
+use App\Support\ChapterAnnouncement;
 use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
+use App\Support\Providers\ChapterDraft;
 use App\Support\Providers\CharacterCast;
 use App\Support\Providers\CharacterProfile;
 use App\Support\Providers\OutlineDraft;
@@ -102,6 +107,10 @@ class ClaudeScriptWriter implements ScriptWriter
                 summary: trim((string) ($act['summary'] ?? '')),
                 escalationBeat: trim((string) ($act['escalation_beat'] ?? '')),
                 phase: $plan[$index + 1] ?? null,
+                // The model's declaration, unlike the phase above, which is
+                // ours. A value outside the enum decodes to null rather than
+                // to present: null is "not said", and Gate 1 treats it as such.
+                timeframe: ActTimeframe::tryFrom(trim((string) ($act['timeframe'] ?? ''))),
             );
         }
 
@@ -126,9 +135,11 @@ class ClaudeScriptWriter implements ScriptWriter
             antagonistJustification: trim((string) ($decoded['antagonist_justification'] ?? '')),
             withheldInformation: trim((string) ($decoded['withheld_information'] ?? '')),
             exposureMoment: trim((string) ($decoded['exposure_moment'] ?? '')),
+            narratorAtExposure: trim((string) ($decoded['narrator_at_exposure'] ?? '')),
             departure: trim((string) ($decoded['departure'] ?? '')),
             reversalBeats: trim((string) ($decoded['reversal_beats'] ?? '')),
             refusal: trim((string) ($decoded['refusal'] ?? '')),
+            betrayalScene: trim((string) ($decoded['betrayal_scene'] ?? '')),
             requestedActCount: $actCount,
         );
     }
@@ -149,7 +160,28 @@ class ClaudeScriptWriter implements ScriptWriter
 
         $decoded = $this->decodeJson($content, "act {$act->sequence}");
 
-        $script = trim((string) ($decoded['script'] ?? ''));
+        // The act comes back AS chapters, and the script is their texts
+        // joined. The count and the per-chapter bounds are NOT checked here,
+        // for the reason the outline's act count is not: throwing inside the
+        // provider loses the cost row for a call that was billed.
+        // GenerateActScripts checks them after recording the spend.
+        $chapters = [];
+
+        foreach ((array) ($decoded['chapters'] ?? []) as $entry) {
+            $text = trim((string) ($entry['text'] ?? ''));
+
+            if ($text === '') {
+                continue;
+            }
+
+            $chapters[] = new ChapterDraft(
+                title: trim((string) ($entry['title'] ?? '')),
+                rehookLine: trim((string) ($entry['rehook_line'] ?? '')),
+                text: $text,
+            );
+        }
+
+        $script = implode("\n\n", array_map(fn (ChapterDraft $c): string => $c->text, $chapters));
 
         if ($script === '') {
             throw new ScriptWriterException("Act {$act->sequence} came back with an empty script.");
@@ -159,8 +191,10 @@ class ClaudeScriptWriter implements ScriptWriter
             sequence: $act->sequence,
             script: $script,
             summary: trim((string) ($decoded['summary'] ?? '')),
-            rehookLine: trim((string) ($decoded['rehook_line'] ?? '')),
+            // The act's opening line is its first chapter's.
+            rehookLine: $chapters[0]->rehookLine ?? '',
             usage: $usage,
+            chapters: $chapters,
         );
     }
 
@@ -251,18 +285,34 @@ class ClaudeScriptWriter implements ScriptWriter
             // wasted call would report a saving it did not make.
             $discarded[] = $usage;
 
-            [$content, $usage] = $this->call(
-                system: $system,
-                userMessage: $prompt,
-                operation: 'draft_scenes',
-                schema: $this->sceneSchema(),
-                override: [
-                    'model' => $fallback,
-                    'effort' => config('providers.anthropic.operations.draft_scenes.fallback_effort'),
-                ],
-            );
+            try {
+                [$content, $usage] = $this->call(
+                    system: $system,
+                    userMessage: $prompt,
+                    operation: 'draft_scenes',
+                    schema: $this->sceneSchema(),
+                    override: [
+                        'model' => $fallback,
+                        'effort' => config('providers.anthropic.operations.draft_scenes.fallback_effort'),
+                    ],
+                );
 
-            $scenes = $this->decodeScenes($content, $act);
+                $scenes = $this->decodeScenes($content, $act);
+            } catch (\Throwable $e) {
+                // THE DISCARDED ATTEMPT WAS BILLED AND ITS ROW DIES WITH THIS
+                // EXCEPTION UNLESS IT IS WRITTEN NOW. Every usage above is
+                // handed back in the SceneDraftSet for DraftScenes to record,
+                // and a throw means there is no set to hand back. Story 28 act
+                // 2: Haiku billed ~$0.035, Sonnet truncated, and only the
+                // Sonnet row reached the ledger.
+                //
+                // The decode is inside the try for the same reason — a
+                // response that arrives and will not parse is one more way to
+                // leave the first call unrecorded.
+                $this->recordSpendWithNoAction($discarded[0], 'draft_scenes');
+
+                throw $e;
+            }
         }
 
         if ($scenes === []) {
@@ -527,8 +577,50 @@ class ClaudeScriptWriter implements ScriptWriter
         - The narrator is the person who was wronged. Not a witness to someone
           else's wrong, not a bystander who pieces something together, not a
           relative watching a family fall apart. It happened to them.
-        - They are reasonable, restrained, and specific. They do not rant. The
-          restraint is what makes the audience furious on their behalf.
+        - THEY ARE PLAIN-SPOKEN AND FUNNY ABOUT IT. Dry, blunt, and specific,
+          with a joke where a dignified narrator would go quiet. This was
+          measured against a working video in this niche that holds an
+          audience for 35 minutes; ours were dignified and mostly silent, said
+          "Yes, Mother" nine times in one story, and lost the audience inside
+          three minutes. The humour is the narrator's own, aimed at the
+          situation and at themselves as often as at the antagonist. They
+          still do not rant: a wisecrack is one sentence, not a paragraph.
+        - THE CRUDE LINE IS WHAT THEY THINK; THE CONTROLLED LINE IS WHAT THEY
+          SAY. Keep the two apart, because the pairing is what makes the
+          narrator fun to be inside without making them a ranter. In the
+          reference, when she says "it won't affect our wedding", the narrator
+          THINKS, to the listener: "Our wedding? Marry you my ass." — and then
+          SAYS, out loud, to her, a few seconds later: "I get it. You've
+          brought him here and shown him off to all of us. So are you staying
+          for a breakup dinner, or going out on a date with your new boy toy?"
+          The first is narration and nobody in the room hears it. The second
+          is dialogue: cool, exact, and funnier for being controlled. Never
+          put the crude thought in the narrator's mouth, and never let the
+          spoken line go crude.
+        - MILD LANGUAGE ONLY, and none in the first thirty seconds. "My ass",
+          "hell", "damn" are fine. No f-word, no s-word, nothing stronger:
+          strong or frequent profanity limits the ads on a format that exists
+          for mid-roll ads, and the first thirty seconds are what YouTube
+          reads hardest.
+        - When they speak in a scene, they say something. A short, funny,
+          exact line — not a speech, and not "I said all right." A narrator
+          who answers back is not a narrator who wins the round; what the
+          line costs the antagonist, if anything, is decided by the phase.
+        - NEVER NARRATE THE NARRATION, AND THIS IS A BAN ON A MOVE RATHER THAN
+          ON A LIST OF PHRASES. The move is any sentence whose subject is the
+          telling instead of the events: addressing the listener about what
+          they should understand, know, notice, remember or hold on to;
+          announcing what you are about to say, or being honest, exact, clear
+          or fair about it; promising to come back to something. "I want to be
+          honest about this." "I want you to understand that nobody asked me."
+          "I need you to know what that number meant." "Let me be clear."
+          "I'll get to that." Four stories carried sixteen of the first form.
+          Those four phrasings were then banned by name and the next story
+          carried five of "I want you to understand" instead — the same move
+          in a coat the list did not cover. THERE IS NO LIST. If a sentence is
+          about how to read the story rather than about what happened in it,
+          cut it and say the thing. The narrator never tells the listener what
+          to feel or what to notice; they say what was done and let it land.
         - They are not a saint and not a victim in their own telling. They tried
           to be fair. That is what makes the antagonist's excuse land.
 
@@ -547,43 +639,119 @@ class ClaudeScriptWriter implements ScriptWriter
         video that is competent and that nobody finishes. The arc is NOT
         escalation -> exposure -> end.
 
-        1. ESCALATION. Every act costs the narrator more than the last: money,
+        1. ESCALATION, AND IT OPENS ON THE BETRAYAL AS A SCENE, NOT A
+           DISCOVERY. The first chapter after the hook is the betrayal being
+           DONE in front of people, in the story's present — not found in a
+           message, a booking or somebody's photos. The reference: she arrives
+           late to a dinner of nine people holding another man's hand; a
+           friend asks "Who's this? Your younger brother?"; she says "He's my
+           boyfriend" one word at a time; then she justifies it to the
+           narrator's face — "I want to see a different view before I get
+           married... it won't affect our wedding" — and says it again to the
+           friend after the man has left. The person it is done with is IN THE
+           ROOM and does not need a line: that man never speaks in the whole
+           video. The antagonist's justification is first said HERE, aloud,
+           to the narrator, with an audience — not saved for a banquet ten
+           minutes in. The narrator answers back, and loses the round.
+           Every act after it costs the narrator more than the last: money,
            standing, a relationship, dignity, in front of more people each
-           time. Nothing is resolved. No act ends with the narrator winning a
-           round, being vindicated, or getting an apology that sticks. The
+           time. Nothing is recovered: no cost comes back, no apology sticks,
+           no ally fixes anything. BUT THE NARRATOR ANSWERS IN THE ROOM. In
+           every scene where the antagonist is present, the narrator says
+           something — one short, exact, funny line — and it lands. It changes
+           nothing about the cost; the ledger still runs against the narrator
+           until the departure. The exchange is won and the round is lost,
+           which is the sawtooth this niche actually runs: inside the betrayal
+           scene itself the reference narrator asks whether she is staying
+           for a breakup dinner or going on a date with her new boy toy, and
+           she still turns her own best friend's anger back onto him. A
+           narrator who says "all right" and "Yes, Mother" for twenty minutes
+           was measured against that and lost the audience inside three. The
            narrator holds information the antagonist does not have, established
            early and not used.
+           THE ESCALATION ACTS ARE SET IN THE STORY'S PRESENT. A prior incident
+           — the first time this happened, the year the house was bought, what
+           was said at a banquet years ago — is CITED in one sentence, with its
+           date, inside a present-day act. It is never given a scene and never
+           given an act. The line the antagonist said years ago is quoted there
+           in one sentence and STAGED at its most recent saying, now, in a room
+           the present-day story is in. A history-shaped premise ("the first
+           time... the second time... the third time") is the one most likely
+           to lose this: the third time is the story, and the first two are a
+           sentence each.
 
-        2. THE DEPARTURE. The narrator goes. Not a threat, not an ultimatum,
-           not a final speech — they leave, and THEY DO NOT ANNOUNCE IT. This
-           is load-bearing: an announced departure cannot be searched for, and
-           the search is the next third of the video. The antagonist finds out
-           later, from somebody else, that they are simply gone.
+        2. THE DEPARTURE. The narrator goes. Not a final speech — they leave,
+           and WHERE THEY WENT IS NOT ANNOUNCED. The break itself may be said
+           out loud, plainly and once: the reference narrator cancels the
+           wedding through her parents and tells her to her face "we broke
+           up", and that is not the departure. The departure is the leaving,
+           and it is unannounced — no note, no farewell, no address, and
+           everyone who knows is asked not to tell her. The antagonist finds
+           out later, from somebody else, that they are simply gone.
 
-        3. THE SEARCH. The antagonist looks for them, and each attempt costs
-           HER more than the last — money, standing, the people who backed her
-           excuse. These are the humiliation beats running the other way and
-           they escalate the same way. A search that costs her nothing is a
-           montage of somebody looking worried.
+        3. THE SEARCH, AND THE MEETINGS. The antagonist looks for them AND
+           REACHES THEM. This is the part the first version of this contract
+           got wrong, and it was measured: a working video in this niche puts
+           the antagonist and the narrator in the same scene five times after
+           the betrayal — at 9:53, 16:43, 18:21, 27:00 and 28:27 of 34:46 —
+           and every one is worse for her. Ours kept them apart for eleven to
+           twenty-three minutes and lost the audience. So in this phase she
+           runs into them, follows them, sits down across from them, turns up
+           where they are — on her initiative or by chance, in front of more
+           people each time — and each meeting costs HER more than the last:
+           money, standing, the people who backed her excuse, and finally her
+           face in public. The narrator answers in a line and leaves. They do
+           not go back, do not explain, do not search for her, and do not send
+           a message. The search may SUCCEED: she may find out where they are.
+           What it must never do is hand her the scene on her terms — when she
+           finds them, the finding is the cost (the reference: she finds him
+           on a street in another city with someone else, and kneels in
+           public), and the narrator decides where and how long they talk.
 
-        4. THE REFUSALS. She finds them. The narrator says no. Each refusal
-           answers ONE specific earlier humiliation, in the words it was done
-           in. This is the private payoff, and it is the thing the audience has
-           been waiting the whole video for.
+        4. THE REFUSALS. The narrator is in the room for the exposure, by
+           their own choice or because she came to where they are, and they
+           produce the withheld information in person. Then she asks them to
+           come back, and the narrator says no. Each refusal answers ONE
+           specific earlier humiliation, in the words it was done in. This is
+           the private payoff, and it is the thing the audience has been
+           waiting the whole video for. The strongest form is a loss she can
+           no longer repair: in the reference, the moment he walked away her
+           innocence became unprovable, and "how can you prove that" is the
+           line that ends her.
 
-        5. THE END, within a few sentences of the last refusal landing.
+        5. THE END. The last refusal lands and the narrator walks away. THEN
+           AN EPILOGUE IS ALLOWED, AND IT IS SHORT: a time jump in the
+           narrator's own voice — a year later — that shows what the
+           narrator's life is now and what her loss looks like from outside.
+           The reference closes on one: a year on, the narrator's wedding, and
+           "Among all our mutual friends Sophia was the only one who didn't
+           show up." That sentence is the epilogue's job. It is not a moral,
+           not what everyone learned, and not "I still think about it
+           sometimes".
 
-        The reversal — movements 2, 3 and 4 — is a PHASE, and it is roughly the
-        last third of the runtime. It is not a scene at the end. A story that
-        escalates for thirty minutes and gives the narrator power in the final
-        ninety seconds has written the wrong video.
+        The reversal — movements 2, 3 and 4 — is a PHASE, and it is THE LAST
+        THREE ACTS: one to leave in, one to be searched for in, one to refuse
+        in. It is not a scene at the end. A story that escalates for thirty
+        minutes and gives the narrator power in the final ninety seconds has
+        written the wrong video.
 
         THE TWO PAYOFFS
         - PUBLIC: exposure, in front of witnesses. The truth comes out at a
           moment the antagonist chose and controlled. The antagonist's own
           excuse is what convicts them — the best version is the antagonist
           repeating their justification in front of people who now know it is
-          false.
+          false. THE NARRATOR IS IN THE ROOM FOR IT and produces the withheld
+          information themselves. A document, a lawyer or a friend can carry
+          the fact; the narrator is what makes it a scene rather than a
+          report, and a payoff the narrator hears about later, from somebody
+          who was there, is hearsay in the one place the video cannot afford
+          it. THE BETRAYAL SCENE IS PUBLIC TOO, AND IT IS NOT THIS PAYOFF: in
+          the betrayal scene she says her justification in front of people
+          and wins the room; at the exposure she says it again in front of
+          people who now know it is false and loses it. Witnesses in chapter
+          one do not spend the exposure — they are what makes it land. Nor do
+          later scenes have to be bigger than the betrayal scene; they have to
+          cost more.
         - PRIVATE: the refusal. Said to the antagonist, usually with nobody
           else there, and it answers something specific she said or did
           earlier. The public one is what the title promises. The private one
@@ -625,10 +793,13 @@ class ClaudeScriptWriter implements ScriptWriter
             That means:
             - Write for the ear. Short sentences carry; subordinate clauses do not.
             - No headings, no scene labels, no stage directions, no bracketed notes.
-            - No "Act One" or "Chapter" markers in the prose itself.
+            - No "Act One" or "Chapter" markers in the prose itself, except the
+              spoken chapter number the chapter instruction below asks for.
             - Dialogue is quoted plainly. "she said" and nothing fancier.
             - Concrete detail over interiority. Name the amounts, the dates, the rooms,
-              the exact words people used. Specifics are what make it feel true.
+              the exact words people used — of what is happening NOW. What happened
+              years ago gets one sentence and its date, never a scene. Specifics are
+              what make it feel true.
             - The narrator is telling this to someone, after the fact, in order. They
               already know how it ends and they are not hiding it.
             TEXT,
@@ -726,23 +897,50 @@ class ClaudeScriptWriter implements ScriptWriter
             ."- antagonist_justification: the antagonist's own account of why they were "
             .'entitled to do it, in THEIR words. It has to be something a real person would '
             ."say and believe. If it reads as an admission of wrongdoing, it is wrong.\n"
-            .'- withheld_information: the specific thing the narrator knows and the '
+            .'- betrayal_scene: THE BETRAYAL AS A SCENE, NOT A DISCOVERY. The first chapter after the '
+            .'hook is the betrayal being DONE, in the story\'s present, in a room with people in it — '
+            .'not a message found, a booking read, photos posted or news heard later. Say where it '
+            .'happens and name who is watching, including the one who asks the question that makes '
+            .'her say it out loud. Name WHO IT IS DONE WITH OR FOR and put them in the room — they do '
+            .'not have to speak; in the reference the other man never says a word, he stands there '
+            .'holding her hand, smiling awkwardly, and leaves when she tells him to. Then she says '
+            .'the antagonist_justification ALOUD, to the narrator\'s face, in front of all of them, '
+            .'in the words you wrote above — this is where it is first said, not a banquet in act 2. '
+            .'Then the narrator\'s one line back, and how the narrator still loses the round. If the '
+            .'premise has the betrayal found, the scene is the moment she confirms it aloud in front '
+            ."of people rather than the moment it was found.\n"
+            .'- withheld_information:the specific thing the narrator knows and the '
             .'antagonist does not. It must already be true at the start of the story, and '
-            ."the narrator must have a plausible reason not to say it.\n"
+            .'the narrator must have a plausible reason not to say it. AND WHAT THE NARRATOR '
+            .'MUST PRODUCE IN PERSON: a fact a document, a lawyer or a friend can produce on '
+            .'their own lets the narrator stay eight hundred kilometers away while it comes '
+            .'out, and the public payoff arrives as hearsay. Make it something only the '
+            .'narrator, present in the room, can put on the table — a signature only they can '
+            ."give, a vote that needs them there, a bag only they carry.\n"
             .'- exposure_moment: where the truth comes out, and WHO IS IN THE ROOM. Name the '
-            ."occasion and the witnesses. This is the PUBLIC payoff.\n"
+            .'occasion and the witnesses. This is the PUBLIC payoff, and the narrator is in '
+            ."the room for it.\n"
+            .'- narrator_at_exposure: how the narrator comes to be in that room — by their own '
+            .'choice, unexpected, or because she has found where they are and come — and what only '
+            .'they produce there. Either way the scene is the NARRATOR\'S: they decide where and how '
+            .'long, and she does not get it on her terms. Reuse the specific thing from '
+            ."withheld_information, because Gate 1 checks this against it.\n"
             .'- departure: how and when the narrator leaves, and what finally makes staying '
-            .'impossible. THEY DO NOT ANNOUNCE IT and they make no farewell speech — they go, and '
-            .'the antagonist finds out later, from somebody else, that they are gone. An announced '
-            ."departure cannot be searched for, and the search is the next third of the video.\n"
-            .'- reversal_beats: what the antagonist does to find them, as at least two escalating '
-            .'attempts, and what each one COSTS HER. Money, then standing, then the people who '
-            .'backed her excuse. These are the humiliation beats running the other way, and a '
-            ."search that costs her nothing is a montage of somebody looking worried.\n"
-            .'- refusal: what the narrator says when they are finally found, and WHICH EARLIER '
-            .'MOMENT EACH REFUSAL ANSWERS. Name that moment. The strongest version hands back the '
-            ."antagonist's own sentence from act 2 or 3, in her words, from the other side of it. "
-            ."This is the PRIVATE payoff and it is what viewers stay forty minutes for.\n"
+            .'impossible. The break may be said out loud once; WHERE THEY WENT IS NOT ANNOUNCED — no '
+            .'note, no farewell speech, no address, and the people who know are asked not to tell '
+            ."her. She finds out later, from somebody else, that they are gone.\n"
+            .'- reversal_beats: what the antagonist does to find them and to reach them, as at least '
+            .'two escalating attempts, and what each one COSTS HER. Money, then standing, then the '
+            .'people who backed her excuse, then her face in public. She and the narrator are IN THE '
+            .'SAME SCENE in at least two of these — she runs into them, follows them, sits down '
+            .'across from them — and each meeting goes worse for her than the last. These are the '
+            ."humiliation beats running the other way, and a search that costs her nothing is a "
+            ."montage of somebody looking worried.\n"
+            .'- refusal: what the narrator says when the antagonist asks them to come back, and '
+            .'WHICH EARLIER MOMENT EACH REFUSAL ANSWERS. Name that moment. The strongest version '
+            ."hands back the sentence she said in the betrayal scene, in her words, from the other "
+            .'side of it, and names a loss she can no longer repair. This is the PRIVATE payoff and '
+            ."it is what viewers stay forty minutes for.\n"
             .'- hook: the first thirty seconds of the video, as five beats in this order. This is '
             .'the highest-leverage text in the whole script, and it is the one place where writing '
             ."the chronological beginning loses the viewer. DO NOT START AT THE BEGINNING:\n"
@@ -752,21 +950,24 @@ class ClaudeScriptWriter implements ScriptWriter
             .sprintf(
                 '    2. The betrayal itself, stated within %s words. Not its aftermath and not a '
                 .'summary of how it turned out: the thing that was done, being done, in the room '
-                ."it happened in. That is %d seconds of narration at the rate this script is "
-                ."being written to.\n",
+                ."it happened in — the betrayal_scene you wrote above, compressed to a sentence. "
+                ."That is %d seconds of narration at the rate this script is being written to.\n",
                 number_format($hookWords),
                 (int) round(ScriptSizing::hookBetrayalSeconds()),
             )
             .'    3. Evidence in EXACT WORDS. A line of dialogue, a message or a document, quoted '
             .'rather than described. Draw on the antagonist_justification you wrote above: the '
-            .'hook is where it lands first, as the bait. THE ACT KEEPS IT. This genre plays the '
-            .'same line twice, once here in a single sentence and again in act 2 or 3 at length, '
-            .'in the room it was said in, and the second landing is stronger for the first. Do '
-            ."not spend it here, and do not paraphrase it in either place.\n"
+            .'hook is where it lands first, as the bait. THE BETRAYAL SCENE KEEPS IT. This genre '
+            .'plays the same line twice, once here in a single sentence and again straight after '
+            .'the hook, in chapter one, in full, said aloud in the room with everyone watching — '
+            .'and the second landing is stronger for the first. Do not spend it here, and do not '
+            ."paraphrase it in either place.\n"
             .'    4. ONE small, cold action by the narrator. Not a confrontation, not a speech and '
             .'not a threat: something quiet and exact. A spreadsheet opened and named, a bag '
-            .'packed, a flat courtesy said to somebody expecting a fight. The confrontation is '
-            ."the final act, and spending it here spends the video.\n"
+            .'packed, a flat courtesy said to somebody expecting a fight. THE RECKONING is the '
+            .'final act, and spending it here spends the video. A round the narrator LOSES is not '
+            .'the reckoning: the betrayal scene after the hook is one, and the narrator answers '
+            ."back in it.\n"
             .'    5. A closing line promising the DEPARTURE. Not revenge, not the exposure and not '
             .'a reckoning: that the narrator is going to be GONE, and that somebody is going to '
             .'have to look for them. Use the specific language of the departure you wrote above, '
@@ -783,13 +984,20 @@ class ClaudeScriptWriter implements ScriptWriter
             ."For each act give:\n"
             .'- title: works as a YouTube chapter title. 2-6 words. Marks a stage of the '
             ."escalation. Does not give away the exposure. No numbering, no 'Act One'.\n"
-            .'- summary: 3-5 sentences. What actually happens, concretely. The act script is '
+            .'- summary: 3-5 sentences, at most '.number_format(Act::SUMMARY_MAX_CHARS).' characters. '
+            .'What actually happens, concretely. The act script is '
             ."written from this and nothing else, so anything vague here gets invented later.\n"
             .'- escalation_beat: one sentence naming what this act COSTS, and to whom. In the '
             .'escalation and departure phases that is the narrator, each act costing more than '
             .'the one before it, and nothing resolving — no round won, no apology that sticks. '
             .'In the search and refusal phases it is the ANTAGONIST, escalating the same way. '
-            ."The cost changes direction at the departure and never changes back.\n\n"
+            ."The cost changes direction at the departure and never changes back.\n"
+            .'- timeframe: "present" or "prior". Every act is PRESENT: it takes place in the '
+            .'story\'s now, and anything that happened years earlier is cited inside it in one '
+            .'sentence with its date. An act whose summary is a year-old banquet, the first '
+            .'betrayal told in full, or four years of night shifts is "prior", and Gate 1 refuses '
+            .'the outline for it — so if you find yourself writing one, fold it into a sentence '
+            ."of a present-day act instead and mark that act present.\n\n"
             .'Finally, the title of the whole video. Under 70 characters. This genre does '
             .'NOT withhold: the title states the ending, because the promise of the payoff '
             .'is the hook. Front-load the grievance, then name what happens. Something in '
@@ -814,12 +1022,13 @@ class ClaudeScriptWriter implements ScriptWriter
     ): string {
         $outlineBlock = implode("\n", array_map(
             fn (ActOutline $entry): string => sprintf(
-                "%d. [%s] %s\n   %s\n   COSTS: %s%s",
+                "%d. [%s%s] %s\n   %s\n   COSTS: %s%s",
                 $entry->sequence,
                 // The phase is in the context block, not only on the act being
                 // written. An act 6 that cannot see act 5 was the departure
                 // has no way to know the narrator is already gone.
                 strtoupper($entry->phase?->value ?? 'act'),
+                $entry->timeframe === null ? '' : ' · '.strtoupper($entry->timeframe->value),
                 $entry->title,
                 $entry->summary,
                 $entry->escalationBeat,
@@ -856,15 +1065,31 @@ class ClaudeScriptWriter implements ScriptWriter
 
         $ending = $this->endingFor($story, $act, $isLast);
 
-        return implode("\n\n", [
+        return implode("\n\n", array_filter([
             'THE SPINE OF THIS STORY:',
             sprintf(
-                "Grievance: %s\n\nThe antagonist's justification: %s\n\nWhat the narrator knows and "
-                ."they do not: %s\n\nWhere it comes out: %s",
+                "Grievance: %s\n\nThe antagonist's justification: %s%s\n\nWhat the narrator knows and "
+                ."they do not: %s\n\nWhere it comes out: %s%s",
                 $story->narrator_grievance,
                 $story->antagonist_justification,
+                // To every act, not only act 1 that stages it. An act 3 that
+                // does not know the justification was already said aloud in
+                // front of nine people re-stages its "first" saying at a
+                // banquet — which is what stories 29-32 did — and a refusal
+                // act that does not know it cannot hand that sentence back.
+                trim((string) $story->betrayal_scene) === ''
+                    ? ''
+                    : "\n\nWhere she first said it aloud, to the narrator's face, in chapter one: "
+                        .$story->betrayal_scene,
                 $story->withheld_information,
                 $story->exposure_moment,
+                // The fifth spine line, to every act and not only the last:
+                // an escalation act that knows the narrator will produce the
+                // bag in person at the banquet plants the bag, and a search
+                // act that knows it does not write the antagonist finding it.
+                trim((string) $story->narrator_at_exposure) === ''
+                    ? ''
+                    : "\n\nHow the narrator is in the room for it: ".$story->narrator_at_exposure,
             ),
             'FULL OUTLINE (for context — write only the marked act):',
             $outlineBlock,
@@ -873,18 +1098,237 @@ class ClaudeScriptWriter implements ScriptWriter
             sprintf('NOW WRITE ACT %d: %s', $act->sequence, $act->title),
             $act->summary,
             sprintf('%s: %s', $act->phase?->beatLabel() ?? 'What this act must cost the narrator', $act->escalationBeat),
-            $rehook,
+            $this->timeframeInstruction($act),
             $ending,
+            $this->chapterInstruction($story, $act),
+            // THE OPENING INSTRUCTION GOES LAST, on every act and not only on
+            // act 1. Story 30 lost two of act 1's five beats and both of its
+            // special-case chapter announcements to the two blocks above this
+            // one, which arrived after it and said "every scene" and "every
+            // chapter". Recency is not the mechanism — the blocks above now
+            // name their own exception, and this block outranks them in words
+            // — but an instruction about the first thirty seconds should not
+            // be the furthest thing from the request that follows it.
+            $rehook,
             sprintf(
-                "Target %s words of narration. Return:\n"
-                ."- script: the narration itself, first person, as continuous prose.\n"
-                ."- summary: 3-5 sentences on what happened in it, written for the next act's "
-                .'writer — names, what was said, what it cost, where things stand. This is the '
-                ."only thing the next call will know about this act.\n"
-                .'- rehook_line: the opening line you actually used, quoted back.',
+                "Target %s words of narration across the whole act. Return:\n"
+                ."- chapters: the act, in order, as the chapters described above. Each has:\n"
+                ."    - title: 2-6 words, at most %d characters. A YouTube chapter title: it marks a "
+                ."stage without giving away what comes. No numbering.\n"
+                ."    - rehook_line: the chapter's RE-HOOK, quoted back exactly — the first "
+                ."sentence of the chapter proper. Never the spoken chapter number: that is the "
+                ."announcement, not the re-hook, and a chapter whose recorded opening line is "
+                ."\"Chapter four.\" has no re-hook on record at all.\n"
+                ."    - text: that chapter's narration, first person, continuous prose. Every "
+                ."chapter's text ends on a complete sentence.\n"
+                ."- summary: FIVE SENTENCES, ONE EACH, in this order and nothing else:\n"
+                ."    (1) what happened in this act;\n"
+                ."    (2) what was said that matters, with the one line quoted;\n"
+                ."    (3) what it cost, and to whom;\n"
+                ."    (4) where things stand at the end;\n"
+                ."    (5) the one thing the next act must not contradict.\n"
+                ."  FIVE SENTENCES, NOT FIVE PARAGRAPHS. This is the only thing the next call "
+                .'will know about this act, so every sentence carries facts — names, amounts, '
+                .'dates, the quoted line — and none of them re-tells the act. At most %s '
+                .'characters. Three of the last twelve acts broke that bound by writing '
+                .'paragraphs where sentences were asked for; a summary over it is refused, the '
+                .'call is billed in full, and the act is written again from nothing.',
                 number_format($targetWords),
+                Chapter::TITLE_MAX_CHARS,
+                // The bound the form and the Action enforce, stated to the
+                // writer rather than assumed. Not a schema constraint:
+                // structured outputs do not honour maxLength. See
+                // Act::SUMMARY_MAX_CHARS.
+                number_format(Act::SUMMARY_MAX_CHARS),
             ),
-        ]);
+        ]));
+    }
+
+    /**
+     * What an act is told about the chapters it comes back as.
+     *
+     * -----------------------------------------------------------------------
+     * THE MEASUREMENT
+     * -----------------------------------------------------------------------
+     *
+     * A working video in this niche runs fourteen chapters in 34:46, about
+     * 2:29 each, with a re-hook at every one. Ours ran six acts of 5:54 to
+     * 9:44, so the first re-hook after the opening landed at 6:45 to 7:47 —
+     * on a format whose one measured failure is people leaving inside the
+     * first three minutes.
+     *
+     * The act stays the unit this call writes, because the writer returns
+     * ~1,100 words of it whatever it is asked and fourteen acts of that is a
+     * 75-minute video. The chapter goes UNDER it: two or three per act, so
+     * the act's natural length is the thing that fits rather than the thing
+     * being fought. See config/chapters.php.
+     *
+     * The budgets go through the story's own frozen sizing rate, the same
+     * one the act's word target came from. Two rates in one prompt is two
+     * beliefs about one narration inside a single string.
+     *
+     * -----------------------------------------------------------------------
+     * THE COUNT IS DERIVED BY THE WRITER, NOT STATED TO IT, AND THAT REVERSES
+     * THE FIRST VERSION
+     * -----------------------------------------------------------------------
+     *
+     * This used to say "at this act's length that is N chapters", with N
+     * computed from the act's word TARGET. Story 30 came back as two chapters
+     * per act every time — including the act that ran to 1,195 words, where
+     * the honest answer was three — because the writer obeyed the stated
+     * number rather than the length it had just written.
+     *
+     * That is the word-target finding with the sign flipped, and the pair is
+     * what makes it worth reading as a rule. A stated FIGURE steers weakly:
+     * the act word target moves the writer by about 0.30 words per word
+     * asked, so a hundred more words buys thirty. A stated COUNT steers
+     * absolutely: it was obeyed 6 times out of 6, at every act length from
+     * 1,052 to 1,195 words. **The difference is not that one number is more
+     * important. It is that a count is discrete and a writer can satisfy it
+     * exactly, so it stops being advice and becomes an instruction.**
+     *
+     * So the prompt states the DIVISOR and the bounds and asks for the
+     * division to be done afterwards, against the text that exists. The
+     * worked example is anchored on `naturalActWords()` — what the writer is
+     * measured to produce — rather than on the target, because an example
+     * built from the target would be the stated count again wearing a
+     * different hat.
+     *
+     * The divisor alone would not have moved anything, and that is recorded
+     * in config/chapters.php rather than here: at the old 150-second chapter
+     * budget a 1,123-word act divides into 2.25 and rounds to two, so an
+     * honest derivation returns exactly the number the stated one did. The
+     * budget moved to the transcript's measured 133 seconds in the same
+     * change, and only the two together change the cadence.
+     */
+    private function chapterInstruction(Story $story, ActOutline $act): string
+    {
+        $chapterWords = ScriptSizing::chapterTargetWords($story);
+        $min = (int) config('chapters.min_per_act', 2);
+        $max = (int) config('chapters.max_per_act', 4);
+        $minWords = (int) config('chapters.min_words', 150);
+
+        // The worked example is anchored to what the writer is MEASURED to
+        // produce, not to what it was asked for. That is the whole point of
+        // the change: see the docblock.
+        $natural = ScriptSizing::naturalActWords();
+        $naturalChapters = ScriptSizing::chaptersPerAct($story, $natural);
+
+        // The reference speaks its chapters as a bare number — "chapter 1",
+        // "chapter 2" — with no title, and the cold open comes BEFORE
+        // "chapter 1" (0:00-1:02, then the announcement). So the number is
+        // narration and the title is metadata.
+        $first = $this->firstChapterNumberFor($story, $act);
+
+        $announce = ChapterAnnouncement::enabled()
+            ? sprintf(
+                ' EVERY CHAPTER OPENS BY SPEAKING ITS NUMBER, as narration, as its own sentence — '
+                .'"%s" — the number in words, no title — and THEN that chapter\'s re-hook '
+                .'sentence. Chapters are numbered across the whole video, not within the act: '
+                .'this act\'s first chapter is chapter %d and they count upward from there, one '
+                .'number per chapter you write. The title is never spoken; it goes to the chapter '
+                .'list.%s',
+                ChapterAnnouncement::sentenceFor($first),
+                $first,
+                // Act 1 does NOT get the rule restated here. It gets a pointer
+                // to the one block that owns its opening order, because act 1
+                // is where three instructions collide and the fix was to give
+                // them a single owner rather than a copy each. See
+                // hookInstruction().
+                $act->sequence === 1
+                    ? ' THIS ACT IS THE EXCEPTION and the OPENING block below sets its order: the '
+                        .'hook is the cold open and is spoken before any chapter number, so '
+                        .'"Chapter one." comes after it. Every later chapter in this act opens '
+                        .'with its number as normal.'
+                    : '',
+            )
+            : ' The title is not spoken: it goes to the chapter list, not the narration.';
+
+        return sprintf(
+            'WRITE THIS ACT AS CHAPTERS. A chapter is about %d seconds of narration — roughly %s '
+            .'words — and it is the unit the viewer experiences: a title in the progress bar and, '
+            ."more importantly, a fresh re-hook.\n\n"
+            .'HOW MANY CHAPTERS IS DECIDED BY THE LENGTH YOU ACTUALLY WRITE, not by the word '
+            .'target: divide the words you wrote by %s and round. Acts come back longer than they '
+            .'are asked for — the measured length is about %s words, and %s words is %d chapters, '
+            .'not %d. Count yours the same way, after you have written it. Never fewer than %d and '
+            .'never more than %d, and no chapter under %d words. Break where the ground shifts — a '
+            ."new room, a new indignity, a new person — never mid-scene.\n\n"
+            .'EVERY CHAPTER OPENS WITH ITS OWN RE-HOOK: the first sentence of the chapter proper '
+            .'gives someone about to close the tab a reason not to. The next indignity already in '
+            .'progress, a line somebody said, a number. Not a recap of the chapter before it.%s',
+            (int) config('chapters.target_seconds', 133),
+            number_format($chapterWords),
+            number_format($chapterWords),
+            number_format($natural),
+            number_format($natural),
+            $naturalChapters,
+            max($min, $naturalChapters - 1),
+            $min,
+            $max,
+            $minWords,
+            $announce,
+        );
+    }
+
+    /**
+     * The story-wide number of this act's first chapter: one more than the
+     * chapters already stored on the acts before it.
+     *
+     * Read from the rows rather than projected, so a rewritten act 4 numbers
+     * from what acts 1-3 actually returned. The known limit: rewriting an
+     * early act to a different chapter count shifts the spoken numbers of
+     * every act after it, which `story:write --acts-only` does not re-write.
+     * A story rewritten act by act should be rewritten from the changed act
+     * onward, and `story:write` says so in its report.
+     */
+    private function firstChapterNumberFor(Story $story, ActOutline $act): int
+    {
+        $earlierActIds = $story->acts()->where('sequence', '<', $act->sequence)->pluck('id');
+
+        return 1 + Chapter::query()->whereIn('act_id', $earlierActIds)->count();
+    }
+
+    /**
+     * What an act is told about WHEN it is set.
+     *
+     * The measurement behind it is in ActTimeframe: story 28's present-day
+     * betrayal lands at 20:18 because two of its three escalation acts stage
+     * 2015 and 2017 in full, and story 23's at 15:01 for the same reason. The
+     * outline declares each act present or prior now and Gate 1 refuses a
+     * prior escalation act, so what reaches this call is an act the outline
+     * says is present — and this is the instruction that keeps it there,
+     * because the act system prompt's "name the dates, the rooms, the exact
+     * words" is exactly the instruction that stages a year-old banquet given
+     * the chance.
+     *
+     * Story 25 is the model and is quoted rather than described: the
+     * antagonist's line is quoted in the hook and STAGED at a present-day
+     * dinner, so the line still lands twice without an act going to history.
+     *
+     * Silent for a null timeframe. Every act outlined before the field
+     * existed is null, those outlines are not regenerated, and an act being
+     * re-written one at a time on one of them should get the shape its
+     * outline was built to — the same reason `endingFor()` keeps its no-phase
+     * branch.
+     */
+    private function timeframeInstruction(ActOutline $act): string
+    {
+        return match ($act->timeframe) {
+            ActTimeframe::Present => 'THIS ACT IS SET IN THE STORY\'S PRESENT. Anything that happened '
+                .'years earlier — the first time, the year the flat was bought, what was said at a '
+                .'banquet back then — is CITED in one sentence with its date, and not staged: no '
+                .'scene from that day, no dialogue from it, no room described. If the antagonist '
+                .'said the line years ago, quote it in one sentence and stage its most recent '
+                .'saying, now, in a room this act is in. Story 25 quotes "a wife who earns more" '
+                .'in its first thirty seconds and stages it at a present-day dinner in act 2; that '
+                .'is the shape. Two acts spent staging 2015 and 2017 is what put story 28\'s '
+                .'present-day betrayal at minute twenty.',
+            ActTimeframe::Prior => 'This act is marked as set BEFORE the story\'s present. That is '
+                .'refused at Gate 1 and should not have reached you; write it as a present-day act '
+                .'that cites the earlier incident in one sentence.',
+            null => '',
+        };
     }
 
     /**
@@ -919,10 +1363,25 @@ class ClaudeScriptWriter implements ScriptWriter
      *
      * Beat 3 draws on the antagonist's justification and DOES NOT CONSUME IT.
      * In this genre the same line lands twice — once here as one quoted
-     * sentence of bait, once in act 2 or 3 played out at length in the room it
-     * was said in — and the second landing is stronger for the first. A
-     * generator told to "use it in the hook" spends it and leaves the act
-     * paraphrasing itself, so the instruction says so in both directions.
+     * sentence of bait, once in the betrayal scene straight after the hook,
+     * said aloud in the room — and the second landing is stronger for the
+     * first. A generator told to "use it in the hook" spends it and leaves the
+     * act paraphrasing itself, so the instruction says so in both directions.
+     *
+     * -----------------------------------------------------------------------
+     * CHAPTER ONE IS THE BETRAYAL SCENE
+     * -----------------------------------------------------------------------
+     *
+     * This block used to send the second landing to "act 2 or 3", and stories
+     * 29-32 obeyed exactly: one line in the hook, the first public saying at a
+     * banquet at 9-11 minutes, the betrayal itself at a kitchen table. The
+     * reference stages it at 1:31, directly after its 62-second cold open. So
+     * `stories.betrayal_scene` is handed to act 1 here, inside the block that
+     * owns act 1's opening order, rather than as a fifth block that would be
+     * one more instruction for the other three to collide with. It follows
+     * the chapter announcement and the re-hook, and the answer-back is back in
+     * force inside it — which is what beat 4 now says from the other side:
+     * a round the narrator loses is not the reckoning.
      *
      * -----------------------------------------------------------------------
      * THE WORD BUDGET
@@ -944,8 +1403,20 @@ class ClaudeScriptWriter implements ScriptWriter
         $words = ScriptSizing::hookBetrayalWords($story);
 
         $beats = sprintf(
-            'THIS ACT OPENS THE VIDEO, and its opening is the highest-leverage text in the whole '
-            ."script. Five beats, in this order, before anything else happens:\n\n"
+            'THE OPENING. THIS ACT OPENS THE VIDEO, and its opening is the highest-leverage text '
+            .'in the whole script. Three other instructions in this prompt touch it and THIS BLOCK '
+            ."OUTRANKS ALL OF THEM for as long as the five beats last:\n\n"
+            .'- The narrator answers back in every scene the antagonist is in. NOT HERE. Beat 4 is '
+            .'the narrator\'s move in the opening and it is a cold action, not a line — the '
+            .'answer-back begins at the first scene AFTER the beats.'
+            ."\n"
+            .'- Every chapter opens by speaking its number. NOT THIS ONE. The hook is the cold '
+            .'open and comes first; "Chapter one." is spoken after beat 5, where the story proper '
+            .'begins.'
+            ."\n"
+            .'- Every chapter opens with a re-hook. The five beats ARE this chapter\'s opening; its '
+            ."re-hook line is the first sentence after the chapter number.\n\n"
+            ."Five beats, in this order, before anything else happens:\n\n"
             ."1. ONE sentence of setup. One. Do not write a second, and never write a sentence "
             ."about the video itself.\n"
             .'2. The betrayal itself, inside the first %s words. Not its aftermath, not a summary '
@@ -953,24 +1424,77 @@ class ClaudeScriptWriter implements ScriptWriter
             ."that was done, being done, in the room it happened in.\n"
             .'3. Evidence in EXACT WORDS: one line of dialogue, a message or a document, quoted. '
             .'The strongest version is the antagonist\'s own justification, said in her words. '
-            .'THE LATER ACT KEEPS IT — this genre plays that line twice, once here as bait in a '
-            .'single sentence and again later at length, in the room it was said in, and the '
-            ."second landing is stronger for the first. Quote it here; do not exhaust it here.\n"
+            .'THE BETRAYAL SCENE KEEPS IT — this genre plays that line twice, once here as bait in '
+            .'a single sentence and again straight after the hook, in chapter one, said aloud in '
+            .'the room with everyone watching, and the second landing is stronger for the first. '
+            ."Quote it here; do not exhaust it here.\n"
             .'4. ONE small, cold action by the narrator. Not a confrontation, not a speech, not a '
             .'threat: something quiet and exact that the audience understands and the antagonist '
-            ."does not. The confrontation is the final act and spending it here spends the video.\n"
+            .'does not. The RECKONING is the final act and spending it here spends the video. A '
+            .'round the narrator loses is not the reckoning — chapter one is one, and the narrator '
+            ."answers back in it.\n"
             .'5. A closing line that promises the DEPARTURE — that the narrator will be gone and '
             .'somebody will have to look for them. NOT revenge, NOT the courtroom, NOT the '
             ."exposure. Those are the payoff and this is the promise, and they are not the same.\n\n"
             .'Do not open with weather, a childhood memory, a house, a room, a date, or the '
             .'chronological beginning of events. The beginning in time is almost never the '
-            .'beginning of the video.',
+            ."beginning of the video.\n\n"
+            .'THEN, AND ONLY THEN, THE VIDEO STARTS: %s as its own sentence, then this chapter\'s '
+            .'re-hook line, then the act. From that sentence onward every other rule in this '
+            .'prompt is back in force, the answer-back included.',
             number_format($words),
+            ChapterAnnouncement::enabled()
+                ? '"'.ChapterAnnouncement::sentenceFor(1).'"'
+                : 'the act proper',
         );
 
+        // Chapter one, when the outline wrote one. Between the beats and the
+        // stored hook, so the hook keeps the closing position story 30 showed
+        // it needs. Absent on every story outlined before the field existed,
+        // which gets exactly the block it had.
+        $betrayal = trim((string) $story->betrayal_scene);
+
+        if ($betrayal !== '') {
+            $beats .= "\n\n".'CHAPTER ONE IS THE BETRAYAL SCENE. Straight after the chapter number and '
+                .'its re-hook, write this scene in full, in the room, as it happens. It is where the '
+                .'antagonist\'s justification is FIRST SAID ALOUD, to the narrator\'s face, in front of '
+                ."everyone in it:\n\n".$betrayal."\n\n"
+                .'The person it is done with is in the room for all of it; they do not need a line. '
+                .'Name the witnesses, and give one of them the question that makes her say it. She '
+                .'says the justification in her own words from the spine, not a paraphrase of it. '
+                .'The answer-back is back in force here: what the narrator SAYS is short, controlled '
+                .'and exact, and the crude version stays in their head, as narration. The narrator '
+                .'still loses the round. Do not cut to a later day and do not summarise what was '
+                .'said: stage it in full, through her saying it and the narrator losing the round. '
+                // "The scene is the chapter" closed this block on story 33's
+                // first act-1 call, and the writer returned ONE chapter of 479
+                // words that stopped before the antagonist entered the room —
+                // 1,449 output tokens against 3,400-7,700 on every act of 31
+                // and 32 — with a summary calling the act "the chapter". One
+                // observation, and the sentence plainly allowed that reading:
+                // it said the act was one chapter, beside a block saying 2-4.
+                .'THE SCENE IS CHAPTER ONE, NOT THE WHOLE ACT. When it ends, the act goes on into its '
+                .'further chapters, at its full length, as the chapter instructions above say.';
+        }
+
+        // -------------------------------------------------------------------
+        // THE STORED HOOK GOES LAST, AND IT IS AN ORDER RATHER THAN A NOTE
+        // -------------------------------------------------------------------
+        //
+        // `stories.hook` is the paragraph the outline wrote to answer the five
+        // beats, and story 29's act 1 opened on it verbatim. Story 30's did
+        // not: it opened mid-scene on the betrayal and invented its own third
+        // and fourth beats. The text was in the prompt both times, in the same
+        // place — trailing the beats as "the hook this outline asks for",
+        // which reads as a reference rather than as the thing to write.
+        //
+        // So it closes the block, in the position the answer-back and the
+        // chapter announcement used to occupy, and it says what to do with it.
         return $hook === ''
             ? $beats
-            : $beats."\n\nTHE HOOK THIS OUTLINE ASKS FOR — write these beats as this:\n\n".$hook;
+            : $beats."\n\nTHIS IS THE OPENING THE OUTLINE WROTE FOR THIS STORY. WRITE IT — expand "
+                ."it into the five beats above, keeping its facts, its quoted line and its closing "
+                ."promise. Do not replace it with an opening of your own:\n\n".$hook;
     }
     /**
      * What this act has to do with its ending, decided by its PHASE.
@@ -992,9 +1516,23 @@ class ClaudeScriptWriter implements ScriptWriter
     {
         return match ($act->phase) {
             ActPhase::Escalation => 'This act is in the ESCALATION phase. The withheld information '
-                .'does not come out here and the narrator does not leave here. Nothing is resolved: '
-                .'no round is won, no real apology arrives, no ally fixes anything. End the act '
-                .'worse off than it started.',
+                .'does not come out here and the narrator does not leave here. Nothing is recovered: '
+                .'no cost comes back, no real apology arrives, no ally fixes anything, and the act '
+                .'ends worse off for the narrator than it started. AND THE NARRATOR ANSWERS BACK. In '
+                .'every scene the antagonist is in, the narrator says one short, exact, funny line '
+                .'that lands — not a speech, not "all right", not "Yes, Mother". The line changes '
+                .'nothing about what the act costs; that is the point. The exchange is won and the '
+                .'round is lost.'
+                // The one place this rule does not reach, said here as well as
+                // in the block that owns it. Story 30's act 1 spent beat 4 —
+                // the cold action — on an answer-back, because this sentence
+                // said "every scene" and arrived after the beats did.
+                .($act->sequence === 1
+                    ? ' THE EXCEPTION IS THE OPENING OF THIS ACT: inside the five beats of the hook '
+                        .'the narrator does not answer back, because beat 4 is a cold action and a '
+                        .'confrontation there spends the video. The answer-back starts at the first '
+                        .'scene after the hook and runs to the end of the act.'
+                    : ''),
 
             ActPhase::Departure => "THIS IS THE DEPARTURE ACT. The narrator goes:\n\n"
                 .$story->departure."\n\n"
@@ -1010,24 +1548,61 @@ class ClaudeScriptWriter implements ScriptWriter
                 .$story->reversal_beats."\n\n"
                 .'The direction of the escalation has reversed. Everything in this act costs the '
                 .'ANTAGONIST — money, standing, the people who found her excuse reasonable — and it '
-                .'costs her more than the last attempt did. She does not find them in this act. The '
-                .'narrator does not gloat, does not send a message, and is not watching: they are '
-                .'living, elsewhere, and the little the audience sees of that should be quiet. End '
-                .'the act with her worse off than she started it and no closer.',
+                .'costs her more than the last attempt did. PUT THEM IN THE SAME SCENE AT LEAST ONCE '
+                .'IN THIS ACT: she runs into them, follows them, sits down across from them, turns up '
+                .'where they are — on her initiative or by chance, in front of people — and the '
+                .'meeting costs her, in public. The narrator answers in one short, exact, funny line '
+                .'and leaves. They do not go back, do not explain, do not search for her, do not send '
+                .'a message. The narrator\'s own life is ON SCREEN in this act, not a paragraph: what '
+                .'they are doing, who they are with, what the days look like — because a narrator the '
+                .'audience cannot see is a narrator the antagonist is not losing to. She may learn '
+                .'where they are; if she does, the finding costs her and the scene is still the '
+                .'narrator\'s. End the act with her worse off than she started it.',
 
             ActPhase::Refusal => 'THIS IS THE FINAL ACT. Both payoffs land here, in this '
                 ."order.\n\nFIRST, the exposure — the public one:\n\n"
                 .$story->exposure_moment."\n\n"
                 .'The withheld information comes out here and nowhere earlier. Put the witnesses in '
                 .'the room and name them. The antagonist repeats their justification in front of '
-                ."people who now know it is false.\n\nTHEN the refusal — the private one, and the "
-                ."thing the audience has waited the whole video for:\n\n"
+                ."people who now know it is false.\n\n"
+                .'THE NARRATOR IS IN THE ROOM FOR IT, by their own choice, and the audience is there '
+                ."with them — this is a scene the narrator lives, not a report they receive later:\n\n"
+                .(trim((string) $story->narrator_at_exposure) !== ''
+                    ? $story->narrator_at_exposure
+                    : 'They arrive unexpected and uninvited, having chosen this moment, and they '
+                        .'produce the withheld information themselves.')
+                ."\n\n"
+                .'Whether they chose the moment or she came to where they are, the narrator is in '
+                .'the room and puts the thing only they can produce on the table in person. Do not '
+                .'have a document, a lawyer or a friend do it while the narrator is eight hundred '
+                .'kilometers away hearing about it afterwards; story 25\'s narrator raises his hand '
+                ."at the back of the room in a work jacket, and that is the shape.\n\n"
+                ."THEN the refusal — the private one, and the thing the audience has waited the "
+                ."whole video for:\n\n"
                 .$story->refusal."\n\n"
-                .'She asks. The narrator says no, and each refusal answers ONE specific earlier '
-                .'humiliation in the words it was done in — hand her own sentence back to her. The '
-                .'narrator does not retaliate, gloat, or explain the moral. End within a few '
-                .'sentences of the last refusal landing: no epilogue about what everyone learned, '
-                .'no ambiguity, no "I still think about it sometimes".',
+                .'She reaches them afterwards. She asks them to come back. The narrator decides where '
+                .'and how long they talk, says no, and each refusal answers ONE specific earlier '
+                .'humiliation in the words it was done in — hand her own sentence back to her, and the '
+                .'sentence she said aloud in the betrayal scene is the strongest one to hand back. The '
+                .'strongest refusal names a loss she can no longer repair. The narrator does not '
+                .'retaliate, gloat, or explain the moral. The last refusal lands and the narrator walks '
+                .'away.'
+                // "No epilogue" was here, and it was derived from a reference
+                // TITLE. The transcript closes on one: after the last refusal
+                // and the walk away, "chapter 14 — One year later", the
+                // narrator's own wedding, and "Sophia was the only one who
+                // didn't show up." CLAUDE.md 3d recorded the correction and
+                // this sentence was never changed. The two point-of-view
+                // extras after it are NOT asked for: they are a second and
+                // third narrator, and the genre's first person is one voice.
+                ."\n\nTHEN, IF IT EARNS ITS PLACE, A SHORT EPILOGUE — a few paragraphs, not a chapter "
+                .'of reflection. A time jump in the narrator\'s own voice, a year or so later: what '
+                .'the narrator\'s life is now, and one concrete fact that shows her loss from the '
+                .'outside. The reference\'s whole epilogue turns on one sentence — a year later, at the '
+                .'narrator\'s wedding, "Among all our mutual friends Sophia was the only one who didn\'t '
+                .'show up." That is its job. No moral, no account of what everyone learned, no '
+                .'ambiguity, no "I still think about it sometimes", and no chapter told from anybody '
+                .'else\'s point of view.',
 
             // No phase: an anthology act, or an outline written before the
             // reversal phase existed. The old shape, unchanged, because that is
@@ -1446,20 +2021,56 @@ class ClaudeScriptWriter implements ScriptWriter
             $lines[] = sprintf('PHASE: %s — %s', $act->phase->value, match ($act->phase->value) {
                 'escalation' => 'the narrator is losing ground and absorbing it',
                 'departure' => 'the narrator leaves, and does not announce it',
-                'search' => 'the antagonist is looking for them, and it is costing her',
-                'refusal' => 'the narrator is found and says no',
+                'search' => 'the antagonist is looking for them and reaching them, and every meeting is costing her',
+                'refusal' => 'the narrator is in the room for the exposure, and says no',
                 default => 'unstated',
             });
+        }
+
+        // When the act is set. A present-day act's one-sentence citation of
+        // an earlier incident is a cutaway at most, never a staged flashback
+        // scene — and the scene writer is the stage that would draw one.
+        if ($act->timeframe !== null) {
+            $lines[] = 'SET IN: '.match ($act->timeframe) {
+                ActTimeframe::Present => 'the story\'s present. A sentence citing an earlier '
+                    .'incident is at most one cutaway still; it is not a scene from that year.',
+                ActTimeframe::Prior => 'the past, before the story\'s present.',
+            };
         }
 
         foreach ([
             'COSTS' => $act->escalation_beat,
             'THE GRIEVANCE' => $story->narrator_grievance,
             'THE ANTAGONIST BELIEVES' => $story->antagonist_justification,
+            // Act 1 only: it is the act the scene is in. This is the call that
+            // decides who is IN the frame, and a betrayal scene drawn as two
+            // people at a table is the discovery again, in pictures — the
+            // person it is done with and the witnesses have to be drawn.
+            'THE BETRAYAL SCENE (who is in the room)' => $act->sequence === 1 ? $story->betrayal_scene : '',
         ] as $label => $value) {
             if (trim((string) $value) !== '') {
                 $lines[] = $label.': '.trim((string) $value);
             }
+        }
+
+        // The chapter boundaries, read off the act the way the phase and the
+        // beat are — the consumer question asked in the change that added the
+        // field. A chapter starts at a sentence, a scene is a sentence range,
+        // and a scene straddling the boundary puts the previous chapter's
+        // still under the new chapter's opening line.
+        $boundaries = $act->chapters
+            ->filter(fn (Chapter $chapter): bool => $chapter->first_sentence > 1)
+            ->map(fn (Chapter $chapter): string => sprintf(
+                'sentence %d ("%s")',
+                $chapter->first_sentence,
+                $chapter->title,
+            ))
+            ->all();
+
+        if ($boundaries !== []) {
+            $lines[] = 'CHAPTER BOUNDARIES: a new chapter begins at '.implode(', ', $boundaries).'. '
+                .'A scene NEVER straddles one — end a scene on the sentence before, start the next '
+                .'scene on that sentence.';
         }
 
         return $lines === [] ? '' : "\n".implode("\n", $lines)."\n";
@@ -1506,11 +2117,12 @@ class ClaudeScriptWriter implements ScriptWriter
             ."scene if they are the same moment.\n\n"
             ."FOR EACH SCENE GIVE:\n"
             ."- first_sentence, last_sentence: the range.\n"
-            ."- frame: the composed shot. What is in the picture, not what the line says.\n"
+            .'- frame: the composed shot. What is in the picture, not what the line says. '
+            ."25-45 words, at most %d characters.\n"
             ."- characters_present: names from the cast who are VISIBLE. Empty if nobody is.\n"
             ."- motion_preset: zoom_in, zoom_out, pan_left, pan_right or static.\n"
             .'- expression: what the faces are DOING, named plainly. Empty ONLY if nobody is '
-            ."in the frame.\n"
+            ."in the frame. At most %d characters.\n"
             .'- thumbnail_candidate: true for at most %d scene(s) in this act — the ones that '
             .'would stop someone scrolling. A face mid-reaction, close enough to read at '
             .'thumbnail size. Never a frame with nobody in it — cutaways belong in the video '
@@ -1523,6 +2135,11 @@ class ClaudeScriptWriter implements ScriptWriter
             $total,
             $total,
             $wordsPerScene,
+            // The bounds Gate 2's editor validates the two authored sections
+            // against, and DraftScenes enforces after the call. Not schema
+            // constraints — structured outputs do not honour maxLength.
+            Scene::FRAME_MAX_CHARS,
+            Scene::EXPRESSION_MAX_CHARS,
             $thumbnailsPerAct,
             $total,
             trim($numbered),
@@ -1562,8 +2179,24 @@ class ClaudeScriptWriter implements ScriptWriter
 
                 'narrator_grievance' => ['type' => 'string'],
                 'antagonist_justification' => ['type' => 'string'],
+
+                // The betrayal as a scene. Required because it is awkward in
+                // the way a premise makes it awkward: most premises have the
+                // betrayal FOUND — photos, a booking, a message — and the path
+                // of least resistance is to stage the finding. Seven stories
+                // took it. See the migration.
+                'betrayal_scene' => ['type' => 'string'],
+
                 'withheld_information' => ['type' => 'string'],
                 'exposure_moment' => ['type' => 'string'],
+
+                // How the narrator comes to be in the room for the exposure.
+                // Required because it is the awkward one in the most
+                // expensive way: the departure says the narrator is gone, so
+                // the path of least resistance is an exposure they hear about
+                // later. Two of three phase stories took it, and their public
+                // payoff is a report — see the migration.
+                'narrator_at_exposure' => ['type' => 'string'],
 
                 // The reversal half. Required for the same reason the first
                 // four are: asked for in prose, the awkward one gets dropped,
@@ -1586,8 +2219,14 @@ class ClaudeScriptWriter implements ScriptWriter
                             'title' => ['type' => 'string'],
                             'summary' => ['type' => 'string'],
                             'escalation_beat' => ['type' => 'string'],
+                            // Declared per act, because a model asked in
+                            // prose to keep every act in the present would
+                            // keep most of them; asked to SAY where each act
+                            // sits, it says "prior" for the one that is, and
+                            // Gate 1 can refuse before the act is bought.
+                            'timeframe' => ['type' => 'string', 'enum' => ['present', 'prior']],
                         ],
-                        'required' => ['title', 'summary', 'escalation_beat'],
+                        'required' => ['title', 'summary', 'escalation_beat', 'timeframe'],
                         'additionalProperties' => false,
                     ],
                 ],
@@ -1597,8 +2236,10 @@ class ClaudeScriptWriter implements ScriptWriter
                 'hook',
                 'narrator_grievance',
                 'antagonist_justification',
+                'betrayal_scene',
                 'withheld_information',
                 'exposure_moment',
+                'narrator_at_exposure',
                 'departure',
                 'reversal_beats',
                 'refusal',
@@ -1616,11 +2257,38 @@ class ClaudeScriptWriter implements ScriptWriter
         return [
             'type' => 'object',
             'properties' => [
-                'script' => ['type' => 'string'],
+                // The act AS chapters. Required as an array of objects rather
+                // than asked for as headings in one prose string, for the
+                // reason `expression` is a scene field: a shape the model has
+                // to fill is honoured where a prose instruction is honoured
+                // most of the time. No minItems/maxItems — structured outputs
+                // reject any minItems other than 0 or 1 — so the count is
+                // enforced against the decoded response in GenerateActScripts,
+                // after the cost row, beside the summary bound.
+                'chapters' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'title' => ['type' => 'string'],
+                            'rehook_line' => ['type' => 'string'],
+                            'text' => ['type' => 'string'],
+                        ],
+                        'required' => ['title', 'rehook_line', 'text'],
+                        'additionalProperties' => false,
+                    ],
+                ],
+                // No maxLength, deliberately: structured outputs do not honour
+                // string constraints, so a bound written here would be either
+                // rejected or ignored — and ignored is the documented-guard
+                // shape, a limit that reads as enforced and is not. The bound
+                // (Act::SUMMARY_MAX_CHARS) is stated in the prompt and checked
+                // against the decoded response in GenerateActScripts, after the
+                // cost row, the way the outline's act count is. A test asserts
+                // this schema carries no maxLength so nobody "fixes" it in.
                 'summary' => ['type' => 'string'],
-                'rehook_line' => ['type' => 'string'],
             ],
-            'required' => ['script', 'summary', 'rehook_line'],
+            'required' => ['chapters', 'summary'],
             'additionalProperties' => false,
         ];
     }

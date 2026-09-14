@@ -318,6 +318,7 @@
                 <span class="mono">{{ mb_strlen($titleSelected) }}/{{ $limits['title_hard'] }}</span>
             </label>
             <input id="title" type="text" wire:model.blur="titleSelected" @disabled(! $this->editable())>
+            @error('titleSelected') <div class="error">{{ $message }}</div> @enderror
 
             {{-- Clamped, and the overage said in words. The mock draws this for
                  a title inside both marks; a title over 100 is the case the
@@ -389,6 +390,7 @@
                 <span class="mono">{{ number_format(mb_strlen($description)) }}/{{ number_format($limits['description']) }}</span>
             </label>
             <textarea id="description" wire:model.blur="description" rows="14" @disabled(! $this->editable())></textarea>
+            @error('description') <div class="error">{{ $message }}</div> @enderror
             <div class="muted small mt-2">
                 The opening two or three sentences are the real payload &mdash; they show in search and above
                 the fold. Write them as a hook, not a summary. Everything below the chapter list is
@@ -639,6 +641,15 @@
     @endif
 
     @if ($this->editable())
+        {{-- A refused save says so HERE, above the buttons that were pressed,
+             from the whole error bag. `approve()` saves first, so a refused
+             save is a refused gate crossing and the heading says both. --}}
+        @if ($errors->any())
+            <x-refused-save :fields="$this->refusedFields()"
+                            heading="Sheet not saved, and Gate 4 not crossed."
+                            :status="$story->status->value" />
+        @endif
+
         <div class="row">
             <button wire:click="save">Save sheet</button>
 
