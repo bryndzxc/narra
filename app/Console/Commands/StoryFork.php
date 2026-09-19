@@ -71,14 +71,27 @@ class StoryFork extends Command
 
             $fork = Story::create([
                 'title' => $title,
-                'slug' => Str::slug(Str::limit($title, 60, '')).'-'.Str::lower(Str::random(4)),
+                // Story::slugFor, which caps at the column's 64. The hand-built
+                // version here limited the TITLE to 60 and then added "-xxxx",
+                // so a title near 60 characters made a 65-character slug and
+                // the fork died on a truncation error — found 2026-09-19 by a
+                // random factory title, two runs in six.
+                'slug' => Story::slugFor($title, Str::lower(Str::random(4))),
                 'premise' => $source->premise,
+
+                // The cast is part of the outline: the spine and the act
+                // summaries name exactly these people.
+                'outline_cast' => $source->outline_cast,
 
                 // The genre spine travels with the outline. These seven fields
                 // are what every act call is written against, so a fork that
                 // dropped them would not be running the same experiment.
                 'narrator_grievance' => $source->narrator_grievance,
                 'antagonist_justification' => $source->antagonist_justification,
+                'accomplice_motive' => $source->accomplice_motive,
+                'accomplice_performance' => $source->accomplice_performance,
+                'accomplice_fall' => $source->accomplice_fall,
+                'running_thought' => $source->running_thought,
                 'betrayal_scene' => $source->betrayal_scene,
                 'withheld_information' => $source->withheld_information,
                 'exposure_moment' => $source->exposure_moment,
@@ -87,6 +100,11 @@ class StoryFork extends Command
                 'departure' => $source->departure,
                 'reversal_beats' => $source->reversal_beats,
                 'refusal' => $source->refusal,
+                'antagonist_regret' => $source->antagonist_regret,
+                // The ending the source was outlined for. A fork that keeps
+                // the outline must keep what it was written to; one that
+                // re-outlines can change it at Gate 1 while it is a draft.
+                'ending' => $source->ending,
 
                 'format' => $source->format,
                 'locale_profile' => $source->locale_profile,
@@ -126,6 +144,9 @@ class StoryFork extends Command
             // hence forced.
             $fork->forceFill([
                 'outlined_before_betrayal_scene' => (bool) $source->outlined_before_betrayal_scene,
+                'outlined_before_cast' => (bool) $source->outlined_before_cast,
+                'outlined_before_accomplice_and_thought' => (bool) $source->outlined_before_accomplice_and_thought,
+                'outlined_before_antagonist_regret' => (bool) $source->outlined_before_antagonist_regret,
             ])->save();
 
             $fork->refresh();

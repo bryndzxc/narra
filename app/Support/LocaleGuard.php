@@ -53,6 +53,22 @@ class LocaleGuard
     }
 
     /**
+     * Denied terms, returned rather than thrown. Same list, same matcher as
+     * `assert()`.
+     *
+     * For the two stages whose output an operator reads at Gate 1 anyway — the
+     * outline and the act scripts — which keep the text and show the phrase
+     * instead of discarding a paid call. See `LocaleViolationException` for why
+     * that is right there and wrong for scenes and the cast.
+     *
+     * @return array<int, array{term: string, context: string}>
+     */
+    public function denied(string $text, string $localeProfile): array
+    {
+        return $this->hits($text, $this->listFor($localeProfile, 'denylist'));
+    }
+
+    /**
      * Ambiguous terms, for Gate 1 to display. Never throws.
      *
      * @return array<int, array{term: string, context: string}>
@@ -98,7 +114,49 @@ class LocaleGuard
             );
         }
 
-        return trim((string) ($profile['guidance'] ?? ''));
+        return trim(trim((string) ($profile['guidance'] ?? ''))."\n\n".$this->americanWordsLine());
+    }
+
+    /**
+     * The American word for every shared denied term, as one instruction.
+     *
+     * NAME THE RIGHT WORD, NOT ONLY THE WRONG ONE. The denylist knew "car
+     * park" was wrong and the guidance named the American word for none of its
+     * terms, so the writer was refused without ever being told what this
+     * setting wants — a remedy naming no remedy, in a prompt. Three refusals
+     * and about $0.90 on that one phrase (story 36 act 2; story 38 act 4's
+     * scene drafts, twice), while "parking lot" was in fourteen act scripts.
+     *
+     * Generated from `locale.american_words`, the same map the denylists are
+     * keyed on, so a term cannot be banned in one place and explained in a
+     * hand-written other. Appended to every profile, because the list is
+     * shared by every profile.
+     *
+     * **It quotes the banned words, and that is a known risk, taken on the
+     * operator's decision (2026-09-19).** The cast prompt's texture ban quotes
+     * "weathered square jaw" as its example, and story 38's cast came back
+     * with "weathered-shaped square face" with no correction note in play. So
+     * this is watched: a denied term from this list appearing more often in
+     * act prose after this line than before is the reading that reverses it.
+     * PromptLocaleTest excises exactly this line and holds the rest of every
+     * prompt to zero denied terms.
+     */
+    public function americanWordsLine(): string
+    {
+        $pairs = (array) config('locale.american_words', []);
+
+        if ($pairs === []) {
+            return '';
+        }
+
+        return 'Use the American word. Where you would write a word on the left, write the one on the '
+            .'right instead: '
+            .implode(', ', array_map(
+                static fn (string $british, string $american): string => "{$british} → {$american}",
+                array_keys($pairs),
+                $pairs,
+            ))
+            .'.';
     }
 
     /**
@@ -178,11 +236,15 @@ class LocaleGuard
     }
 
     /**
-     * Every match, with surrounding context.
+     * Every leaked TERM, with the context of its first occurrence.
      *
-     * All of them, not the first — an act with six leaks should report six, so
-     * one re-run fixes the prompt rather than six re-runs fixing it one term at
-     * a time.
+     * Every term, not the first term — an act with six different leaks should
+     * report six, so one re-run fixes the prompt rather than six re-runs fixing
+     * it one term at a time. But ONE occurrence per term: an act that says
+     * "colour" five times reports it once. That is right for refusing a stage
+     * and wrong for counting. This docblock used to say "All of them, not the
+     * first", which read as every occurrence, and a prompt sweep built on it
+     * reported 3 "colour" where the source held 11. Use `occurrences()` to count.
      *
      * @param  array<int, string>  $terms
      * @return array<int, array{term: string, context: string}>
@@ -196,10 +258,7 @@ class LocaleGuard
         $found = [];
 
         foreach ($terms as $term) {
-            // \b does not do what is wanted at the edge of a multi-word term
-            // ending in punctuation, so the boundary is asserted explicitly
-            // against a non-word character or the string edge.
-            $pattern = '/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/iu';
+            $pattern = $this->patternFor($term);
 
             if (preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE) !== 1) {
                 continue;
@@ -212,6 +271,73 @@ class LocaleGuard
         }
 
         return $found;
+    }
+
+    /**
+     * Every OCCURRENCE of every term, with context. For auditing text we wrote.
+     *
+     * Public for the prompt locale check (tests/Feature/PromptLocaleTest.php),
+     * which has to count, and which must match exactly the way the guard does —
+     * so it asks the guard rather than keeping a second copy of the pattern.
+     *
+     * @param  array<int, string>  $terms
+     * @return array<int, array{term: string, context: string}>
+     */
+    public function occurrences(string $text, array $terms): array
+    {
+        $found = [];
+
+        foreach ($terms as $term) {
+            if (preg_match_all($this->patternFor($term), $text, $matches, PREG_OFFSET_CAPTURE) < 1) {
+                continue;
+            }
+
+            foreach ($matches[0] as [$matched, $offset]) {
+                $found[] = [
+                    'term' => $term,
+                    'context' => $this->contextAround($text, (int) $offset, strlen($matched)),
+                ];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * A profile's list, or — with no profile — the terms EVERY profile shares.
+     *
+     * The shared lists are the operator's idiom and British spelling, which are
+     * wrong whatever the setting. Text that reaches every profile's prompts
+     * (the genre contract, the act and scene instructions) is held to those;
+     * setting terms like "Thanksgiving" are wrong only in some profiles and
+     * correct in others, so they cannot be judged without knowing the story.
+     *
+     * @return array<int, string>
+     */
+    public function list(?string $localeProfile, string $key): array
+    {
+        if ($localeProfile !== null) {
+            return $this->listFor($localeProfile, $key);
+        }
+
+        $lists = array_map(
+            fn (string $profile): array => array_map('mb_strtolower', $this->listFor($profile, $key)),
+            array_keys($this->profiles()),
+        );
+
+        return array_values(array_unique($lists === [] ? [] : array_intersect(...$lists)));
+    }
+
+    /**
+     * The one pattern a term is matched with.
+     *
+     * \b does not do what is wanted at the edge of a multi-word term ending in
+     * punctuation, so the boundary is asserted explicitly against a non-word
+     * character or the string edge.
+     */
+    private function patternFor(string $term): string
+    {
+        return '/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/iu';
     }
 
     private function contextAround(string $text, int $offset, int $length): string

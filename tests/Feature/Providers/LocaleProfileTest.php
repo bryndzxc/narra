@@ -62,7 +62,12 @@ class LocaleProfileTest extends TestCase
             'warnlist' => ['possibly'],
         ]);
 
-        $this->assertSame('Write about nowhere.', $this->guard->guidanceFor('en-ZZ'));
+        // The profile's own guidance, then the shared American-word line every
+        // profile carries, because the list it names is shared by every profile.
+        $this->assertSame(
+            "Write about nowhere.\n\n".$this->guard->americanWordsLine(),
+            $this->guard->guidanceFor('en-ZZ'),
+        );
         $this->assertSame(['en-US', 'en-CN', 'en-ZZ'], array_keys($this->guard->profiles()));
 
         $this->expectException(LocaleViolationException::class);
@@ -77,7 +82,7 @@ class LocaleProfileTest extends TestCase
         $this->expectException(LocaleViolationException::class);
 
         $this->guard->assert(
-            'She paid four thousand dollars and called 911 when the sheriff arrived for Thanksgiving.',
+            'It was ninety degrees Fahrenheit and she called 911 when the sheriff arrived for Thanksgiving.',
             'en-CN',
             'act 3',
         );
@@ -88,7 +93,7 @@ class LocaleProfileTest extends TestCase
         // One re-run should fix the prompt, not six.
         try {
             $this->guard->assert(
-                'She paid four thousand dollars and called 911 when the sheriff arrived for Thanksgiving.',
+                'It was ninety degrees Fahrenheit and she called 911 when the sheriff arrived for Thanksgiving.',
                 'en-CN',
                 'act 3',
             );
@@ -97,8 +102,42 @@ class LocaleProfileTest extends TestCase
             $terms = array_column($e->hits, 'term');
         }
 
-        foreach (['dollars', 'called 911', 'sheriff', 'thanksgiving'] as $expected) {
+        foreach (['fahrenheit', 'called 911', 'sheriff', 'thanksgiving'] as $expected) {
             $this->assertContains($expected, $terms);
+        }
+    }
+
+    public function test_a_term_with_a_chinese_reading_warns_rather_than_fails(): void
+    {
+        // The denylist's own rule: a term belongs there only if it has NO
+        // plausible reading in a story set in China. Both sentences are the
+        // real refused text — story 34 act 3 and story 29 act 3, each a billed
+        // act thrown away — and both describe China correctly.
+        $text = 'The lease ended on the twenty-fourth of July, and I did not renew it. '
+            .'Chen Wei was buying for his son\'s school district, and paid in Hong Kong dollars.';
+
+        $this->guard->assert($text, 'en-CN', 'act 3');
+
+        $this->assertEqualsCanonicalizing(
+            ['fourth of july', 'school district', 'dollars'],
+            array_column($this->guard->warnings($text, 'en-CN'), 'term'),
+        );
+    }
+
+    public function test_operator_idiom_whose_reading_depends_on_the_setting_splits_by_profile(): void
+    {
+        // Mexican adobo is a US reading and a Chinese three-wheeler is a
+        // Chinese one, so neither can sit in a list shared by both settings.
+        $this->guard->assert('She ordered chicken in adobo.', 'en-US', 'act 1');
+        $this->guard->assert('The tricycle driver waited at the county bus station.', 'en-CN', 'act 1');
+
+        foreach ([['She ordered chicken in adobo.', 'en-CN'], ['The tricycle driver honked.', 'en-US']] as [$text, $profile]) {
+            try {
+                $this->guard->assert($text, $profile, 'act 1');
+                $this->fail("{$profile} passed: {$text}");
+            } catch (LocaleViolationException $e) {
+                $this->assertNotEmpty($e->hits);
+            }
         }
     }
 

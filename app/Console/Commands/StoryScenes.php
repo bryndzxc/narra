@@ -10,6 +10,7 @@ use App\Enums\CostCategory;
 use App\Enums\OperatorAction;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\FailureRemedy;
 use App\Support\ModelRoster;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -96,6 +97,7 @@ class StoryScenes extends Command
         } catch (Throwable $e) {
             $this->line('');
             $this->error($e->getMessage());
+            $this->printRemedy($e, $story);
             $this->report($story->refresh(), $review, $startedAt);
 
             return self::FAILURE;
@@ -287,5 +289,17 @@ class StoryScenes extends Command
         $this->info(sprintf('Queued on the "%s" queue. Watch it at /renders/%s.', $result['queue'], $story->slug));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The repair for a failure caught here, from the same builder the progress
+     * page uses. The exception message holds facts only since 2026-09-17, so
+     * without this the terminal would have lost the advice it used to carry.
+     */
+    private function printRemedy(Throwable $e, Story $story): void
+    {
+        foreach (FailureRemedy::consoleLines($e, $story->refresh()) as $line) {
+            $this->line($line);
+        }
     }
 }

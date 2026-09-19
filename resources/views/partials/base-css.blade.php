@@ -943,6 +943,10 @@
      * The sticky offset exists so a column heading does not scroll away under
      * the site header on a 270-scene table. Clipping four corners is not worth
      * breaking that, and the corners were never clipped before this either.
+     *
+     * Writing this down did not stop it recurring: `.scrollx` brought it back
+     * through `overflow-x: auto`. The rule is the mechanism, not the property —
+     * see `.scrollx th`.
      */
     .panel.flush { padding: 0; }
 
@@ -1906,6 +1910,17 @@
     .row.tight { gap: var(--s-3); }
     .row.wide-gap { gap: var(--s-7); }
     .scrollx { overflow-x: auto; max-width: 100%; }
+    /*
+     * The `.panel.flush` breakage above, arriving a second time. Any overflow
+     * other than `visible` makes an element a scroll container, and a sticky
+     * `th` measures its `top` from the NEAREST scroll container, not the page.
+     * `overflow-x: auto` qualifies exactly as `overflow: hidden` did, so every
+     * heading in here was pinned 48px down from the wrapper's top and drawn over
+     * row one — on Gate 1's cast table it hid the narrator's row. A heading
+     * cannot stay under the site chrome from inside a box that scrolls on its
+     * own anyway, so in here it does not try.
+     */
+    .scrollx th { position: static; }
     .band .warnicon { flex: none; }
     .bar .moneyfill { background: var(--money); }
 
@@ -2484,6 +2499,11 @@
     }
 
     .localehits code { color: var(--warn-ink); }
+
+    /* A DENIED term the stage kept for judgement: the refusal's red, never the
+       warning's amber. It replaced a refusal, so it may not be quieter than
+       one. */
+    .alert.err .localehits code { color: var(--fail-ink); }
 
     /*
      * Meta text that is a DEADLINE rather than a description.
@@ -3131,6 +3151,16 @@
 
     /* A failure's own words, in the failure's own colour. */
     pre.err { color: var(--err-ink); border-color: color-mix(in srgb, var(--fail) 35%, transparent); }
+
+    /*
+     * The repair under a failure, built at display time (App\Support\FailureRemedy).
+     * Prose, so capped like prose. "No known repair." is in the ordinary text
+     * colour and bold, never muted: it is the answer to the question the
+     * reader came to the row with, and a quiet answer reads as a missing one.
+     */
+    .repair { margin-top: 10px; max-width: 96ch; color: var(--text); }
+    .repair p { margin: 0 0 6px; }
+    .repair.unknown { margin-bottom: 0; }
 
     video { width: 100%; border-radius: var(--radius); background: var(--video-mat); box-shadow: var(--lift-lg); }
 

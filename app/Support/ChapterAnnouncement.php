@@ -78,6 +78,37 @@ final class ChapterAnnouncement
         return 'Chapter '.self::numberWord($n).'.';
     }
 
+    /**
+     * The sentence that opens the antagonist's point-of-view chapter.
+     *
+     * Not numbered, the way the reference's is not: chapters 1-14 are spoken
+     * as "chapter N" and the one after them as "Extra 1 — Sophia's POV". It is
+     * also the ONLY marker that the "I" has changed hands — one narrator voice
+     * reads both, on purpose — so it names her, and it is spoken rather than
+     * left to the chapter list. "POV" is written out because a TTS voice reads
+     * letters. A dash, not a full stop, after "Extra": the reference's own form,
+     * and one sentence to SentenceSplitter, so Gate 1 finds the name beside it.
+     */
+    public static function pointOfViewSentence(string $name): string
+    {
+        return 'Extra — '.trim($name)."'s point of view.";
+    }
+
+    /**
+     * Whether this sentence is the point-of-view announcement for `$name`,
+     * spelled the way the prompt asks or the way a writer reaches for anyway.
+     */
+    public static function announcesPointOfView(string $sentence, string $name): bool
+    {
+        $text = mb_strtolower(trim($sentence));
+        $name = mb_strtolower(trim($name));
+
+        return $name !== ''
+            && str_starts_with($text, 'extra')
+            && str_contains($text, $name)
+            && (str_contains($text, 'point of view') || str_contains($text, 'pov'));
+    }
+
     /** Whether this sentence announces this particular chapter number. */
     public static function matches(string $sentence, int $n): bool
     {

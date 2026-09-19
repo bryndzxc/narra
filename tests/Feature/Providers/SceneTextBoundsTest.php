@@ -52,9 +52,30 @@ class SceneTextBoundsTest extends TestCase
         } catch (ScriptWriterException $e) {
             $this->assertStringContainsString('came back with a frame is', $e->getMessage());
             $this->assertStringContainsString(number_format(Scene::FRAME_MAX_CHARS + 1), $e->getMessage());
+            $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+            $this->assertSame(['stage' => 'draft_scenes', 'check' => 'scene_bounds', 'act' => 1], $e->failureFacts());
         }
 
         $this->assertSame(0, $story->scenes()->count(), 'A refused act stores no scenes.');
+    }
+
+    /** Ranges that leave a gap are refused as a refused output of the draft, with its act. */
+    public function test_scenes_that_do_not_tile_the_act_are_recorded_as_a_refused_output(): void
+    {
+        $story = $this->castStory();
+
+        $this->bindWriterReturningFrameOf(null, firstSentence: 2);
+
+        try {
+            app(DraftScenes::class)->handle($story);
+            $this->fail('A gap in the ranges must be refused.');
+        } catch (\App\Exceptions\PipelineFailure $e) {
+            $this->assertStringContainsString('starts at sentence 2', $e->getMessage());
+            $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+            $this->assertSame(['stage' => 'draft_scenes', 'check' => 'scene_tiling', 'act' => 1], $e->failureFacts());
+        }
+
+        $this->assertSame(0, $story->scenes()->count());
     }
 
     public function test_a_frame_at_the_bound_is_stored(): void
@@ -124,11 +145,11 @@ class SceneTextBoundsTest extends TestCase
      * The fake writer with the FIRST scene's frame replaced by one of exactly
      * $length characters. Everything else is the fake's own.
      */
-    private function bindWriterReturningFrameOf(int $length): void
+    private function bindWriterReturningFrameOf(?int $length, ?int $firstSentence = null): void
     {
-        $stub = new class($length) extends FakeScriptWriter
+        $stub = new class($length, $firstSentence) extends FakeScriptWriter
         {
-            public function __construct(private readonly int $length) {}
+            public function __construct(private readonly ?int $length, private readonly ?int $firstSentence) {}
 
             public function scenes(Story $story, Act $act, array $sentences, array $cast, int $targetScenes): SceneDraftSet
             {
@@ -137,9 +158,9 @@ class SceneTextBoundsTest extends TestCase
                 $first = $scenes[0];
 
                 $scenes[0] = new SceneDraft(
-                    firstSentence: $first->firstSentence,
-                    lastSentence: $first->lastSentence,
-                    frame: str_repeat('f', $this->length),
+                    firstSentence: $this->firstSentence ?? $first->firstSentence,
+                    lastSentence: max($first->lastSentence, $this->firstSentence ?? 0),
+                    frame: $this->length === null ? $first->frame : str_repeat('f', $this->length),
                     charactersPresent: $first->charactersPresent,
                     motionPreset: $first->motionPreset,
                     isThumbnailCandidate: $first->isThumbnailCandidate,

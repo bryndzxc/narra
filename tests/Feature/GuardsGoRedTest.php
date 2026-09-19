@@ -11,6 +11,7 @@ use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
 use App\Enums\ActTimeframe;
 use App\Enums\Gate;
+use App\Enums\StoryEnding;
 use App\Enums\StoryStatus;
 use App\Models\Act;
 use App\Models\Character;
@@ -659,6 +660,58 @@ class GuardsGoRedTest extends TestCase
     }
 
     /**
+     * GREEN, verbatim: story 36's betrayal_scene, which this check reported as
+     * found on "her phone" — she holds it out to have the narrator take the
+     * photo. Live on story 36's Gate 1 and never noticed.
+     */
+    public function test_the_discovery_check_passes_story_36s_phone_held_out_for_a_photo(): void
+    {
+        $review = $this->reviewBetrayal(<<<'TEXT'
+            A private room at the Jinshui hotel in Zhengzhou, a Friday in May, twelve people: eight from the institute, Amy's mother Nie Guifang, her colleague Grace Tian, Leo Duan and me. Amy stands, raises her glass to Leo and says he is the person who got her here. Then she holds her phone out over the cold dishes and asks me to take the photo. Grace Tian asks whether her husband shouldn't be in it. Leo does his line — "Brother Aaron, I told her you should be in the picture, I'd rather step out of the frame than have anyone here uncomfortable, that's on me" — and Amy tells him to sit down, that he is not to apologize for other people's moods, and the table murmurs that he's a decent man. Then she says it to my face, in front of all of them: "Somebody has to hold the camera. Aaron is good at the things nobody claps for — that's a compliment, and he knows it is. I would like one evening where it isn't turned into something." I said, "It is a compliment." Then I lifted the phone and told Leo to move left, because he was standing in the light. The table laughed — at me, because they thought I was fussing with a phone, and at him for half a second, which he absorbed with a smile. I took the picture. Amy did not look at me again for the rest of the night, Leo put his arm along the back of her chair, and her mother told the woman beside her that a man who takes good photographs has found his level.
+            TEXT);
+
+        $this->assertStringNotContainsString('reads as FOUND', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * GREEN, verbatim: story 38's second premise candidate, reported as found
+     * on "booked" — the restaurant booked for the anniversary.
+     */
+    public function test_the_discovery_check_passes_story_38s_restaurant_booked_for_the_anniversary(): void
+    {
+        $review = $this->reviewBetrayal(<<<'TEXT'
+            At the restaurant booked for their fifth wedding anniversary, in front of twelve of their closest friends, Amy Deng leans her head on Ethan Bao's shoulder during the toasts; when a friend asks if he is her new assistant she answers without lowering her voice, then turns to the narrator and delivers the justification to his face, and Ethan follows with his rehearsed line about trying to end it kindly, which turns the table's sympathy toward him.
+            TEXT);
+
+        $this->assertStringNotContainsString('reads as FOUND', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * RED: the same kind of noun, with somebody coming upon it in its sentence.
+     * Story 25's shape, hand-written: no real betrayal_scene has ever held a
+     * found betrayal, so every RED here is a fixture, not a catch.
+     */
+    public function test_the_discovery_check_goes_red_on_evidence_somebody_comes_upon(): void
+    {
+        $review = $this->reviewBetrayal('I was copied on a hotel booking for two in Sanya under her name. '.self::BETRAYAL_SCENE);
+
+        $this->assertStringContainsString('"booking"', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * THE KNOWN WRONG CASE, pinned so it is not mistaken for coverage: evidence
+     * read ALOUD in the room is the betrayal done in public, the good case, and
+     * the check still calls it found. If this goes green, the limit recorded on
+     * `DISCOVERY_MARKERS` and in CLAUDE.md has changed and both want updating.
+     */
+    public function test_the_discovery_check_still_misreads_evidence_read_aloud(): void
+    {
+        $review = $this->reviewBetrayal('She reads the booking aloud to the table. '.self::BETRAYAL_SCENE);
+
+        $this->assertStringContainsString('reads as FOUND', implode(' ', $review['warnings']));
+    }
+
+    /**
      * RED: act 1's summary is about something else and shares only the cast's
      * NAMES with the scene — three of them, which is exactly enough to pass a
      * three-word overlap if names were counted. That is the drill for the
@@ -711,6 +764,363 @@ class GuardsGoRedTest extends TestCase
         $story->acts()->where('sequence', 1)->update(['summary' => $actOneSummary]);
 
         return app(ValidateOutlineSpine::class)->handle($story->refresh());
+    }
+
+    // -- The accomplice and the running thought (3g) -------------------------
+    //
+    // Six checks, each a pair whose GREEN is the RED with one thing changed.
+    // Built on `storyWithAnAccomplice()`, whose ability to hold every state is
+    // asserted at the end — and the shared page fixture's inability, so
+    // nobody consolidates onto it and makes both halves vacuous.
+
+    private const ACCOMPLICE_MOTIVE = 'Paul Ostrander wants the commission on selling our mother\'s house, '
+        .'which he can only arrange once Dana holds power of attorney.';
+
+    private const ACCOMPLICE_PERFORMANCE = 'Paul plays the old family adviser who only wants the sisters to '
+        .'get along. He tells me, "I would hate for money to come between two sisters," and offers to '
+        .'apologize so that Dana defends him.';
+
+    private const ACCOMPLICE_FALL = 'After I have gone, Dana asks Paul in front of both aunts why the care '
+        .'home was never paid. At the family meeting the power of attorney he drafted is read aloud to '
+        .'everyone. At the reception, in front of eighty guests, Dana hears that he wanted the commission '
+        .'on the house all along.';
+
+    // Carries its figure. The first version had three words of its own and
+    // matched "fund" alone against the refusal ("dollar" is not "dollars"), so
+    // the GREEN half went red — the check was right and the tally had no tally.
+    private const RUNNING_THOUGHT = 'Every time Dana says family helps family, I add a dollar in my head to '
+        .'the family helps family fund, and by the reception it stands at four hundred and twelve dollars.';
+
+    private const REFUSAL_PAYS_IT_OFF = 'When Dana finally found me she asked me to come back, because family '
+        .'helps family. I said her own sentence back to her and then I said no. Then I told her the fund '
+        .'had closed at four hundred and twelve dollars.';
+
+    /** RED: Gerald's own tell, the line the act was built on. A problem, not a warning. */
+    public function test_the_coded_act_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            'who only wants the sisters to get along',
+            'who says he is not into women and only wants the sisters to get along',
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringContainsString('builds the accomplice\'s act on orientation', implode(' ', $review['problems']));
+        $this->assertStringContainsString('"not into women"', implode(' ', $review['problems']));
+    }
+
+    /**
+     * GREEN: the same sentence built on a role. And no negation window: "not
+     * into women" is not the good case of this check, it is the tell.
+     */
+    public function test_the_coded_act_check_passes_a_role(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            'who only wants the sisters to get along',
+            'who says he has known the family for thirty years and only wants the sisters to get along',
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringNotContainsString('on orientation', implode(' ', $review['problems']));
+        $this->assertSame('ok', $review['spine']['accomplice_performance']['state']);
+    }
+
+    /** RED: the act described and never spoken — the silent accomplice in a new coat. */
+    public function test_the_act_has_a_line_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            'He tells me, "I would hate for money to come between two sisters," and',
+            'He tells me money should never come between two sisters, and',
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringContainsString('has no line in it', implode(' ', $review['warnings']));
+        $this->assertSame('weak', $review['spine']['accomplice_performance']['state']);
+    }
+
+    public function test_the_act_has_a_line_check_passes_a_quoted_line_in_curly_quotes(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            ['"I would', 'sisters,"'],
+            ['“I would', 'sisters,”'],
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringNotContainsString('has no line in it', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * GREEN: a line in SINGLE quotes, with an apostrophe inside it. Story 38's
+     * premise roll quoted the accomplice this way in all three candidates and
+     * the check, knowing only double quotes, called every one silent.
+     */
+    public function test_the_act_has_a_line_check_passes_a_quoted_line_in_single_quotes(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            '"I would hate for money to come between two sisters,"',
+            '\'I would hate for money to come between two sisters, I couldn\'t bear it,\'',
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringNotContainsString('has no line in it', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * RED: apostrophes are not quotes. Possessives and contractions around a
+     * described line must not read as a quoted one — the other half of
+     * accepting single quotes at all.
+     *
+     * The elided 'cause is load-bearing: it is an apostrophe that CAN open a
+     * quote, so only the closing rule (no letter after the mark) stops
+     * "family'" or "can'" from closing it. The first version of this input had
+     * possessives only, and a drill that removed the closing rule stayed green.
+     */
+    public function test_the_act_has_a_line_check_is_not_fooled_by_apostrophes(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_performance' => str_replace(
+            'He tells me, "I would hate for money to come between two sisters," and',
+            'He tells me the sisters\' money shouldn\'t come between them, \'cause the family\'s name can\'t take it, and',
+            self::ACCOMPLICE_PERFORMANCE,
+        )]);
+
+        $this->assertStringContainsString('has no line in it', implode(' ', $review['warnings']));
+    }
+
+    /** RED: one humiliation. Two sentences, both public, both about the motive. */
+    public function test_the_fall_is_a_run_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_fall' => 'At the reception, in front of eighty guests, '
+            .'the power of attorney he drafted is read aloud. Dana hears he wanted the commission on the house.']);
+
+        $this->assertStringContainsString('reads as one humiliation', implode(' ', $review['warnings']));
+        $this->assertSame('thin', $review['spine']['accomplice_fall']['state']);
+    }
+
+    public function test_the_fall_is_a_run_check_passes_three_losses(): void
+    {
+        $review = $this->reviewAccomplice([]);
+
+        $this->assertStringNotContainsString('reads as one humiliation', implode(' ', $review['warnings']));
+        $this->assertSame('ok', $review['spine']['accomplice_fall']['state']);
+    }
+
+    /** RED: three losses, in private. */
+    public function test_the_fall_in_public_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_fall' => 'After I have gone, Dana asks Paul on the phone '
+            .'why the care home was never paid. Later she reads the power of attorney he drafted alone at her '
+            .'desk. Then she works out that he wanted the commission on the house all along.']);
+
+        $this->assertStringContainsString('fall names nobody watching', implode(' ', $review['warnings']));
+    }
+
+    public function test_the_fall_in_public_check_passes_a_room_with_people_in_it(): void
+    {
+        $review = $this->reviewAccomplice([]);
+
+        $this->assertStringNotContainsString('fall names nobody watching', implode(' ', $review['warnings']));
+    }
+
+    /**
+     * RED: a public run of losses that never says why he was there. Shares
+     * only his NAME with the motive, which the proper-noun filter removes —
+     * the drill for that filter as well as for the check.
+     */
+    public function test_the_fall_exposes_the_motive_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['accomplice_fall' => 'After I have gone, Dana asks Paul in front of '
+            .'both aunts about the seating chart. At the family meeting Paul is shouted at by everyone. At the '
+            .'reception, in front of eighty guests, Ostrander spills wine on the cake.']);
+
+        $this->assertStringContainsString('never exposes his motive', implode(' ', $review['warnings']));
+        $this->assertArrayNotHasKey('exposes', $review['spine']['accomplice_fall']);
+    }
+
+    public function test_the_fall_exposes_the_motive_check_names_the_motive_sentence(): void
+    {
+        $review = $this->reviewAccomplice([]);
+
+        $this->assertStringNotContainsString('never exposes his motive', implode(' ', $review['warnings']));
+        $this->assertStringStartsWith('Paul Ostrander wants the commission', (string) ($review['spine']['accomplice_fall']['exposes'] ?? ''));
+    }
+
+    /**
+     * RED: a refusal that shares the grievance's words with the thought —
+     * "family helps family" — and never mentions the fund. Only the thought's
+     * OWN words count, which is what makes this red rather than trivially
+     * green.
+     */
+    public function test_the_thought_pays_off_check_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['refusal' => 'When Dana finally found me she asked me to come back, '
+            .'because family helps family. I said her own sentence back to her and then I said no.']);
+
+        $this->assertStringContainsString('never pays off the running thought', implode(' ', $review['warnings']));
+        $this->assertArrayNotHasKey('pays_off', $review['spine']['running_thought']);
+    }
+
+    public function test_the_thought_pays_off_check_names_the_refusal_sentence(): void
+    {
+        $review = $this->reviewAccomplice([]);
+
+        $this->assertStringNotContainsString('never pays off the running thought', implode(' ', $review['warnings']));
+        $this->assertStringStartsWith('Then I told her the fund', (string) ($review['spine']['running_thought']['pays_off'] ?? ''));
+    }
+
+    /** RED: a "joke" made entirely of the spine's own words cannot be told from the grievance. */
+    public function test_a_thought_with_nothing_of_its_own_goes_red(): void
+    {
+        $review = $this->reviewAccomplice(['running_thought' => 'Dana says family helps family.']);
+
+        $this->assertStringContainsString('has almost nothing of its own', implode(' ', $review['warnings']));
+        $this->assertSame('thin', $review['spine']['running_thought']['state']);
+    }
+
+    public function test_the_accomplice_fixture_can_express_every_state(): void
+    {
+        $story = $this->storyWithAnAccomplice();
+
+        $this->assertFalse((bool) $story->outlined_before_accomplice_and_thought);
+        $this->assertTrue(\App\Support\AccompliceArc::declared($story->outline_cast));
+        $this->assertNotSame('', trim((string) $story->refusal));
+        $this->assertNotSame('', trim((string) $story->narrator_grievance));
+
+        // The healthy fixture raises nothing from these checks, so each RED
+        // above is its one change and nothing else.
+        $review = app(ValidateOutlineSpine::class)->handle($story);
+        // By the checks' own sentences, not by the word "accomplice": the
+        // betrayal scene's description mentions him, and this fixture has no
+        // betrayal scene, so a bare word match reports a finding about
+        // something else. The first version of this assertion did exactly that.
+        $findings = implode(' ', [...$review['problems'], ...$review['warnings']]);
+
+        foreach ([
+            'builds the accomplice\'s act', 'has no line in it', 'reads as one humiliation',
+            'fall names nobody watching', 'never exposes his motive', 'spine describes an accomplice',
+            'never pays off the running thought', 'has almost nothing of its own', 'is missing. His own stake',
+        ] as $finding) {
+            $this->assertStringNotContainsString($finding, $findings);
+        }
+
+        $shared = GateLayoutContractTest::pageFixtureFor(StoryStatus::Outlined);
+
+        $this->assertTrue($shared->outlined_before_accomplice_and_thought);
+        $this->assertSame('', trim((string) $shared->accomplice_fall));
+        $this->assertSame('', trim((string) $shared->running_thought));
+    }
+
+    private function storyWithAnAccomplice(): Story
+    {
+        $story = $this->storyWithBothPayoffs();
+
+        $story->update([
+            'outline_cast' => [
+                ['name' => 'Erin Vasquez', 'role' => 'narrator', 'relationship' => 'the narrator'],
+                ['name' => 'Dana Vasquez', 'role' => 'antagonist', 'relationship' => 'her sister'],
+                ['name' => 'Paul Ostrander', 'role' => 'accomplice', 'relationship' => 'the family adviser'],
+            ],
+            'accomplice_motive' => self::ACCOMPLICE_MOTIVE,
+            'accomplice_performance' => self::ACCOMPLICE_PERFORMANCE,
+            'accomplice_fall' => self::ACCOMPLICE_FALL,
+            'running_thought' => self::RUNNING_THOUGHT,
+            'refusal' => self::REFUSAL_PAYS_IT_OFF,
+        ]);
+
+        return $story->refresh();
+    }
+
+    /**
+     * @param  array<string, string>  $changes
+     * @return array{problems: array<int, string>, warnings: array<int, string>, spine: array<string, array<string, string>>}
+     */
+    private function reviewAccomplice(array $changes): array
+    {
+        $story = $this->storyWithAnAccomplice();
+        $story->update($changes);
+
+        return app(ValidateOutlineSpine::class)->handle($story->refresh());
+    }
+
+    // -- The antagonist's regret -----------------------------------------------
+
+    /** The chance, offered on the day of the refusal, in that moment's own words; then the year. */
+    private const REGRET_ANCHORED = 'The night Dana finally found me, our mother phoned her and said to take the '
+        .'four hundred and twelve dollars from the closed fund to me as an apology. Dana said family helps '
+        .'family and hung up. About a year later the watch is still in its box on the hall shelf.';
+
+    /** The same shape, offered on a day the story does not contain. */
+    private const REGRET_UNANCHORED = 'In April a cousin rang Dana from Tucson and said to write a letter of '
+        .'apology before Easter. Dana laughed and deleted the voicemail. About a year later the watch is '
+        .'still in its box on the hall shelf.';
+
+    /**
+     * The fixture question first: the shared accomplice story can express both
+     * halves — it has a refusal to anchor on and an antagonist to name. Without
+     * either, the anchor check returns early and RED passes for nothing.
+     */
+    public function test_the_regret_fixture_can_express_the_mismatch(): void
+    {
+        $story = $this->storyWithAnAccomplice();
+
+        $this->assertNotSame('', trim((string) $story->refusal));
+        $this->assertSame('Dana Vasquez', \App\Support\AntagonistPointOfView::nameFor(
+            tap($story)->forceFill(['antagonist_regret' => self::REGRET_ANCHORED, 'ending' => StoryEnding::AntagonistVoice])
+        ));
+
+        // And the ending is what makes it expressible. On the new life every
+        // regret check returns early — which is how the negated-jump GREEN
+        // below stayed green for the wrong reason the day endings arrived.
+        $this->assertNull(\App\Support\AntagonistPointOfView::nameFor(
+            tap($story)->forceFill(['ending' => StoryEnding::NewLife])
+        ));
+    }
+
+    /**
+     * The regret cases, on a story whose chosen ending is the antagonist's.
+     *
+     * @param  array<string, string>  $changes
+     */
+    private function reviewRegret(array $changes): array
+    {
+        return $this->reviewAccomplice(['ending' => StoryEnding::AntagonistVoice] + $changes);
+    }
+
+    /** RED: a last chance offered on a day the story never contains. */
+    public function test_the_regret_anchor_check_goes_red(): void
+    {
+        $review = $this->reviewRegret(['antagonist_regret' => self::REGRET_UNANCHORED]);
+
+        $this->assertSame('weak', $review['spine']['antagonist_regret']['state']);
+        $this->assertArrayNotHasKey('anchored_in', $review['spine']['antagonist_regret']);
+        $this->assertNotEmpty(array_filter($review['warnings'], fn (string $w): bool => str_contains($w, 'last chance is not tied')));
+    }
+
+    /** GREEN: the same shape, offered at the refusal, and the badge names it. */
+    public function test_the_regret_anchor_check_stays_green_on_a_real_day(): void
+    {
+        $review = $this->reviewRegret(['antagonist_regret' => self::REGRET_ANCHORED]);
+
+        $this->assertSame('ok', $review['spine']['antagonist_regret']['state']);
+        $this->assertSame('the refusal', $review['spine']['antagonist_regret']['anchored_in']);
+    }
+
+    /** RED: twenty years, which one reference sheet at her age cannot draw. */
+    public function test_the_long_time_jump_check_goes_red(): void
+    {
+        $review = $this->reviewRegret([
+            'antagonist_regret' => str_replace('About a year later', 'Twenty years later', self::REGRET_ANCHORED),
+        ]);
+
+        $this->assertNotEmpty(array_filter($review['warnings'], fn (string $w): bool => str_contains($w, 'jumps "Twenty years" ahead')));
+    }
+
+    /** GREEN: the same words behind a negation are the good case. */
+    public function test_the_long_time_jump_check_stays_green_when_negated(): void
+    {
+        $review = $this->reviewRegret([
+            'antagonist_regret' => str_replace('About a year later', 'Not twenty years later but one', self::REGRET_ANCHORED),
+        ]);
+
+        $this->assertSame([], array_values(array_filter($review['warnings'], fn (string $w): bool => str_contains($w, ' ahead. It is set about a year'))));
     }
 
     // -- The spoken chapter number --------------------------------------------

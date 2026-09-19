@@ -6,12 +6,15 @@ use App\Actions\CreateStory;
 use App\Actions\DispatchTextStage;
 use App\Actions\GenerateOutline;
 use App\Enums\OperatorAction;
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Exceptions\DispatchRefusedException;
 use App\Models\Story;
 use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
 use App\Support\NarrationPace;
+use App\Support\NarratorVoice;
+use App\Support\RecentEndings;
 use App\Support\ScriptSizing;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
@@ -76,6 +79,32 @@ class NewStory extends Component
 
     public ?int $acts = null;
 
+    /**
+     * Who narrates: 'male' or 'female'. Required, and no default.
+     *
+     * It picks the voice from the channel's one-voice-per-narrator-gender
+     * table (NarratorVoice). A default would be the trap story 33 was caught
+     * in by a person reading it: a woman's story created on the male voice,
+     * right only if somebody remembered `voices:list --set` before narration.
+     */
+    public string $narratorGender = '';
+
+    /**
+     * Which ending the last chapter is: a StoryEnding value. Required on a
+     * single narrative and no default, for the narrator's reason — a default
+     * is the per-story pick in disguise, and a model left to pick converges.
+     * The last few videos' endings are printed beside it (RecentEndings).
+     */
+    public string $ending = '';
+
+    /**
+     * What the text box holds: a finished premise, or an idea to write
+     * premises from. An idea creates the draft and queues NOTHING — the
+     * premises are a separate, billed press on Gate 1, and the outline is the
+     * one after that. Single narratives only.
+     */
+    public string $startFrom = 'premise';
+
     public ?string $problem = null;
 
     /** @var array<int, string> */
@@ -103,6 +132,9 @@ class NewStory extends Component
             // list, so a third profile is selectable the moment it exists.
             'localeProfile' => ['required', 'string', Rule::in(array_keys($this->locales()))],
             'acts' => ['nullable', 'integer', 'min:3', 'max:8'],
+            'narratorGender' => ['required', Rule::in(NarratorVoice::GENDERS)],
+            'ending' => [$this->format === 'anthology' ? 'nullable' : 'required', Rule::in(array_column(StoryEnding::cases(), 'value'))],
+            'startFrom' => ['required', Rule::in($this->format === 'anthology' ? ['premise'] : ['premise', 'idea'])],
         ];
     }
 
@@ -115,6 +147,10 @@ class NewStory extends Component
                 .'of situation, and what goes wrong.',
             'acts.min' => 'Fewer than 3 acts cannot make a legal YouTube chapter list.',
             'acts.max' => 'More than 8 acts at this runtime makes chapters too short to be useful.',
+            'narratorGender.required' => 'Say who narrates. It picks the voice, and there is no default.',
+            'ending.required' => 'Choose how the video ends. The outline writes what that ending needs, '
+                .'and there is no default.',
+            'startFrom.in' => 'Premises are written from an idea for a single narrative only.',
         ];
     }
 
@@ -201,6 +237,19 @@ class NewStory extends Component
     }
 
     /**
+     * How the last few videos ended, for the picker. See RecentEndings.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, streak: ?array{ending: StoryEnding, count: int}}
+     */
+    #[Computed]
+    public function recentEndings(): array
+    {
+        $rows = RecentEndings::last();
+
+        return ['rows' => $rows, 'streak' => RecentEndings::streak($rows)];
+    }
+
+    /**
      * Every locale profile that exists, from the one place they are defined.
      *
      * @return array<string, string>
@@ -252,8 +301,12 @@ class NewStory extends Component
     #[Computed]
     public function narrator(): array
     {
-        $voiceId = config('providers.default_voice_id');
-        $voiceId = is_string($voiceId) && trim($voiceId) !== '' ? trim($voiceId) : null;
+        // The chosen narrator's voice, from the channel's table. Before a
+        // choice is made there is no voice to describe, and the readout says
+        // so rather than describing the default as though it were chosen.
+        $voiceId = in_array($this->narratorGender, NarratorVoice::GENDERS, true)
+            ? NarratorVoice::voiceFor($this->narratorGender)
+            : null;
 
         return [
             'voice_id' => $voiceId,
@@ -311,10 +364,27 @@ class NewStory extends Component
                 format: StoryFormat::from($this->format),
                 castAgeProfile: $this->castAgeProfile,
                 localeProfile: $this->localeProfile,
+                narrator: $this->narratorGender,
+                ending: StoryEnding::tryFrom($this->ending),
             );
         } catch (Throwable $e) {
             $this->confirming = false;
             $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        // An idea queues nothing. The premises are their own billed press on
+        // Gate 1, which is where they are read and picked; creating the draft
+        // is not a spending decision and does not become one here.
+        if ($this->startFrom === 'idea') {
+            session()->flash('notice', sprintf(
+                '"%s" created as a draft from your idea. Nothing was queued. Write premises from it '
+                .'below; the outline is the press after you pick one.',
+                $story->title,
+            ));
+
+            $this->redirectRoute('stories.outline', $story, navigate: true);
 
             return;
         }
@@ -369,6 +439,7 @@ class NewStory extends Component
     {
         return view('livewire.stories.new-story', [
             'formats' => StoryFormat::cases(),
+            'endings' => StoryEnding::cases(),
             'existing' => Story::query()->count(),
         ]);
     }

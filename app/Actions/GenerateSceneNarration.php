@@ -4,7 +4,9 @@ namespace App\Actions;
 
 use App\Contracts\SpeechSynthesizer;
 use App\Enums\AssetStatus;
+use App\Enums\FailureKind;
 use App\Exceptions\NarrationPaceException;
+use App\Exceptions\PipelineFailure;
 use App\Models\AudioTrack;
 use App\Models\Scene;
 use App\Models\SceneAudio;
@@ -83,9 +85,10 @@ class GenerateSceneNarration
         $voiceId = (string) ($story->voice_id ?? $track->voice_id);
 
         if (trim($voiceId) === '') {
-            throw new RuntimeException(
-                "Story {$story->slug} has no voice_id, so its narrator is undefined. A channel keeps one "
-                .'consistent narrator across every video — set it on the story before generating audio.'
+            throw new PipelineFailure(
+                "Story {$story->slug} has no voice_id, so its narrator is undefined. Nothing was synthesised "
+                .'or billed.',
+                FailureKind::NoVoice,
             );
         }
 

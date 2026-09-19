@@ -95,10 +95,16 @@ class ChapterUnitTest extends TestCase
             $this->assertSame($sorted, $starts, 'Chapters are out of order.');
         }
 
+        // Two narrated chapters per act, plus the antagonist's closing chapter
+        // on the refusal act when the outline asks for one — which the fake
+        // outline does, so exactly one is expected and it is the last.
+        $hers = $story->chapters()->whereNotNull('point_of_view')->count();
+        $this->assertSame(\App\Support\AntagonistPointOfView::nameFor($story) === null ? 0 : 1, $hers);
+
         $this->assertSame(
-            $story->acts()->count() * 2,
+            $story->acts()->count() * 2 + $hers,
             $story->chapters()->count(),
-            'The fake returns two chapters per act; every one of them must be stored.',
+            'The fake returns two chapters per act, and one more on the refusal act; every one must be stored.',
         );
     }
 
@@ -137,6 +143,12 @@ class ChapterUnitTest extends TestCase
         } catch (ScriptWriterException $e) {
             $this->assertStringContainsString('1 chapter(s) against a bound of', $e->getMessage());
             $this->assertStringContainsString('NOT stored', $e->getMessage());
+
+            // A refused output the page can repair: Write re-runs this act
+            // alone. It was unclassified, and "No known repair.", until
+            // 2026-09-19.
+            $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+            $this->assertSame(['stage' => 'act_scripts', 'check' => 'chapter_shape', 'act' => 1], $e->failureFacts());
         }
 
         $this->assertNull($story->acts()->where('sequence', 1)->value('script'));
@@ -429,7 +441,7 @@ class ChapterUnitTest extends TestCase
         $schema = $this->invoke($this->realWriterWithNoClient(), 'actSchema');
 
         $this->assertContains('chapters', $schema['required']);
-        $this->assertSame(['title', 'rehook_line', 'text'], $schema['properties']['chapters']['items']['required']);
+        $this->assertSame(['title', 'rehook_line', 'text', 'point_of_view'], $schema['properties']['chapters']['items']['required']);
         $this->assertStringNotContainsString('minItems', json_encode($schema));
         $this->assertStringNotContainsString('maxLength', json_encode($schema));
     }

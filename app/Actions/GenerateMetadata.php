@@ -103,11 +103,18 @@ class GenerateMetadata
         }
 
         if ($usableTitles === []) {
-            throw new ScriptWriterException(sprintf(
-                'Every title variant came back past the %d-character hard limit. The sheet has not '
-                .'been written. Re-run the stage — it is one call and cents.',
-                $limits['title_hard'],
-            ));
+            // Facts only. "Re-run the stage — it is one call and cents" used
+            // to be written here, into a row that outlives the code; the
+            // move is built at display time (FailureKind::OutputRefused).
+            throw new ScriptWriterException(
+                sprintf(
+                    'Every title variant came back past the %d-character hard limit. The sheet has not '
+                    .'been written; the calls were billed.',
+                    $limits['title_hard'],
+                ),
+                kind: \App\Enums\FailureKind::OutputRefused,
+                facts: ['stage' => \App\Enums\RenderStage::Metadata->value, 'check' => 'titles_over_limit'],
+            );
         }
 
         // The failure this catches, named: five variants that are all legal and
@@ -177,12 +184,17 @@ class GenerateMetadata
         $description = $this->description->handle($metadata, $titles->descriptionOpening);
 
         if (mb_strlen($description) > $limits['description']) {
-            throw new ScriptWriterException(sprintf(
-                'The assembled description is %s characters against a %s limit. The chapter list and '
-                .'footer are fixed, so this is the opening — re-run the stage.',
-                number_format(mb_strlen($description)),
-                number_format($limits['description']),
-            ));
+            throw new ScriptWriterException(
+                sprintf(
+                    'The assembled description is %s characters against a %s limit. The chapter list and '
+                    .'footer are fixed, so the opening is what ran over. The sheet has not been written; '
+                    .'the calls were billed.',
+                    number_format(mb_strlen($description)),
+                    number_format($limits['description']),
+                ),
+                kind: \App\Enums\FailureKind::OutputRefused,
+                facts: ['stage' => \App\Enums\RenderStage::Metadata->value, 'check' => 'description_over_limit'],
+            );
         }
 
         DB::transaction(function () use ($story, $metadata, $usableTitles, $description, $tags, $overlay, $copy): void {

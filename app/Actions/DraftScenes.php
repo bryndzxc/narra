@@ -3,10 +3,12 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\FailureKind;
 use App\Enums\MotionPreset;
 use App\Enums\RenderStage;
 use App\Enums\SceneStatus;
 use App\Enums\StoryStatus;
+use App\Exceptions\PipelineFailure;
 use App\Models\Act;
 use App\Models\Chapter;
 use App\Models\Character;
@@ -252,7 +254,19 @@ class DraftScenes
                 "scene drafting for act {$act->sequence}"
             );
 
-            $this->assertRangesCoverScript($act, $set->scenes, count($sentences));
+            // The last attempt's ranges: a cheap model whose ranges fail to
+            // tile has already been replaced by the fallback inside the
+            // writer, so a failure here is the output that was kept.
+            try {
+                $this->assertRangesCoverScript($act, $set->scenes, count($sentences));
+            } catch (RuntimeException $e) {
+                throw new PipelineFailure(
+                    $e->getMessage().' The call was billed and nothing from this draft is stored.',
+                    FailureKind::OutputRefused,
+                    ['stage' => RenderStage::DraftScenes->value, 'check' => 'scene_tiling', 'act' => $act->sequence],
+                    $e,
+                );
+            }
 
             // The frame and the expression are what Gate 2's editor validates
             // — the two sections the operator can type — so the writer must
@@ -264,16 +278,21 @@ class DraftScenes
                 $over = Scene::textOverflows(['frame' => $draft->frame, 'expression' => $draft->expression]);
 
                 if ($over !== []) {
-                    throw new ScriptWriterException(sprintf(
-                        'Scene %d of act %d came back with a %s. The call was billed and no scene from '
-                        .'this act is stored; re-run the act (story:scenes --acts=%d). The prompt states '
-                        .'the bound, so a writer exceeding it is new information about the writer, not a '
-                        .'reason to raise the bound.',
-                        $position + 1,
-                        $act->sequence,
-                        implode(' and a ', $over),
-                        $act->sequence,
-                    ));
+                    // Facts only. "No scene from this act is stored" was true
+                    // and short: persist() runs after every act is drafted, so
+                    // nothing from ANY act of this run is stored, including
+                    // the acts already billed before this one.
+                    throw new ScriptWriterException(
+                        sprintf(
+                            'Scene %d of act %d came back with a %s. The call was billed and nothing from '
+                            .'this draft is stored, including acts drafted before it.',
+                            $position + 1,
+                            $act->sequence,
+                            implode(' and a ', $over),
+                        ),
+                        kind: FailureKind::OutputRefused,
+                        facts: ['stage' => RenderStage::DraftScenes->value, 'check' => 'scene_bounds', 'act' => $act->sequence],
+                    );
                 }
             }
 

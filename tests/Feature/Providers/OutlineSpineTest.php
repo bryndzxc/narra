@@ -72,7 +72,18 @@ class OutlineSpineTest extends TestCase
 
         $draft = app(GenerateOutline::class)->handle($story, 6);
 
+        // Every field THIS story's outline is asked for. The regret is asked
+        // only on the antagonist's ending (EndingChoiceTest), and this story
+        // ends on the narrator's new life.
+        $asked = \App\Support\SpineQuestions::outlineOrderFor($story->ending);
+
         foreach ($draft->spine() as $field => $value) {
+            if ($field === 'antagonist_regret' && ! in_array($field, $asked, true)) {
+                $this->assertSame('', trim($value), 'The new-life ending is not asked for a regret.');
+
+                continue;
+            }
+
             $this->assertNotSame('', trim($value), "The outline returned no {$field}.");
         }
 
@@ -243,6 +254,8 @@ class OutlineSpineTest extends TestCase
         // approval on "reads as a cartoon" would be a guard that gets removed.
         $story = $this->outlinedStory();
         $story->update(['antagonist_justification' => 'She was jealous and she knew it was wrong.']);
+        // Written, because Gate 1 refuses to cross on acts with no script.
+        $story->acts()->update(['script' => 'The first invoice came by text at eleven at night.']);
 
         Livewire::test(OutlineGate::class, ['story' => $story->refresh()])
             ->call('approve')

@@ -4,21 +4,32 @@ namespace App\Livewire\Gates;
 
 use App\Actions\DispatchTextStage;
 use App\Actions\GenerateActScripts;
+use App\Actions\GeneratePremises;
 use App\Actions\GenerateOutline;
 use App\Actions\ValidateOutlineSpine;
 use App\Enums\ActTimeframe;
+use App\Enums\CastRole;
 use App\Enums\Gate;
 use App\Enums\OperatorAction;
+use App\Enums\RenderJobStatus;
+use App\Enums\RenderStage;
+use App\Enums\StoryEnding;
+use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Exceptions\DispatchRefusedException;
 use App\Exceptions\GateViolationException;
 use App\Models\Act;
 use App\Models\Chapter;
+use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\GateVoice;
 use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
 use App\Support\NarrationPace;
+use App\Support\OutlineCast;
+use App\Support\PremiseIdea;
+use App\Support\Providers\PremiseCandidate;
+use App\Support\RecentEndings;
 use App\Support\RefusedFields;
 use App\Support\ScriptSizing;
 use App\Support\WorkerHealth;
@@ -81,14 +92,34 @@ class OutlineGate extends Component
         'hook' => '',
         'narrator_grievance' => '',
         'antagonist_justification' => '',
+        // The accomplice's stake and act, and his fall below; the narrator's
+        // running thought before the refusal that pays it off. CLAUDE.md 3g.
+        'accomplice_motive' => '',
+        'accomplice_performance' => '',
         'betrayal_scene' => '',
         'withheld_information' => '',
         'exposure_moment' => '',
         'narrator_at_exposure' => '',
         'departure' => '',
         'reversal_beats' => '',
+        'accomplice_fall' => '',
+        'running_thought' => '',
         'refusal' => '',
+        // Her last chance and a year on, told in her own closing chapter.
+        'antagonist_regret' => '',
     ];
+
+    /**
+     * The people this story names, editable here because this is where the
+     * cast is decided — before any act is bought, now that the first write
+     * press stops after the outline.
+     *
+     * Renaming a row after the acts are written does not rename anyone in the
+     * prose; the review says so, by reporting a cast member named in no act.
+     *
+     * @var array<int, array{name: string, role: string, relationship: string}>
+     */
+    public array $cast = [];
 
     /** @var array<int, array{id: int, sequence: int, phase: ?string, phase_label: string, beat_label: string, timeframe: ?string, title: string, summary: string, escalation_beat: string, is_rehook_written: bool, chapters: array<int, array{sequence: int, title: string, has_rehook: bool, first_sentence: int}>}> */
     public array $acts = [];
@@ -100,11 +131,34 @@ class OutlineGate extends Component
     /** Whether the operator has seen the bill for the writing and pressed once. */
     public bool $confirmingWrite = false;
 
+    /**
+     * The idea premises are written from. Seeded from the last roll's idea,
+     * else from the premise field, which is where the new-story form puts an
+     * idea. Its own field, so picking a candidate (which replaces the premise)
+     * does not also replace the idea the next roll is written from.
+     */
+    public string $idea = '';
+
+    public bool $confirmingPremises = false;
+
+    /** When this component queued a roll, so the page can say it is waiting for one. */
+    public ?string $premisesQueuedAt = null;
+
+    /**
+     * The ending, a StoryEnding value. Editable until the outline is written,
+     * saved the moment it is picked — it spends nothing — and read-only after,
+     * because the outline wrote the fields the chosen ending needs.
+     */
+    public string $ending = '';
+
     public function mount(Story $story): void
     {
         $this->story = $story;
+        $this->ending = (string) $story->ending?->value;
         $this->premise = (string) $story->premise;
+        $this->idea = (string) ($story->premise_candidates['idea'] ?? $story->premise);
         $this->castAgeProfile = (string) $story->cast_age_profile;
+        $this->cast = OutlineCast::rows(OutlineCast::members($story->outline_cast));
 
         foreach (array_keys($this->spine) as $field) {
             $this->spine[$field] = (string) $story->{$field};
@@ -270,6 +324,42 @@ class OutlineGate extends Component
     }
 
     /**
+     * Denied locale terms the outline or an act was KEPT with, for judgement.
+     *
+     * Before 2026-09-17 these refused the stage, after the call was billed: a
+     * story 36 act lost to "car park" cost the act and the run. They are kept
+     * now and shown here instead, louder than the warned terms beside them,
+     * because a denied term is one the list thinks has no reading — the
+     * operator decides whether this one does.
+     *
+     * @return array<int, array{where: string, act: ?int, editable: bool, term: string, context: string}>
+     */
+    #[Computed]
+    public function localeDenied(): array
+    {
+        return app(GenerateActScripts::class)->localeDenied($this->story);
+    }
+
+    /**
+     * The denied terms in an act SCRIPT, which are not a judgement.
+     *
+     * Kept at Gate 1 since 2026-09-17, and refused in scene frames since
+     * before that, decided the same day and never read together: the scene
+     * writer draws a frame from the script, so a script term "kept" here is
+     * refused at scene drafting after the scene calls are billed. Story 38's
+     * act 4 carried "car park" in one sentence and was refused twice, about
+     * $0.73. An outline field is edited on this page; a script is not, which
+     * is what `editable` already says.
+     *
+     * @return array<int, array{where: string, act: ?int, editable: bool, term: string, context: string}>
+     */
+    #[Computed]
+    public function localeDeniedInScripts(): array
+    {
+        return array_values(array_filter($this->localeDenied(), fn (array $hit): bool => ! $hit['editable']));
+    }
+
+    /**
      * The genre check.
      *
      * An aggrieved-narrator melodrama fails in ways that look fine in the
@@ -303,16 +393,26 @@ class OutlineGate extends Component
         return [
             'premise' => ['required', 'string', 'min:20'],
             'castAgeProfile' => ['nullable', 'string', 'max:500'],
+            // A name is how a character is found in every prompt, so it is
+            // required and unique in the cast. 60 is two full names' worth.
+            'cast.*.name' => ['required', 'string', 'max:60', 'distinct:ignore_case'],
+            'cast.*.role' => ['required', 'in:'.implode(',', array_column(CastRole::cases(), 'value'))],
+            'cast.*.relationship' => ['nullable', 'string', 'max:300'],
             'spine.hook' => ['nullable', 'string', 'max:2000'],
             'spine.narrator_grievance' => ['nullable', 'string', 'max:2000'],
             'spine.antagonist_justification' => ['nullable', 'string', 'max:2000'],
+            'spine.accomplice_motive' => ['nullable', 'string', 'max:2000'],
+            'spine.accomplice_performance' => ['nullable', 'string', 'max:2000'],
             'spine.betrayal_scene' => ['nullable', 'string', 'max:2000'],
             'spine.withheld_information' => ['nullable', 'string', 'max:2000'],
             'spine.exposure_moment' => ['nullable', 'string', 'max:2000'],
             'spine.narrator_at_exposure' => ['nullable', 'string', 'max:2000'],
             'spine.departure' => ['nullable', 'string', 'max:2000'],
             'spine.reversal_beats' => ['nullable', 'string', 'max:2000'],
+            'spine.accomplice_fall' => ['nullable', 'string', 'max:2000'],
+            'spine.running_thought' => ['nullable', 'string', 'max:2000'],
             'spine.refusal' => ['nullable', 'string', 'max:2000'],
+            'spine.antagonist_regret' => ['nullable', 'string', 'max:2000'],
             'acts.*.title' => ['required', 'string', 'max:'.Act::TITLE_MAX_CHARS],
             'acts.*.summary' => ['nullable', 'string', 'max:'.Act::SUMMARY_MAX_CHARS],
             'acts.*.escalation_beat' => ['nullable', 'string', 'max:'.Act::ESCALATION_BEAT_MAX_CHARS],
@@ -370,6 +470,10 @@ class OutlineGate extends Component
         return RefusedFields::from($this->getErrorBag(), fn (string $key): array => match (true) {
             $key === 'premise' => ['Premise', 'premise'],
             $key === 'castAgeProfile' => ['Cast age range', 'cast-age'],
+            (bool) preg_match('/^cast\.(\d+)\.(name|role|relationship)$/', $key, $c) => [
+                sprintf('Cast row %d — %s', (int) $c[1] + 1, $c[2]),
+                sprintf('cast-%s-%d', $c[2], (int) $c[1]),
+            ],
             str_starts_with($key, 'spine.') => [
                 $spineLabels[substr($key, 6)] ?? ucfirst(str_replace('_', ' ', substr($key, 6))),
                 'spine-'.substr($key, 6),
@@ -410,6 +514,9 @@ class OutlineGate extends Component
             // whether to state an age range at all, and "" and null must not
             // be two different kinds of nothing.
             'cast_age_profile' => trim($this->castAgeProfile) ?: null,
+            // An emptied cast is stored as null, which Gate 1 reads as missing
+            // on an outline that was asked for one.
+            'outline_cast' => OutlineCast::rows(OutlineCast::members($this->cast)) ?: null,
         ] + $this->spine);
 
         foreach ($this->acts as $act) {
@@ -439,9 +546,39 @@ class OutlineGate extends Component
         $this->resetComputed();
     }
 
+    public function addCastMember(): void
+    {
+        $this->authorizeEdit();
+
+        $this->cast[] = ['name' => '', 'role' => CastRole::NarratorSide->value, 'relationship' => ''];
+    }
+
+    public function removeCastMember(int $index): void
+    {
+        $this->authorizeEdit();
+
+        unset($this->cast[$index]);
+        $this->cast = array_values($this->cast);
+    }
+
     public function approve(): void
     {
         $this->save();
+
+        // The first write press now stops after the outline, so an outline
+        // with no act scripts is the ORDINARY state between two presses, not
+        // the aftermath of a failed run. Approving there moves the story to
+        // `scripted`, where writing is refused — a story past Gate 1 with
+        // nothing written and no button to write it.
+        if ($unwritten = $this->unwrittenActs()) {
+            $this->problem = sprintf(
+                'Gate 1 not crossed: act(s) %s have no script. Write them first — the approval is a '
+                .'judgement about the outline AND the acts written against it.',
+                implode(', ', $unwritten),
+            );
+
+            return;
+        }
 
         $this->story->approveGate(Gate::Outline);
         $this->story->refresh();
@@ -520,10 +657,11 @@ class OutlineGate extends Component
     {
         $total = $this->story->acts()->count();
         $outline = $total === 0;
-        // From the Action rather than typed again here. This was a literal 6
-        // beside the Action's literal 6, agreeing only for as long as nobody
-        // changed either — and the reversal phase changed one of them to 7.
-        $acts = $outline ? GenerateOutline::defaultActCountFor($this->story) : count($this->unwrittenActs());
+        // The outline press buys the outline and nothing else: its cast and
+        // spine are reviewed here before a single act is paid for. It used to
+        // queue every act behind the outline in the same press, so the one
+        // decision this page exists for was made after the money was spent.
+        $acts = $outline ? 0 : count($this->unwrittenActs());
 
         return [
             'calls' => ($outline ? 1 : 0) + $acts,
@@ -670,6 +808,16 @@ class OutlineGate extends Component
     public function askToWrite(): void
     {
         $this->problem = null;
+
+        // Said before the bill rather than after the press: the dispatch
+        // refuses the same thing, but a bill shown for an outline that will not
+        // be queued is a page claiming a spend it cannot make.
+        if ($this->canChooseEnding() && $this->story->ending === null) {
+            $this->problem = GenerateOutline::NO_ENDING;
+
+            return;
+        }
+
         $this->confirmingWrite = true;
     }
 
@@ -694,13 +842,17 @@ class OutlineGate extends Component
         $this->problem = null;
 
         $missing = $this->unwrittenActs();
+        $outlineFirst = $this->story->acts()->count() === 0;
 
         try {
             $result = app(DispatchTextStage::class)->writeScript(
                 story: $this->story,
                 // A partial resume names its acts. A first run names none,
                 // because the outline has to be written before there are any.
-                actsOnly: $this->story->acts()->count() === 0 ? [] : $missing,
+                actsOnly: $outlineFirst ? [] : $missing,
+                // And a first run stops after the outline, so the cast is read
+                // before any act is written against it.
+                outlineOnly: $outlineFirst,
             );
         } catch (DispatchRefusedException|GateViolationException $e) {
             $this->problem = $e->getMessage();
@@ -719,14 +871,19 @@ class OutlineGate extends Component
             'message',
         );
 
-        $this->saved = sprintf(
-            'Queued on the "%s" queue. %s Each act is written knowing the ones before it, so they run '
-            .'in order — the page shows them as the rows land.',
-            $result['queue'],
-            $this->story->acts()->count() === 0
-                ? 'The outline first, then every act.'
-                : sprintf('%d act(s) with no script; everything already written is kept.', count($missing)),
-        );
+        $this->saved = $outlineFirst
+            ? sprintf(
+                'Queued on the "%s" queue: the outline only. Read its cast and spine here when it lands; '
+                .'the acts are a second press.',
+                $result['queue'],
+            )
+            : sprintf(
+                'Queued on the "%s" queue. %d act(s) with no script; everything already written is kept. '
+                .'Each act is written knowing the ones before it, so they run in order — the page shows '
+                .'them as the rows land.',
+                $result['queue'],
+                count($missing),
+            );
 
         if ($warnings !== []) {
             $this->problem = implode(' ', $warnings);
@@ -741,6 +898,11 @@ class OutlineGate extends Component
             $this->voice,
             $this->actsMissingRehooks,
             $this->spineReview,
+            // Both locale reads, so a save that edits the denied term out of a
+            // spine field clears its alert in the same request.
+            $this->localeDenied,
+            $this->localeDeniedInScripts,
+            $this->localeWarnings,
             $this->canReopen,
             $this->reopenRefusal,
             $this->workers,
@@ -748,7 +910,309 @@ class OutlineGate extends Component
             $this->writeRefusal,
             $this->unwrittenActs,
             $this->writeEstimate,
+            $this->canChooseEnding,
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Failures on this page's own stages, and truncations that outlive them.
+    // -----------------------------------------------------------------------
+
+    /**
+     * The outline or act-script run that failed last, if its row still says so.
+     *
+     * The page that decides whether to press Write again said nothing about the
+     * last press failing: the row was on the progress page only (the
+     * "Gate 1's retry EXISTS. What is missing is the failure" entry). A re-run
+     * resets the row, so this shows a failure for exactly as long as it is the
+     * stage's latest word — which is why truncations are ALSO read from the
+     * ledger below.
+     *
+     * @return array<int, array{stage: string, error: string, at: ?string, remedy: \App\Support\Remedy}>
+     */
+    #[Computed]
+    public function stageFailures(): array
+    {
+        return RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->whereIn('stage', [RenderStage::Outline, RenderStage::ActScripts])
+            ->whereNull('scene_id')
+            ->where('status', RenderJobStatus::Failed)
+            ->get()
+            ->map(fn (RenderJob $row): array => [
+                'stage' => $row->stage->label(),
+                'error' => (string) $row->error,
+                'at' => $row->updated_at?->toDateTimeString(),
+                'remedy' => \App\Support\FailureRemedy::for(
+                    $row->failure_kind ?? \App\Enums\FailureKind::Unclassified,
+                    (array) $row->failure_facts,
+                    $this->story,
+                    $row->stage->value,
+                ),
+            ])
+            ->all();
+    }
+
+    /**
+     * Every outline call on this story that stopped at its ceiling.
+     *
+     * STANDING POSITION (CLAUDE.md, the ceiling entry dated 2026-09-19): the
+     * outline ceiling is NOT raised. The text grows ~273 tokens per spine field
+     * and was ~4 average fields from the medium-effort reasoning peak on story
+     * 37; the lever is effort `low`, unmeasured. So a truncation is information
+     * and must be seen — and the job row that recorded it is reset by the next
+     * run, so it is read from the ledger, which nothing deletes. Only calls
+     * whose cost row carries `stop_reason` (written since 2026-09-19) can
+     * answer; older truncations are the three in CLAUDE.md.
+     *
+     * @return array<int, array{at: string, output: int, effort: ?string, usd: string}>
+     */
+    #[Computed]
+    public function outlineTruncations(): array
+    {
+        return $this->story->costEntries()
+            ->where('operation', 'generate_outline')
+            ->where('detail->stop_reason', 'max_tokens')
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($row): array => [
+                'at' => (string) $row->created_at?->toDateTimeString(),
+                'output' => (int) ($row->detail['output_tokens'] ?? 0),
+                'effort' => $row->detail['effort'] ?? null,
+                'usd' => number_format((float) $row->usd_cost, 4),
+            ])
+            ->all();
+    }
+
+    // -----------------------------------------------------------------------
+    // Premises from an idea. Draft only, single narrative only, no outline yet.
+    // -----------------------------------------------------------------------
+
+    /** The capability, plus the premise's own conditions (GeneratePremises::assertReady). */
+    #[Computed]
+    public function canWritePremises(): bool
+    {
+        return OperatorAction::WritePremises->permittedAt($this->story->status)
+            && $this->story->format === StoryFormat::Single
+            && ! $this->story->acts()->exists();
+    }
+
+    /** Said, not swallowed: why an anthology has no premise panel. */
+    #[Computed]
+    public function premiseRefusal(): ?string
+    {
+        return OperatorAction::WritePremises->permittedAt($this->story->status)
+            && $this->story->format === StoryFormat::Anthology
+            ? 'Premises are written from an idea for a single narrative only. An anthology premise is a '
+                .'different shape that nothing here has been built or checked for.'
+            : null;
+    }
+
+    /**
+     * The latest roll, with every candidate's checks run NOW from its stored
+     * fields. Nothing about a check is stored, so a check changed since the
+     * roll reports on it in its current terms.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function premiseRoll(): ?array
+    {
+        $set = $this->story->premise_candidates;
+
+        if (! is_array($set) || ($set['candidates'] ?? []) === []) {
+            return null;
+        }
+
+        $validator = app(ValidateOutlineSpine::class);
+        $candidates = [];
+
+        foreach ($set['candidates'] as $index => $row) {
+            $candidate = PremiseCandidate::fromRow((array) $row);
+
+            $candidates[] = [
+                'index' => $index,
+                'candidate' => $candidate,
+                'checks' => $validator->premiseChecks($this->story, $candidate),
+                'chosen' => trim((string) $this->story->premise) === $candidate->premise,
+            ];
+        }
+
+        $markers = PremiseIdea::revengeMarkers((string) ($set['idea'] ?? ''));
+
+        return [
+            'idea' => (string) ($set['idea'] ?? ''),
+            'generated_at' => $set['generated_at'] ?? null,
+            'requested' => (int) ($set['requested'] ?? GeneratePremises::COUNT),
+            'revenge_shaped' => (bool) ($set['idea_was_revenge_shaped'] ?? false),
+            'translation' => trim((string) ($set['translation'] ?? '')),
+            // The second reading of the idea, from its own words. Shown only
+            // when the generator did not report a translation itself.
+            'revenge_markers' => $markers,
+            'candidates' => $candidates,
+        ];
+    }
+
+    /**
+     * Where the latest roll is: idle, queued (dispatched here, no row yet —
+     * a queued job writes no row until it starts), running, or failed with
+     * its error and the remedy the progress page would give.
+     *
+     * @return array{state: string, error: ?string, remedy: ?\App\Support\Remedy}
+     */
+    #[Computed]
+    public function premiseState(): array
+    {
+        $row = RenderJob::query()
+            ->where('story_id', $this->story->id)
+            ->where('stage', RenderStage::Premises)
+            ->latest('id')
+            ->first();
+
+        $generatedAt = $this->story->premise_candidates['generated_at'] ?? null;
+        $queuedAt = $this->premisesQueuedAt;
+
+        if ($row !== null && ! $row->status->isFinished()) {
+            return ['state' => 'running', 'error' => null, 'remedy' => null];
+        }
+
+        if ($row !== null && $row->status === RenderJobStatus::Failed
+            && ($generatedAt === null || $row->updated_at->greaterThan($generatedAt))) {
+            return [
+                'state' => 'failed',
+                'error' => (string) $row->error,
+                'remedy' => \App\Support\FailureRemedy::for(
+                    $row->failure_kind ?? \App\Enums\FailureKind::Unclassified,
+                    (array) $row->failure_facts,
+                    $this->story,
+                    $row->stage->value,
+                ),
+            ];
+        }
+
+        if ($queuedAt !== null && ($generatedAt === null || $generatedAt < $queuedAt)) {
+            return ['state' => 'queued', 'error' => null, 'remedy' => null];
+        }
+
+        return ['state' => 'idle', 'error' => null, 'remedy' => null];
+    }
+
+    public function askToWritePremises(): void
+    {
+        $this->problem = null;
+        $this->validate(['idea' => ['required', 'string', 'min:10']], [
+            'idea.min' => 'A line is enough, but it needs to be a line: who, what they did, and where.',
+        ]);
+
+        $this->confirmingPremises = true;
+    }
+
+    public function cancelPremises(): void
+    {
+        $this->confirmingPremises = false;
+    }
+
+    /** Queue one roll. The same Action the capability names, through the dispatcher. */
+    public function writePremises(): void
+    {
+        abort_unless($this->canWritePremises(), 403, (string) OperatorAction::WritePremises->refusal($this->story->status));
+
+        $this->confirmingPremises = false;
+        $this->problem = null;
+
+        try {
+            $result = app(DispatchTextStage::class)->writePremises($this->story, $this->idea);
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->premisesQueuedAt = now()->toIso8601String();
+        unset($this->premiseState, $this->premiseRoll);
+
+        $this->saved = sprintf(
+            'Queued on the "%s" queue: one call, three premises. This panel checks for them every few '
+            .'seconds; the checks run on each before it is shown.',
+            $result['queue'],
+        );
+
+        $warnings = array_column(array_filter($result['notes'], fn (array $n): bool => $n['level'] !== 'ok'), 'message');
+
+        if ($warnings !== []) {
+            $this->problem = implode(' ', $warnings);
+        }
+    }
+
+    /**
+     * Use a candidate as the premise. Writes the premise column and nothing
+     * else: `save()` moves a draft to "outlined", which would end the premise
+     * panel before the outline exists. The text is the record — the stored
+     * decision is the artifact the outline reads.
+     */
+    public function usePremise(int $index): void
+    {
+        abort_unless($this->canWritePremises(), 403, (string) OperatorAction::WritePremises->refusal($this->story->status));
+
+        $row = $this->story->premise_candidates['candidates'][$index] ?? null;
+        abort_if(! is_array($row), 404);
+
+        $premise = PremiseCandidate::fromRow($row)->premise;
+
+        $this->story->update(['premise' => $premise]);
+        $this->premise = $premise;
+        $this->story->refresh();
+        unset($this->premiseRoll);
+
+        $this->saved = sprintf(
+            'Premise %d is now this story\'s premise. Edit it below if you want; "Write the outline" is the next press.',
+            $index + 1,
+        );
+    }
+
+    /**
+     * Whether the ending can still be chosen: a single narrative whose outline
+     * has not been written. After the outline it is read-only — the outline
+     * asked for the fields that ending needs, and changing it means writing
+     * the outline again, which is a billed press and not a radio button.
+     */
+    #[Computed]
+    public function canChooseEnding(): bool
+    {
+        return $this->story->format === StoryFormat::Single
+            && in_array($this->story->status, [StoryStatus::Draft, StoryStatus::Outlined], true)
+            && ! $this->story->acts()->exists();
+    }
+
+    /**
+     * How the last few videos ended, this one excluded. See RecentEndings.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, streak: ?array{ending: StoryEnding, count: int}}
+     */
+    #[Computed]
+    public function recentEndings(): array
+    {
+        $rows = RecentEndings::last(RecentEndings::SHOWN, $this->story->id);
+
+        return ['rows' => $rows, 'streak' => RecentEndings::streak($rows)];
+    }
+
+    /** Livewire's hook for `wire:model.live="ending"`: saved as it is picked. */
+    public function updatedEnding(string $value): void
+    {
+        abort_unless(
+            $this->canChooseEnding(),
+            403,
+            'The ending is fixed once the outline is written: the outline wrote the fields it needs.',
+        );
+
+        $ending = StoryEnding::tryFrom($value);
+        abort_if($ending === null, 422);
+
+        $this->story->update(['ending' => $ending]);
+        $this->story->refresh();
+
+        $this->saved = sprintf('Ending set: %s. Nothing was billed.', $ending->label());
     }
 
     #[Computed]
@@ -819,6 +1283,7 @@ class OutlineGate extends Component
                 'sequence' => $chapter->sequence,
                 'title' => (string) $chapter->title,
                 'has_rehook' => $chapter->hasRehook(),
+                'point_of_view' => $chapter->isPointOfView() ? (string) $chapter->point_of_view : null,
                 'first_sentence' => $chapter->first_sentence,
             ])->all(),
         ])->all();

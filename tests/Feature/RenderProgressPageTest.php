@@ -72,6 +72,103 @@ class RenderProgressPageTest extends TestCase
         $this->assertStringContainsString('Provider returned 429', $report['failures'][0]['error']);
     }
 
+    public function test_a_stored_locale_failure_carries_facts_and_the_page_supplies_current_advice(): void
+    {
+        // Story 36's act 2: a row that failed under a rule the code has since
+        // dropped. The row must say what happened and nothing about how the
+        // stage behaves, or it goes on repeating the old rule for ever.
+        $story = Story::factory()->create();
+        $error = (new \App\Exceptions\LocaleViolationException(
+            'en-CN', 'act_script', [['term' => 'car park', 'context' => 'in the car park behind']]
+        ))->getMessage();
+
+        $this->assertStringContainsString('"car park"', $error);
+        $this->assertStringNotContainsString('Re-run', $error);
+        $this->assertStringNotContainsString('rather than passing', $error);
+
+        // Through fail(), the way a stage records it, so the kind on the row is
+        // the one the real exception declares.
+        RenderJob::open($story->id, RenderStage::ActScripts)->fail(new \App\Exceptions\LocaleViolationException(
+            'en-CN', 'act_script', [['term' => 'car park', 'context' => 'in the car park behind']]
+        ));
+        RenderJob::open($story->id, RenderStage::DraftScenes)->fail(new \RuntimeException('Provider returned 429.'));
+
+        $failures = collect(RenderProgress::for($story->fresh())['failures'])->keyBy(fn ($f) => $f['stage']->value);
+
+        $this->assertSame(\App\Enums\FailureKind::LocaleRefused, $failures['act_scripts']['kind']);
+        $this->assertTrue($failures['act_scripts']['remedy']->known);
+        $this->assertStringContainsString('no longer fails', $failures['act_scripts']['remedy']->text);
+
+        // Nothing classified the 429, and the page does not guess.
+        $this->assertSame(\App\Enums\FailureKind::Unclassified, $failures['draft_scenes']['kind']);
+        $this->assertFalse($failures['draft_scenes']['remedy']->known);
+    }
+
+    /**
+     * THE PAGE SAYS "No known repair." IN THOSE WORDS, AND NOTHING SOFTER.
+     *
+     * RED/GREEN on the rendered page: an unclassified failure renders the plain
+     * sentence and no repair block; a classified one renders its repair and
+     * does not also claim none is known.
+     */
+    public function test_the_page_says_no_known_repair_plainly_and_names_a_known_one(): void
+    {
+        $story = Story::factory()->create(['status' => \App\Enums\StoryStatus::AssetsGenerating]);
+        $scene = \App\Models\Scene::factory()->for($story)->create(['sequence' => 7]);
+
+        RenderJob::open($story->id, RenderStage::Concat)->fail(new \App\Exceptions\FfmpegException('Concatenated audio has 10 samples, expected exactly 11.'));
+        RenderJob::open($story->id, RenderStage::Images, $scene->id)->fail(new \App\Exceptions\PipelineFailure(
+            'ElevenLabs refused narration for scene 7 (HTTP 401): quota_exceeded',
+            \App\Enums\FailureKind::SpeechQuotaExhausted,
+        ));
+
+        $html = $this->get(route('renders.show', $story->slug))->assertOk()->getContent();
+
+        // Counted as the rendered element, not the phrase: the stylesheet's own
+        // comment about this block quotes it, and a page-wide count read that as
+        // a second failure.
+        $this->assertSame(1, substr_count($html, '<strong>No known repair.</strong>'));
+        $this->assertStringContainsString('The ElevenLabs allowance is spent', $html);
+        // The button the story can take at its status, and the command beside it.
+        $this->assertStringContainsString(route('stories.scenes', $story), $html);
+        $this->assertStringContainsString('php artisan assets:generate '.$story->slug, $html);
+    }
+
+    /**
+     * RED/GREEN on story 37's shape: an outline refused by a check renders the
+     * button that repairs it AND a separate line saying the outcome is
+     * unmeasured — never "No known repair." (which is what it said on
+     * 2026-09-18, beside a story whose only move was that button), and never
+     * the button without the caveat.
+     */
+    public function test_an_outline_refused_by_a_check_names_the_button_and_says_the_outcome_is_unmeasured(): void
+    {
+        $story = Story::factory()->create(['status' => StoryStatus::Draft]);
+
+        RenderJob::open($story->id, RenderStage::Outline)->fail(new \App\Support\Providers\ScriptWriterException(
+            "The outline's cast cannot be used: The cast has 0 narrators. A single narrative has exactly one first person. The call was billed and nothing was stored.",
+            kind: \App\Enums\FailureKind::OutlineRefused,
+            facts: ['check' => 'cast_structure'],
+        ));
+
+        $html = $this->get(route('renders.show', $story->slug))->assertOk()->getContent();
+
+        $this->assertSame(0, substr_count($html, '<strong>No known repair.</strong>'));
+        $this->assertStringContainsString('refused for a cast that cannot be used', $html);
+        $this->assertStringContainsString('<strong>Not measured:</strong>', $html);
+        $this->assertStringContainsString(route('stories.outline', $story), $html);
+        $this->assertStringContainsString('php artisan story:write '.$story->slug.' --outline-only', $html);
+
+        // The caveat is its own line ABOVE the button it qualifies. Both
+        // offsets are asserted found first: strpos's false compares as 0, and
+        // an ordering assertion on a missing element passes (CLAUDE.md).
+        $caveat = strpos($html, '<strong>Not measured:</strong>');
+        $button = strpos($html, 'href="'.route('stories.outline', $story).'"');
+        $this->assertNotFalse($caveat);
+        $this->assertNotFalse($button);
+        $this->assertLessThan($button, $caveat);
+    }
+
     public function test_the_batch_row_is_read_from_job_batches(): void
     {
         $story = $this->storyWithBatch(scenes: 12, failed: 1);

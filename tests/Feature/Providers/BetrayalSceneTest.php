@@ -96,7 +96,13 @@ class BetrayalSceneTest extends TestCase
         $prompt = $this->invoke($this->claude(), 'outlinePrompt', Story::factory()->single()->create(), 5);
 
         $this->assertStringContainsString('betrayal_scene: THE BETRAYAL AS A SCENE, NOT A DISCOVERY', $prompt);
-        $this->assertStringContainsString('they do not have to speak', $prompt);
+        // The permission that became a motif, gone; the accomplice speaks in
+        // his act instead (3g).
+        // And to the narrator: story 38's premise roll had him speak to the
+        // room in all three candidates while the question named no addressee.
+        $this->assertStringContainsString('AND HAVE THEM SPEAK TO THE NARRATOR in the act you wrote in accomplice_performance', $prompt);
+        $this->assertStringNotContainsString('do not have to speak', $prompt);
+        $this->assertStringNotContainsString('never says a word', $prompt);
         $this->assertStringContainsString('ALOUD, to the narrator\'s face', $prompt);
         $this->assertStringContainsString('THE BETRAYAL SCENE KEEPS IT', $prompt);
         $this->assertStringContainsString('hands back the sentence she said in the betrayal scene', $prompt);
@@ -127,7 +133,12 @@ class BetrayalSceneTest extends TestCase
         $guidance = $this->invoke($this->claude(), 'genreGuidance', Story::factory()->single()->create());
 
         $this->assertStringContainsString('IT OPENS ON THE BETRAYAL AS A SCENE, NOT A', $guidance);
-        $this->assertStringContainsString('does not need a', $guidance);
+        // Flattened: the heredoc wraps, and a needle across a line break is
+        // the self-defeating check CLAUDE.md numbers eleventh.
+        $flat = preg_replace('/\s+/u', ' ', $guidance);
+        $this->assertStringContainsString('an accomplice with a stake speaks here, in his act', $flat);
+        $this->assertStringNotContainsString('does not need a line', $flat);
+        $this->assertStringNotContainsString('never speaks in the whole video', $flat);
         $this->assertStringContainsString('THE BETRAYAL SCENE IS PUBLIC TOO, AND IT IS NOT THIS PAYOFF', $guidance);
     }
 
@@ -136,14 +147,20 @@ class BetrayalSceneTest extends TestCase
      * example: 2:56 is narration, 3:30 is dialogue, and the pairing is the
      * register.
      */
-    public function test_the_crude_line_is_thought_and_the_controlled_line_is_said(): void
+    public function test_the_head_is_funny_and_the_mouth_is_controlled(): void
     {
-        $guidance = $this->invoke($this->claude(), 'genreGuidance', Story::factory()->single()->create());
+        $guidance = preg_replace('/\s+/u', ' ', $this->invoke($this->claude(), 'genreGuidance', Story::factory()->single()->create()));
 
-        $this->assertStringContainsString('THE CRUDE LINE IS WHAT THEY THINK; THE CONTROLLED LINE IS WHAT THEY', $guidance);
+        // Renamed off the crude example (3g): the rule is the channel, and
+        // "Marry you my ass" is one instance of what can travel in it.
+        $this->assertStringContainsString('THE HEAD IS FUNNY; THE MOUTH IS CONTROLLED', $guidance);
+        $this->assertStringNotContainsString('THE CRUDE LINE IS WHAT THEY THINK', $guidance);
+        $this->assertStringContainsString('THE THOUGHT DOES NOT HAVE TO BE CRUDE, AND MOSTLY SHOULD NOT BE', $guidance);
+
+        // The first reference's pairing survives as the example it is.
         $this->assertStringContainsString('THINKS, to the listener: "Our wedding? Marry you my ass."', $guidance);
         $this->assertStringContainsString('new boy toy?"', $guidance);
-        $this->assertStringContainsString('Never', $guidance);
+        $this->assertStringContainsString('Never put the thought in the narrator\'s mouth, and never let the spoken line go crude', $guidance);
 
         // The misreading, in the wording it had.
         $this->assertStringNotContainsString('narrator says "Marry you my ass"', $guidance);
@@ -153,24 +170,27 @@ class BetrayalSceneTest extends TestCase
     // -- The epilogue ---------------------------------------------------------
 
     /**
-     * "No epilogue" contradicted CLAUDE.md 3d: the transcript closes on one,
-     * a year later, with a single sentence doing the work. The point-of-view
-     * extras after it are a second and third narrator and are NOT asked for.
+     * "No epilogue" contradicted CLAUDE.md 3d: the transcript closes on a
+     * year-later chapter. Since 2026-09-19 that is one of two chosen endings
+     * — the narrator's new life, as a scene — and never stacked with the
+     * antagonist's chapter. The ending's own contract is EndingChoiceTest;
+     * this holds that the old "end within a few sentences" did not come back.
      */
-    public function test_the_refusal_act_allows_a_short_epilogue_in_the_narrators_voice(): void
+    public function test_the_refusal_act_ends_on_a_year_later_chapter_in_the_narrators_voice(): void
     {
         $ending = $this->endingFor(ActPhase::Refusal);
 
-        $this->assertStringContainsString('A SHORT EPILOGUE', $ending);
-        $this->assertStringContainsString('in the narrator\'s own voice', $ending);
-        $this->assertStringContainsString('the only one who didn\'t show up', $ending);
-        $this->assertStringContainsString('no chapter told from anybody else\'s point of view', $ending);
+        $this->assertStringContainsString('THE NARRATOR\'S NEW LIFE', $ending);
+        $this->assertStringContainsString('about a year after the refusal', $ending);
+        // The factory story's ending is the new life, so nobody else speaks.
+        $this->assertStringContainsString('No chapter is told from anybody else\'s point of view', $ending);
         $this->assertStringNotContainsString('no epilogue', $ending);
         $this->assertStringNotContainsString('End within a few sentences of the last refusal', $ending);
 
         $guidance = $this->invoke($this->claude(), 'genreGuidance', Story::factory()->single()->create());
 
-        $this->assertStringContainsString('AN EPILOGUE IS ALLOWED, AND IT IS SHORT', $guidance);
+        $this->assertStringContainsString('ONE ENDING, about a year on', $guidance);
+        $this->assertStringContainsString('the only one who didn\'t show up', preg_replace('/\s+/', ' ', $guidance));
         $this->assertStringNotContainsString('THE END, within a few sentences', $guidance);
     }
 
@@ -199,8 +219,10 @@ class BetrayalSceneTest extends TestCase
 
         $this->assertStringContainsString('CHAPTER ONE IS THE BETRAYAL SCENE', $prompt);
         $this->assertStringContainsString((string) $story->betrayal_scene, $prompt);
-        $this->assertStringContainsString('they do not need a line', $prompt);
-        $this->assertStringContainsString('the crude version stays in their head', $prompt);
+        // The fake outline declares an accomplice with an act, so he talks.
+        $this->assertStringContainsString('in the room for all of it, AND HE TALKS', $prompt);
+        $this->assertStringNotContainsString('do not need a line', $prompt);
+        $this->assertStringContainsString('the funny version stays in their head, tagged as a thought', $prompt);
     }
 
     public function test_a_later_act_carries_it_in_the_spine_and_is_not_told_to_stage_it(): void

@@ -203,6 +203,33 @@
                         <td>
                             <div class="muted mono">{{ $failure['failed_at']?->diffForHumans() }}</div>
                             <pre class="err">{{ $failure['error'] }}</pre>
+                            {{--
+                                The repair, built from the failure's kind against the code and
+                                the story status as they are now. Never a sentence stored with
+                                the error. "No known repair." is said in exactly those words when
+                                nothing is known: a softer suggestion there would be a guess
+                                presented as a fix, which is what this exists to stop.
+                            --}}
+                            @if ($failure['remedy']->known)
+                                <div class="repair">
+                                    <p><strong>Repair</strong> <span class="muted">({{ $failure['kind']->label() }})</span>: {{ $failure['remedy']->text }}</p>
+                                    {{--
+                                        A certain move whose outcome nobody has measured says so on
+                                        its own line, above the button it qualifies.
+                                    --}}
+                                    @if ($failure['remedy']->unmeasured)
+                                        <p><strong>Not measured:</strong> {{ $failure['remedy']->unmeasured }}</p>
+                                    @endif
+                                    @if ($failure['remedy']->actionUrl)
+                                        <p><a class="primary" href="{{ $failure['remedy']->actionUrl }}">{{ $failure['remedy']->actionLabel }}</a></p>
+                                    @endif
+                                    @if ($failure['remedy']->command)
+                                        <div class="mono small">{{ $failure['remedy']->command }}</div>
+                                    @endif
+                                </div>
+                            @else
+                                <p class="repair unknown"><strong>No known repair.</strong></p>
+                            @endif
                         </td>
                     </tr>
                 @endforeach

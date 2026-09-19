@@ -132,6 +132,7 @@ final class GateVoice
         'countBlocking' => [self::DECIDE => 'block approval'],
         'fixHere' => [self::EDIT => 'cheaper to fix here'],
         'judgement' => [self::DECIDE => 'Judging these is yours'],
+        'removeBeforeApproving' => [self::DECIDE => 'has to come out before you approve'],
 
         // Position. Both phrasings claim, so both are listed; the third state —
         // the story parked AT this gate — claims neither and is unlisted, which
@@ -315,6 +316,21 @@ final class GateVoice
             ? 'All of them are '.self::fragment('fixHere', self::EDIT).' than after the gate is crossed.'
             : 'Fixing one now means reopening this gate, and the line above says whether that is '
                 .'available from here.';
+    }
+
+    /**
+     * That a denied term in an act script is not a judgement.
+     *
+     * Scene drafting refuses a denied term in a frame and frames are drawn from
+     * the script, so a script term the operator "keeps" at Gate 1 comes back as
+     * a paid refusal one stage on (story 38, act 4, twice). The settled
+     * phrasing keeps the fact and drops the approval it no longer precedes.
+     */
+    public function removeBeforeApproving(): string
+    {
+        return $this->can(self::DECIDE)
+            ? 'It '.self::fragment('removeBeforeApproving', self::DECIDE).'.'
+            : 'Until it comes out, scene drafting refuses it.';
     }
 
     /** Whose call it is. */

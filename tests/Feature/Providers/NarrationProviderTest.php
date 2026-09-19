@@ -372,8 +372,43 @@ class NarrationProviderTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertStringContainsString('exhausted allowance, not a broken key', $e->getMessage());
             $this->assertStringContainsString('NO overage', $e->getMessage());
-            // And the recovery, which is not obvious: re-pressing is safe.
-            $this->assertStringContainsString('not re-billed', $e->getMessage());
+
+            // The recovery, which is not obvious (re-pressing is safe), is no
+            // longer frozen into the message: it is built from the kind when
+            // the page is read.
+            $this->assertStringNotContainsString('not re-billed', $e->getMessage());
+            [$kind] = \App\Enums\FailureKind::of($e);
+            $this->assertSame(\App\Enums\FailureKind::SpeechQuotaExhausted, $kind);
+
+            $story = \App\Models\Story::factory()->create(['status' => \App\Enums\StoryStatus::AssetsGenerating]);
+            $this->assertStringContainsString('not re-billed', \App\Support\FailureRemedy::for($kind, [], $story)->text);
+        }
+    }
+
+    /** A 401 that does not mention the allowance is a rejected key, not a spent one. */
+    public function test_a_rejected_key_is_not_classified_as_a_spent_allowance(): void
+    {
+        Http::fake(['*/text-to-speech/*' => Http::response('{"detail":{"status":"invalid_api_key"}}', 401)]);
+
+        try {
+            app(ElevenLabsSpeechSynthesizer::class)->synthesize($this->scene(), 'Anything at all.', 'voice-abc');
+            $this->fail('Expected the rejected key to be refused.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(\App\Enums\FailureKind::SpeechKeyRejected, \App\Enums\FailureKind::of($e)[0]);
+        }
+    }
+
+    /** A 422 has no measured cause here, so it is not given one. */
+    public function test_an_unexplained_status_is_unclassified(): void
+    {
+        Http::fake(['*/text-to-speech/*' => Http::response('{"detail":"bad"}', 422)]);
+
+        try {
+            app(ElevenLabsSpeechSynthesizer::class)->synthesize($this->scene(), 'Anything at all.', 'voice-abc');
+            $this->fail('Expected the 422 to be refused.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(\App\Enums\FailureKind::Unclassified, \App\Enums\FailureKind::of($e)[0]);
+            $this->assertStringNotContainsString('apply_text_normalization', $e->getMessage());
         }
     }
 

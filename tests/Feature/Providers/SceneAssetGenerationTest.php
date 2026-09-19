@@ -404,8 +404,21 @@ class SceneAssetGenerationTest extends TestCase
             $this->fail('The job should have refused to run against a different provider.');
         } catch (RuntimeException $e) {
             $this->assertStringContainsString('queued against provider "fal"', $e->getMessage());
-            $this->assertStringContainsString('queue:restart', $e->getMessage());
+            // The stored message holds the disagreement and no procedure; the
+            // restart is built from the kind when the page is read.
+            $this->assertStringNotContainsString('queue:restart', $e->getMessage());
         }
+
+        $row = RenderJob::query()->where('scene_id', $scene->id)->firstOrFail();
+        $this->assertSame(\App\Enums\FailureKind::StaleWorker, $row->failure_kind);
+        $this->assertSame(['queue' => (string) config('render.queues.assets')], $row->failure_facts);
+
+        $remedy = \App\Support\FailureRemedy::for($row->failure_kind, $row->failure_facts, $story->fresh());
+        $this->assertTrue($remedy->known);
+        $this->assertSame(
+            \App\Support\WorkerServices::restartCommand((string) config('render.queues.assets')),
+            $remedy->command,
+        );
 
         // Refused, not substituted: no still, no cost row, and the scene is
         // flagged so the operator can find it.

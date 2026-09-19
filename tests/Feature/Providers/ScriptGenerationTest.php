@@ -250,55 +250,140 @@ class ScriptGenerationTest extends TestCase
 
     // -- Locale --------------------------------------------------------------
 
-    public function test_a_filipino_idiom_in_an_act_fails_the_stage_loudly(): void
+    /**
+     * KEPT AND SHOWN, NOT REFUSED (2026-09-17). This test used to assert the
+     * act was thrown away; story 36's act 2 was, over "car park", at the cost
+     * of the billed act and the run. The act is stored now, the job row says
+     * what it was kept with, and Gate 1 puts the phrase in front of the
+     * operator — which is the half that answers "an operator will scroll
+     * past it in 7,000 words".
+     */
+    public function test_a_denied_term_in_an_act_is_kept_named_on_the_job_row_and_shown_at_gate_one(): void
     {
         $story = $this->outlinedStory(3);
 
         $this->writer->injectIntoScript = 'She walked to the sari-sari store on the corner.';
 
-        try {
-            app(GenerateActScripts::class)->handle($story);
-            $this->fail('A leaked idiom reached Gate 1.');
-        } catch (LocaleViolationException $e) {
-            $this->assertSame('en-US', $e->localeProfile);
-            $this->assertSame('sari-sari store', $e->hits[0]['term']);
-            $this->assertStringContainsString('Re-run the stage', $e->getMessage());
-        }
+        app(GenerateActScripts::class)->handle($story);
 
-        // And the act was not written. Failing after persisting would leave the
-        // leak in the database for an operator to miss at Gate 1.
-        $this->assertNull($story->acts()->where('sequence', 1)->value('script'));
+        $this->assertStringContainsString('sari-sari store', (string) $story->acts()->where('sequence', 1)->value('script'));
+
+        $log = (string) \App\Models\RenderJob::query()->where('story_id', $story->id)
+            ->where('stage', \App\Enums\RenderStage::ActScripts)->value('log');
+        $this->assertStringContainsString('Act 1 kept with 1 term(s) the en-US denylist names', $log);
+        $this->assertStringContainsString('"sari-sari store"', $log);
+
+        $denied = app(GenerateActScripts::class)->localeDenied($story->refresh());
+        $this->assertSame(['where' => 'script', 'act' => 1, 'editable' => false], array_intersect_key($denied[0], array_flip(['where', 'act', 'editable'])));
+        $this->assertSame('sari-sari store', $denied[0]['term']);
+
+        // A script term is NOT a judgement: scene drafting refuses it. The page
+        // said "kept for your judgement ... if this one does, leave it" until
+        // 2026-09-19, and story 38's act 4 paid two refused scene drafts for it.
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story])
+            ->assertSee('1 of them in an act script')
+            ->assertSee('A denied term in an act script is refused at scene drafting.')
+            ->assertSee('has to come out before you approve')
+            ->assertDontSee('kept for your judgement')
+            ->assertDontSee('if one does, it can stay')
+            ->assertSee('sari-sari store')
+            ->assertSee('story:write --acts-only=N');
     }
 
-    public function test_the_denylist_catches_honorifics_and_commonwealth_spelling_too(): void
+    /**
+     * RED/GREEN on the approval clause. Past Gate 1 there is no approval to
+     * come before, so the sentence keeps the fact and drops the claim — the
+     * state story 38 was in when it was refused. The shared page fixture has
+     * no denied script term, so the contract's claim check never renders this
+     * sentence; this case is what does.
+     */
+    public function test_red_green_a_script_term_past_gate_one_says_the_refusal_not_the_approval(): void
+    {
+        $story = $this->outlinedStory(3);
+        $this->writer->injectIntoScript = 'She walked to the sari-sari store on the corner.';
+        app(GenerateActScripts::class)->handle($story);
+
+        $story->refresh()->forceFill(['status' => StoryStatus::Scripted])->save();
+
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story->fresh()])
+            ->assertSee('A denied term in an act script is refused at scene drafting.')
+            ->assertSee('Until it comes out, scene drafting refuses it.')
+            ->assertDontSee('has to come out before you approve');
+    }
+
+    public function test_the_denylist_still_names_honorifics_and_commonwealth_spelling(): void
     {
         foreach (['Ay naku, she thought.', 'Her favourite colour was grey.', 'Opo, she said.'] as $leak) {
             $story = $this->outlinedStory(2);
             $this->writer->injectIntoScript = $leak;
 
-            try {
-                app(GenerateActScripts::class)->handle($story);
-                $this->fail("Leaked past the denylist: {$leak}");
-            } catch (LocaleViolationException $e) {
-                $this->assertNotEmpty($e->hits);
-            }
+            app(GenerateActScripts::class)->handle($story);
+
+            $this->assertNotEmpty(
+                array_filter(app(GenerateActScripts::class)->localeDenied($story->refresh()), fn (array $hit): bool => $hit['where'] === 'script'),
+                "Not shown at Gate 1: {$leak}",
+            );
         }
     }
 
-    public function test_a_leak_in_the_outline_fails_before_any_act_is_written(): void
+    /** A clean act raises no denied alert, so the red panel means something when it appears. */
+    public function test_a_clean_story_shows_no_denied_terms(): void
     {
-        // The cheapest place to catch it: one call's tokens, not six.
+        $story = $this->outlinedStory(2);
+
+        app(GenerateActScripts::class)->handle($story);
+
+        $this->assertSame([], app(GenerateActScripts::class)->localeDenied($story->refresh()));
+
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story])
+            ->assertDontSee('kept for your judgement');
+    }
+
+    /**
+     * The outline is kept too, and an outline term is the cheap repair: the
+     * field is edited on the Gate 1 page, and the alert is recomputed from the
+     * stored text, so the save that removes the term removes the alert.
+     */
+    public function test_a_denied_term_in_the_outline_is_kept_and_editing_it_out_clears_it(): void
+    {
         $story = $this->draftStory();
         $this->writer->injectIntoOutline = 'The barangay captain refused.';
 
+        app(GenerateOutline::class)->handle($story, 4);
+
+        $this->assertSame(4, $story->acts()->count());
+        $this->assertSame(StoryStatus::Outlined, $story->fresh()->status);
+
+        $denied = app(GenerateActScripts::class)->localeDenied($story->refresh());
+        $this->assertNotEmpty($denied);
+        $this->assertTrue(collect($denied)->every(fn (array $hit): bool => $hit['editable'] && $hit['term'] === 'barangay'));
+
+        $log = (string) \App\Models\RenderJob::query()->where('story_id', $story->id)
+            ->where('stage', \App\Enums\RenderStage::Outline)->value('log');
+        $this->assertStringContainsString('Kept with 1 term(s) the en-US denylist names', $log);
+
+        $gate = \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story])
+            ->assertSee('kept for your judgement');
+
+        foreach (array_keys($gate->get('acts')) as $index) {
+            $gate->set("acts.{$index}.summary", str_replace('The barangay captain refused.', 'The neighborhood captain refused.', $gate->get("acts.{$index}.summary")));
+        }
+
+        $gate->call('save')->assertHasNoErrors()->assertDontSee('kept for your judgement');
+
+        $this->assertSame([], app(GenerateActScripts::class)->localeDenied($story->refresh()));
+    }
+
+    /**
+     * Scenes still refuse, deliberately: a frame is one of 150-250 strings no
+     * page puts in front of anyone. Pinned here beside the kept stages so the
+     * split reads as a decision and not as a missed caller.
+     */
+    public function test_the_guard_still_throws_for_the_stages_gate_one_does_not_show(): void
+    {
         $this->expectException(LocaleViolationException::class);
 
-        try {
-            app(GenerateOutline::class)->handle($story, 4);
-        } finally {
-            $this->assertSame(0, $story->acts()->count(), 'A leaking outline was still written to acts.');
-            $this->assertSame(StoryStatus::Draft, $story->fresh()->status);
-        }
+        app(LocaleGuard::class)->assert('A frame of the car park at dusk.', 'en-US', 'scene drafting for act 1');
     }
 
     public function test_an_english_word_that_collides_with_an_honorific_does_not_fail_a_stage(): void

@@ -53,6 +53,20 @@ interface ScriptWriter
     public function outline(Story $story, int $actCount): OutlineDraft;
 
     /**
+     * Write premise candidates from an operator's idea.
+     *
+     * Before the outline, while the story is a draft. Each candidate carries
+     * the prose the outline will be written from AND the spine answers the
+     * Gate 1 checks read, so the checks can run before the operator picks.
+     * Nothing is written to the database by the provider.
+     *
+     * @param  int  $count  how many candidates to ask for; the provider returns
+     *                      what it got, and the Action reports a shortfall
+     *                      rather than refusing a billed call.
+     */
+    public function premises(Story $story, string $idea, int $count): \App\Support\Providers\PremiseDraftSet;
+
+    /**
      * Write one act's narration.
      *
      * @param  ActOutline  $act  The act to write, from the approved outline.

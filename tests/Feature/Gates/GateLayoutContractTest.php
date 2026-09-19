@@ -437,6 +437,35 @@ class GateLayoutContractTest extends TestCase
             'betrayal_scene' => null,
             'outlined_before_betrayal_scene' => true,
 
+            // AND BEFORE THE CAST WAS ASKED, for the identical reason, and
+            // found the identical way: the moment `outline_cast` existed this
+            // fixture read "the cast is missing" as a PROBLEM at all eleven
+            // statuses and `test_the_page_fixture_leaves_one_advisory_group_
+            // empty` went red at every one. The second time this fixture has
+            // been left describing an outline that cannot exist; the entry in
+            // CLAUDE.md 3f names both.
+            'outline_cast' => null,
+            'outlined_before_cast' => true,
+
+            // AND BEFORE THE ACCOMPLICE'S STAKE AND THE RUNNING THOUGHT (3g).
+            // The third field in a row to turn this fixture red at all eleven
+            // statuses the moment it existed — "Running thought is missing"
+            // filled the spine-problems group — and the third time it was
+            // found by the failing test rather than by asking the question
+            // first. It had been asked; the answer was written into the
+            // change's plan and the fixture was still edited after the run.
+            'accomplice_motive' => null,
+            'accomplice_performance' => null,
+            'accomplice_fall' => null,
+            'running_thought' => null,
+            'outlined_before_accomplice_and_thought' => true,
+            // And before the antagonist's regret. The fourth field in a row to
+            // turn this fixture red at all eleven statuses (betrayal scene,
+            // cast, accomplice arc, this): the review read the empty value as
+            // "missing" and filled the spine-problems group.
+            'antagonist_regret' => null,
+            'outlined_before_antagonist_regret' => true,
+
             // THE FIXTURE MUST BE ABLE TO EXPRESS "THIS SCRIPT WAS SIZED", or
             // the claim check below cannot see Gate 1's sizing panel at all.
             // Found by drilling a DIFFERENT test: replacing that panel's voice

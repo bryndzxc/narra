@@ -5,6 +5,8 @@ namespace App\Services\WhisperX;
 use App\Contracts\Transcriber;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Enums\FailureKind;
+use App\Exceptions\PipelineFailure;
 use App\Support\Providers\ProviderUsage;
 use App\Support\Providers\Transcription;
 use RuntimeException;
@@ -191,7 +193,7 @@ class WhisperXTranscriber implements Transcriber
         $stderr = trim($process->getErrorOutput());
 
         if ($stdout === '') {
-            throw new RuntimeException($this->explainSilence($process->getExitCode(), $stderr));
+            throw $this->silenceFailure($process->getExitCode(), $stderr);
         }
 
         try {
@@ -211,12 +213,21 @@ class WhisperXTranscriber implements Transcriber
         }
 
         if (($decoded['ok'] ?? false) !== true) {
-            throw new RuntimeException(sprintf(
-                "WhisperX alignment failed (%s): %s\n%s",
-                (string) ($decoded['kind'] ?? 'unknown'),
-                (string) ($decoded['error'] ?? 'no error given'),
-                mb_substr($stderr, 0, 600),
-            ));
+            // The 328 failed alignments in failed_jobs came through HERE, not
+            // through the silent path: the script reported align_failed with
+            // ModuleNotFoundError as its error. So the missing module is read
+            // from both.
+            $error = (string) ($decoded['error'] ?? 'no error given');
+
+            throw new PipelineFailure(
+                sprintf(
+                    "WhisperX alignment failed (%s): %s\n%s",
+                    (string) ($decoded['kind'] ?? 'unknown'),
+                    $error,
+                    mb_substr($stderr, 0, 600),
+                ),
+                self::missingModule($error) ? FailureKind::AlignerNotInstalled : FailureKind::Unclassified,
+            );
         }
 
         return $decoded;
@@ -229,23 +240,36 @@ class WhisperXTranscriber implements Transcriber
      * machine is that the package is not installed, and the raw stderr for that
      * is a ModuleNotFoundError buried under an import trace.
      */
-    private function explainSilence(?int $exitCode, string $stderr): string
+    /**
+     * The failure for a run that printed nothing: what happened, and what kind.
+     *
+     * Two pieces of advice used to be written in here and both were wrong.
+     * "Confirm with `php artisan providers:show`" named a command that has never
+     * existed, in the message behind 328 failed alignments. And "`python` on PATH
+     * is often the Microsoft Store alias stub" was offered as the cause of any
+     * other silence — on the machine where the interpreter that WORKS is the
+     * Microsoft Store build. The missing module is read off stderr and is
+     * certain; anything else is Unclassified, and the page says so.
+     */
+    private function silenceFailure(?int $exitCode, string $stderr): PipelineFailure
     {
-        $missing = str_contains($stderr, 'ModuleNotFoundError')
-            || str_contains($stderr, 'No module named');
+        $missing = self::missingModule($stderr);
 
-        return sprintf(
-            "WhisperX produced no output (exit %s).%s\nstderr: %s",
-            $exitCode === null ? 'unknown' : (string) $exitCode,
-            $missing
-                ? "\n\nThe Python interpreter at WHISPERX_PYTHON does not have whisperx installed. "
-                  ."Install it into that exact interpreter:\n"
-                  ."    <python> -m pip install whisperx\n"
-                  .'and confirm with `php artisan providers:show`, which runs a real alignment.'
-                : "\n\nCheck WHISPERX_PYTHON points at an interpreter that exists — on Windows, `python` "
-                  .'on PATH is often the Microsoft Store alias stub, which exits silently.',
-            mb_substr($stderr, 0, 800),
+        return new PipelineFailure(
+            sprintf(
+                "WhisperX produced no output (exit %s).%s\nstderr: %s",
+                $exitCode === null ? 'unknown' : (string) $exitCode,
+                $missing ? ' The interpreter at WHISPERX_PYTHON cannot import whisperx.' : '',
+                mb_substr($stderr, 0, 800),
+            ),
+            $missing ? FailureKind::AlignerNotInstalled : FailureKind::Unclassified,
         );
+    }
+
+    private static function missingModule(string $text): bool
+    {
+        return str_contains($text, "No module named 'whisperx'")
+            || (str_contains($text, 'ModuleNotFoundError') && str_contains($text, 'whisperx'));
     }
 
     /**

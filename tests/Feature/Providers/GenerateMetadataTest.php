@@ -125,6 +125,23 @@ class GenerateMetadataTest extends TestCase
         $this->assertNotEmpty(array_filter($notes, fn (string $n): bool => str_contains($n, 'hard limit')));
     }
 
+    /** Every title over the hard limit refuses the sheet as a refused output of the stage. */
+    public function test_a_set_with_every_title_past_the_hard_limit_is_a_refused_output(): void
+    {
+        $story = $this->renderedStory();
+
+        app(FakeMetadataWriter::class)->titleOverride = [str_repeat('a', 101), str_repeat('b', 102)];
+
+        try {
+            app(GenerateMetadata::class)->handle($story);
+            $this->fail('A sheet with no usable title must be refused.');
+        } catch (\App\Support\Providers\ScriptWriterException $e) {
+            $this->assertStringNotContainsString('Re-run', $e->getMessage(), 'The move is built at display time, not stored.');
+            $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+            $this->assertSame(['stage' => 'metadata', 'check' => 'titles_over_limit'], $e->failureFacts());
+        }
+    }
+
     public function test_a_set_where_every_title_is_over_the_visible_length_is_reported(): void
     {
         // The failure this guard is for, and it is a real one: the first live

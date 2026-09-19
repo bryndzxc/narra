@@ -6,6 +6,8 @@ use App\Contracts\ImageGenerator;
 use App\Contracts\ReferenceImageGenerator;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Enums\FailureKind;
+use App\Exceptions\PipelineFailure;
 use App\Models\Character;
 use App\Models\Scene;
 use App\Support\Providers\CharacterReferenceImage;
@@ -184,13 +186,22 @@ class FalSeedreamImageGenerator implements ImageGenerator, ReferenceImageGenerat
         ]);
 
         if ($response->failed()) {
-            throw new RuntimeException(sprintf(
-                'fal refused the %s request against %s (HTTP %d): %s',
-                $operation,
-                $model,
-                $response->status(),
-                mb_substr($response->body(), 0, 500),
-            ));
+            // A content-checker refusal and every other failure used to be one
+            // indistinguishable RuntimeException, so the retry button offered to
+            // resend a prompt that is refused deterministically. The body names
+            // the refusal; the kind carries it to the page.
+            throw new PipelineFailure(
+                sprintf(
+                    'fal refused the %s request against %s (HTTP %d): %s',
+                    $operation,
+                    $model,
+                    $response->status(),
+                    mb_substr($response->body(), 0, 500),
+                ),
+                $response->status() === 422 && str_contains($response->body(), 'content_policy_violation')
+                    ? FailureKind::ContentRefused
+                    : FailureKind::Unclassified,
+            );
         }
 
         $image = $response->json('images.0');

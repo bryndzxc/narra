@@ -3,11 +3,13 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\FailureKind;
 use App\Enums\RenderStage;
 use App\Models\Act;
 use App\Models\Chapter;
 use App\Models\RenderJob;
 use App\Models\Story;
+use App\Support\AntagonistPointOfView;
 use App\Support\LocaleGuard;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
@@ -163,15 +165,18 @@ class GenerateActScripts
             // way for the same reason. After the cost row, like the act count:
             // a refusal is loud and the ledger still says what it cost.
             if ($over = Act::textOverflows(['summary' => $draft->summary])) {
-                throw new ScriptWriterException(sprintf(
-                    'Act %d came back with a %s. The call was billed and the act is NOT stored; '
-                    .'re-run this act (story:write --acts-only=%d). The prompt states the bound, so '
-                    .'a writer exceeding it is new information about the writer, not a reason to '
-                    .'raise the bound.',
-                    $act->sequence,
-                    implode(', ', $over),
-                    $act->sequence,
-                ));
+                // Facts only. The repair — write again, which re-runs this act
+                // alone, with the measured record of retries passing — is built
+                // at display time from the kind (FailureRemedy).
+                throw new ScriptWriterException(
+                    sprintf(
+                        'Act %d came back with a %s. The call was billed and the act is NOT stored.',
+                        $act->sequence,
+                        implode(', ', $over),
+                    ),
+                    kind: FailureKind::ActSummaryOverBound,
+                    facts: ['act' => $act->sequence],
+                );
             }
 
             // The chapter shape, the same way and for the same reason: stated
@@ -182,14 +187,15 @@ class GenerateActScripts
             // be seen is beside the splitter that will cut the scenes.
             $boundaries = $this->chapterBoundaries($act, $draft);
 
-            // Loudly, and here rather than at Gate 1. An operator reading 7,000
-            // words will not reliably catch one "sari-sari store"; a US viewer
-            // will catch it immediately.
-            $this->locale->assert(
-                $draft->proseForInspection(),
-                (string) $story->locale_profile,
-                "act {$act->sequence} generation"
-            );
+            // KEPT AND SHOWN AT GATE 1, NOT REFUSED (2026-09-17). This used to
+            // throw, on the argument that an operator reading 7,000 words will
+            // not catch one "sari-sari store". That argument is about FINDING
+            // the term, and Gate 1 now finds it: the phrase is at the top of the
+            // page with its act and its context, so the judgement is a glance.
+            // Refusing cost the billed act (~$0.20) and the run, including for
+            // terms with a real reading the list had not anticipated. Named on
+            // the job row as well, below.
+            $denied = $this->locale->denied($draft->proseForInspection(), (string) $story->locale_profile);
 
             DB::transaction(function () use ($act, $draft, $story, $boundaries): void {
                 $act->update([
@@ -214,6 +220,7 @@ class GenerateActScripts
                         'sequence' => $index + 1,
                         'title' => $chapter->title,
                         'rehook_line' => trim($chapter->rehookLine) !== '' ? $chapter->rehookLine : null,
+                        'point_of_view' => $chapter->isPointOfView() ? trim($chapter->pointOfView) : null,
                         'first_sentence' => $boundaries[$index],
                     ]);
                 }
@@ -235,6 +242,16 @@ class GenerateActScripts
                     ? ''
                     : ', NO RE-HOOK on chapter '.implode(', ', $this->chaptersWithoutRehook($draft)),
             ));
+
+            if ($denied !== []) {
+                $job->note(sprintf(
+                    'Act %d kept with %d term(s) the %s denylist names, for judgement at Gate 1: %s.',
+                    $act->sequence,
+                    count($denied),
+                    $story->locale_profile,
+                    implode(', ', array_map(static fn (array $hit): string => '"'.$hit['term'].'"', $denied)),
+                ));
+            }
         }
 
         return $drafts;
@@ -259,19 +276,64 @@ class GenerateActScripts
         $max = (int) config('chapters.max_per_act', 4);
         $minWords = (int) config('chapters.min_words', 150);
 
-        $refuse = function (string $what) use ($act): never {
-            throw new ScriptWriterException(sprintf(
-                'Act %d came back with %s. The call was billed and the act is NOT stored; re-run '
-                .'this act (story:write --acts-only=%d). The prompt states the bound, so a writer '
-                .'exceeding it is new information about the writer, not a reason to move the bound.',
-                $act->sequence,
-                $what,
-                $act->sequence,
-            ));
+        $refuse = function (string $what, string $check = 'chapter_shape') use ($act): never {
+            // Facts only. The repair — Write again, which re-runs this act
+            // alone — is built at display time with its outcome said to be
+            // unmeasured (FailureKind::OutputRefused). This was unclassified
+            // until 2026-09-19 on the reasoning that an unmeasured retry is no
+            // repair, and the page said "No known repair." beside the one
+            // button that makes it.
+            throw new ScriptWriterException(
+                sprintf(
+                    'Act %d came back with %s. The call was billed and the act is NOT stored.',
+                    $act->sequence,
+                    $what,
+                ),
+                kind: FailureKind::OutputRefused,
+                facts: ['stage' => RenderStage::ActScripts->value, 'check' => $check, 'act' => $act->sequence],
+            );
         };
 
-        if ($count < $min || $count > $max) {
-            $refuse(sprintf('%d chapter(s) against a bound of %d-%d per act', $count, $min, $max));
+        // The antagonist's chapter: at most one, only in the act asked for it,
+        // last, and under the name the prompt gave. A malformed one is a shape,
+        // refused like every shape here. A MISSING one is not refused: it is
+        // content the writer did not deliver, and Gate 1 reports it the way it
+        // reports a chapter that never says its number.
+        $herName = AntagonistPointOfView::endsStoredAct($act->story, $act)
+            ? AntagonistPointOfView::nameFor($act->story)
+            : null;
+        $theirs = array_keys(array_filter($draft->chapters, fn (ChapterDraft $c): bool => $c->isPointOfView()));
+
+        if (count($theirs) > 1) {
+            $refuse(sprintf('%d chapters told by someone other than the narrator; at most one is asked for', count($theirs)), 'point_of_view_chapter');
+        }
+
+        if ($theirs !== []) {
+            $told = $draft->chapters[$theirs[0]];
+
+            if ($herName === null) {
+                $refuse(sprintf(
+                    'a chapter told by "%s" in an act that was not asked for one',
+                    $told->pointOfView,
+                ), 'point_of_view_chapter');
+            }
+
+            if ($told->pointOfView !== $herName) {
+                $refuse(sprintf('a point-of-view chapter told by "%s" where "%s" was asked for', $told->pointOfView, $herName), 'point_of_view_chapter');
+            }
+
+            if ($theirs[0] !== $count - 1) {
+                $refuse(sprintf('the antagonist\'s chapter at position %d of %d; it is the last chapter of the act', $theirs[0] + 1, $count), 'point_of_view_chapter');
+            }
+        }
+
+        // Her chapter is not counted toward the act's bound: the prompt says
+        // so, and a refusal act that already runs to the maximum would
+        // otherwise be refused for doing what it was asked.
+        $narrated = $count - count($theirs);
+
+        if ($narrated < $min || $narrated > $max) {
+            $refuse(sprintf('%d chapter(s) against a bound of %d-%d per act', $narrated, $min, $max));
         }
 
         $boundaries = [];
@@ -354,6 +416,59 @@ class GenerateActScripts
         }
 
         return $warnings;
+    }
+
+    /**
+     * Denied locale terms in what Gate 1 reviews, for the operator to judge.
+     *
+     * The outline and the act scripts keep their text when the denylist names
+     * a term (see the note where each stage checks), so this is where the
+     * judgement happens. Recomputed from the STORED text on every render, not
+     * recorded at generation: an operator who edits a spine field or rewrites
+     * an act clears its alert by fixing it, and nothing can go stale.
+     *
+     * `where` says which repair applies. An outline field — the title, the
+     * cast, a spine field, an act's title, summary or beat — is edited on the
+     * Gate 1 page, free. An act script is not editable there; it is kept as it
+     * stands or that act is rewritten on its own.
+     *
+     * @return array<int, array{where: string, act: ?int, editable: bool, term: string, context: string}>
+     */
+    public function localeDenied(Story $story): array
+    {
+        $profile = (string) $story->locale_profile;
+        $found = [];
+
+        $add = function (string $where, ?int $act, bool $editable, ?string $text) use (&$found, $profile): void {
+            foreach ($this->locale->denied((string) $text, $profile) as $hit) {
+                $found[] = ['where' => $where, 'act' => $act, 'editable' => $editable, ...$hit];
+            }
+        };
+
+        $add('title', null, true, $story->title);
+
+        foreach ((array) ($story->outline_cast ?? []) as $row) {
+            $add('cast', null, true, trim(($row['name'] ?? '').' — '.($row['relationship'] ?? '')));
+        }
+
+        foreach ([
+            'hook', 'narrator_grievance', 'antagonist_justification', 'accomplice_motive',
+            'accomplice_performance', 'betrayal_scene', 'withheld_information', 'exposure_moment',
+            'narrator_at_exposure', 'departure', 'reversal_beats', 'accomplice_fall', 'running_thought',
+            'refusal',
+        ] as $field) {
+            $add(str_replace('_', ' ', $field), null, true, $story->{$field});
+        }
+
+        foreach ($story->acts()->with('chapters')->orderBy('sequence')->get() as $act) {
+            $add('title, summary or beat', $act->sequence, true, implode("\n", [$act->title, $act->summary, $act->escalation_beat]));
+            $add('script', $act->sequence, false, implode("\n", [
+                (string) $act->script,
+                ...$act->chapters->pluck('title')->all(),
+            ]));
+        }
+
+        return $found;
     }
 
     /**

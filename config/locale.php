@@ -50,18 +50,22 @@ $operatorLeak = [
     // or a common Western given name. They are in the warn list.
     'opo', 'kuya', 'nanay', 'tatay', 'inay', 'itay',
 
-    // Places and institutions
+    // Places and institutions. 'tricycle driver' is NOT here: a county town in
+    // China runs on three-wheelers, so it is denied in en-US and warned in
+    // en-CN, per profile below.
     'barangay', 'sari-sari store', 'sari sari store', 'palengke',
-    'jeepney', 'tricycle driver', 'sitio', 'purok', 'poblacion',
+    'jeepney', 'sitio', 'purok', 'poblacion',
     'bayanihan',
 
-    // Food and objects that read as untranslated
-    'merienda', 'pandesal', 'adobo', 'sinigang', 'balut', 'tsinelas',
+    // Food and objects that read as untranslated. 'merienda' and 'adobo' are
+    // NOT here: both are ordinary Mexican and Spanish words a US story can use,
+    // so they are warned in en-US and denied in en-CN, per profile below.
+    'pandesal', 'sinigang', 'balut', 'tsinelas',
     'banig', 'kalesa',
 
     // Currency. 'pesos' is NOT here - a US story can legitimately mention
-    // Mexican pesos.
-    'piso', 'centavo', 'sentimo',
+    // Mexican pesos - and 'centavo' is not either, for the same reason.
+    'piso', 'sentimo',
 
     // Common Tagalog verbs and nouns that survive into English drafts
     'kababayan', 'utang na loob', 'gigil', 'kilig',
@@ -84,16 +88,37 @@ $operatorLeakWarn = [
 | narrator is American whatever country the story is set in. This is the half of
 | the old en-US list that is about the NARRATOR rather than the setting, which
 | is why it survives into a profile set in China.
+|
+| EACH TERM CARRIES ITS AMERICAN WORD, and the writer is given the pairs
+| (LocaleGuard::americanWordsLine(), appended to every profile's guidance).
+| Until 2026-09-19 this was a bare list: the guard knew "car park" was wrong
+| and nothing told the writer "parking lot" was right. It cost three refusals
+| and about $0.90 — story 36's act 2, then story 38's act 4 scene drafting
+| twice, all from the one phrase in act prose — while "parking lot" sat in
+| fourteen act scripts already. A term added here without its word does not
+| reach the writer at all, and PromptLocaleTest says so.
 */
 
 $notAmericanEnglish = [
     // 'grey' and 'mobile phone' are NOT here: 'Grey' is a common American
     // surname and 'mobile phone' is understood in US English even though 'cell
     // phone' is standard.
-    'colour', 'favourite', 'realise', 'realised', 'travelled',
-    'apologise', 'apologised', 'kerb', 'lorry', 'petrol',
-    'car park', 'maths', 'aeroplane', 'whilst', 'flat mate',
-    'autumn term',
+    'colour' => 'color',
+    'favourite' => 'favorite',
+    'realise' => 'realize',
+    'realised' => 'realized',
+    'travelled' => 'traveled',
+    'apologise' => 'apologize',
+    'apologised' => 'apologized',
+    'kerb' => 'curb',
+    'lorry' => 'truck',
+    'petrol' => 'gas',
+    'car park' => 'parking lot',
+    'maths' => 'math',
+    'aeroplane' => 'airplane',
+    'whilst' => 'while',
+    'flat mate' => 'roommate',
+    'autumn term' => 'fall semester',
 ];
 
 $notAmericanEnglishWarn = [
@@ -104,6 +129,10 @@ $notAmericanEnglishWarn = [
 return [
 
     'default' => 'en-US',
+
+    // The British term => the American word the writer is told to use.
+    // Shared by every profile, like the denylist entries it is keyed on.
+    'american_words' => $notAmericanEnglish,
 
     'profiles' => [
 
@@ -150,13 +179,15 @@ return [
             | live in the warn list, where they surface at Gate 1 without
             | discarding work that was already paid for.
             */
-            'denylist' => array_merge($operatorLeak, $notAmericanEnglish, [
-                // Nothing setting-specific is left in here, and that is the
-                // finding rather than an omission: for a story set in the United
-                // States every term this list ever held was about the OPERATOR's
-                // idiom or the NARRATOR's spelling, not about America. Adding a
-                // second setting is what made that visible. The array stays so a
-                // genuinely US-specific term has somewhere obvious to go.
+            'denylist' => array_merge($operatorLeak, array_keys($notAmericanEnglish), [
+                // Nothing about AMERICA is in here, and that is the finding
+                // rather than an omission: for a story set in the United States
+                // every term this list ever held was about the OPERATOR's idiom
+                // or the NARRATOR's spelling. What is here is operator idiom
+                // whose plausibility depends on the setting, so it cannot live
+                // in the shared list (2026-09-14 sweep): no US reading, but a
+                // real one in a Chinese county town.
+                'tricycle driver',
             ]),
 
             /*
@@ -167,7 +198,11 @@ return [
             | word "ate" is a guard an operator turns off, and a guard that is
             | off catches nothing. Everything ambiguous is reported, not enforced.
             */
-            'warnlist' => array_merge($operatorLeakWarn, $notAmericanEnglishWarn),
+            'warnlist' => array_merge($operatorLeakWarn, $notAmericanEnglishWarn, [
+                // Filipino words that are ALSO ordinary Mexican or Spanish
+                // words, so a US story has a reading for each. Denied in en-CN.
+                'merienda', 'adobo', 'centavo',
+            ]),
 
         ],
 
@@ -263,39 +298,56 @@ return [
             | 'mayor' exists. 'Labor Day' is a Chinese public holiday. Every one
             | of those would have failed an act for describing China correctly.
             */
-            'denylist' => array_merge($operatorLeak, $notAmericanEnglish, [
+            'denylist' => array_merge($operatorLeak, array_keys($notAmericanEnglish), [
                 // The shared lists come first and they are not optional here.
                 // Moving the story to China does not move the operator out of
                 // Manila or make the narrator British, so both leaks are live in
                 // this profile exactly as they are in en-US. What follows is the
                 // part that is specific to this setting.
 
-                // US holidays with no Chinese reading
-                'thanksgiving', 'fourth of july', '4th of july', 'memorial day',
-                'super bowl', 'mardi gras',
+                // Operator idiom with no reading in China but a real one in a
+                // US story (Mexican and Spanish words), so not in the shared list.
+                'merienda', 'adobo', 'centavo',
+
+                // US holidays with no Chinese reading. 'fourth of july' and
+                // 'memorial day' are NOT here: "the twenty-fourth of July" and
+                // "the fourth of July" are dates, and National Memorial Day is
+                // China's own name for December 13. Both refused a real act
+                // or would have (story 34, act 3, $0.1939). Warnlist.
+                'thanksgiving', 'super bowl', 'mardi gras',
 
                 // The US school system specifically. 'senior year' and
                 // 'freshman' are NOT here — translated novels use them for the
-                // Chinese equivalents, so they sit in the warnlist.
-                'prom', 'homecoming game', 'varsity', 'cheerleader',
-                'sorority', 'fraternity house', 'little league', 'PTA meeting',
-                'school district', 'valedictorian',
+                // Chinese equivalents, so they sit in the warnlist. Neither are
+                // 'school district' (school-district housing is one of the
+                // most Chinese details a story can carry; it refused story 29's
+                // act 3), 'prom' (international schools hold them), 'varsity'
+                // and 'cheerleader' (Chinese university teams and squads), or
+                // 'little league' (an idiom, and idiom is vocabulary).
+                'homecoming game', 'sorority', 'fraternity house',
+                'PTA meeting', 'valedictorian',
 
-                // US agencies, law and institutions
+                // US agencies, law and institutions. 'zip code' is NOT here:
+                // it is what an American calls any postal code, and vocabulary
+                // for a Chinese thing is correct. Neither are 'homeowners
+                // association' (the 业委会, in a genre full of apartment
+                // disputes) or 'ivy league' (what Chinese parents aim a child
+                // at). All three are warned.
                 'DMV', 'IRS', 'FBI', 'social security number', 'medicare',
                 'medicaid', 'food stamps', 'sheriff', 'state trooper',
                 'district attorney', 'grand jury', 'public defender',
-                'miranda rights', 'national guard', 'zip code',
-                'homeowners association', 'trailer park', 'the midwest',
-                'ivy league',
+                'miranda rights', 'national guard', 'trailer park',
+                'the midwest',
 
                 // Emergency number. China's are 110 and 120. Matched as
                 // phrases rather than as the bare digits, which are also a
                 // year, a street number and a sports car.
                 'call 911', 'called 911', 'dialed 911', '911 operator',
 
-                // Currency, and the one imperial unit with no second reading
-                'dollar', 'dollars', 'fahrenheit',
+                // The one imperial unit with no second reading. 'dollar' and
+                // 'dollars' are NOT here: Hong Kong dollars and US-dollar
+                // savings are ordinary in this genre. Warned, not refused.
+                'fahrenheit',
             ]),
 
             /*
@@ -309,6 +361,15 @@ return [
                 // in an idiom, which is exactly why none of them are above.
                 'miles', 'mile', 'feet', 'inches', 'inch', 'pounds', 'ounces',
                 'ounce', 'yards', 'gallons', 'acres', 'cents',
+
+                // Moved off the denylist by its own rule on 2026-09-14: each
+                // has a plausible reading in a story set in China. See the
+                // comments above for which reading. A real leak of any of them
+                // still surfaces here, where it costs a glance, not an act.
+                'dollar', 'dollars', 'fourth of july', '4th of july',
+                'memorial day', 'school district', 'prom', 'varsity',
+                'cheerleader', 'little league', 'zip code',
+                'homeowners association', 'ivy league', 'tricycle driver',
 
                 // Christian and American-civic furniture. Present in China but
                 // unusual in this genre, so worth a look rather than a refusal.

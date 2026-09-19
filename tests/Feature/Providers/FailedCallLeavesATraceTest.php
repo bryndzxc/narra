@@ -69,6 +69,75 @@ class FailedCallLeavesATraceTest extends TestCase
         $this->assertStringContainsString('cost row #'.$row->id, $thrown->getMessage(), 'The message should name the row it made.');
     }
 
+    /**
+     * RED/GREEN: a truncated outline is SEEN on Gate 1, and still seen after a
+     * successful re-run has reset its job row — because it is read from the
+     * cost row, which records why the call stopped. A completed call leaves no
+     * such notice. Standing position (CLAUDE.md, 2026-09-19): the outline
+     * ceiling is not raised, so a truncation is information and must show.
+     */
+    public function test_red_green_an_outline_truncation_outlives_the_rerun_that_replaced_it(): void
+    {
+        $story = Story::factory()->status(\App\Enums\StoryStatus::Draft)->create();
+        $truncated = StreamedMessage::of('{"acts":[{"title":"Cut off mid', 'max_tokens', 2320, 16000, 3282, 0);
+
+        RenderJob::record($story->id, RenderStage::Outline, function () use ($truncated): void {
+            try {
+                $this->settle($truncated, 'generate_outline');
+            } catch (ScriptWriterException) {
+                // The row is failed by record() only on a rethrow; the test
+                // wants the successful re-run below to be the row's last word.
+            }
+        });
+
+        $row = CostEntry::query()->where('story_id', $story->id)->sole();
+        $this->assertSame('max_tokens', $row->detail['stop_reason']);
+        $this->assertSame(config('providers.anthropic.operations.generate_outline.effort'), $row->detail['effort']);
+
+        // The successful re-run: the job row now says succeeded.
+        RenderJob::record($story->id, RenderStage::Outline, fn () => null);
+        $this->assertSame(\App\Enums\RenderJobStatus::Succeeded, RenderJob::query()->where('story_id', $story->id)->sole()->status);
+
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story->fresh()])
+            ->assertSee('The outline hit its output ceiling 1 time(s) on this story.')
+            ->assertSee('16,000 output tokens');
+
+        $clean = Story::factory()->status(\App\Enums\StoryStatus::Draft)->create();
+        $done = StreamedMessage::of('{"acts":[]}', 'end_turn', 2320, 5000, 3282, 0);
+
+        RenderJob::record($clean->id, RenderStage::Outline, function () use ($clean, $done): void {
+            [, $usage] = $this->settle($done, 'generate_outline');
+            app(\App\Actions\RecordProviderCost::class)->handle($clean, $usage);
+        });
+
+        $this->assertSame('end_turn', CostEntry::query()->where('story_id', $clean->id)->sole()->detail['stop_reason']);
+
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $clean->fresh()])
+            ->assertDontSee('hit its output ceiling');
+    }
+
+    /** A failed outline run is on Gate 1, not only on the progress page. */
+    public function test_a_failed_outline_run_is_shown_on_gate_one_with_its_repair(): void
+    {
+        $story = Story::factory()->status(\App\Enums\StoryStatus::Draft)->create();
+
+        try {
+            RenderJob::record($story->id, RenderStage::Outline, function (): void {
+                throw new ScriptWriterException(
+                    'The outline\'s cast cannot be used: The cast has 2 antagonists.',
+                    kind: \App\Enums\FailureKind::OutlineRefused,
+                    facts: ['check' => 'cast_structure'],
+                );
+            });
+        } catch (ScriptWriterException) {
+        }
+
+        \Livewire\Livewire::test(\App\Livewire\Gates\OutlineGate::class, ['story' => $story->fresh()])
+            ->assertSee('Outline failed')
+            ->assertSee('The cast has 2 antagonists.')
+            ->assertSee('Not measured:');
+    }
+
     public function test_a_refused_call_writes_its_cost_row_before_throwing(): void
     {
         $story = Story::factory()->create();
@@ -129,30 +198,45 @@ class FailedCallLeavesATraceTest extends TestCase
     }
 
     /**
-     * The configured remedy reaches the thrown message.
+     * The configured remedy reaches the PAGE, and not the stored message.
      *
      * Story 28's message said "No truncation_remedy is configured for this
-     * operation" while config carried one: operationConfig() returned model,
-     * effort and max_tokens and dropped the remedy. TruncationMessageTest reads
-     * config directly, so it could not see that — this goes through the same
-     * path the worker does.
+     * operation" while config carried one, because the remedy was dropped on
+     * the way to the thrower. It then went the other way: the remedy was
+     * copied into the message and stored, so the row kept the advice of the
+     * day it failed. This goes through the path a worker does — settle(), the
+     * exception, RenderJob::fail(), the progress report — and asserts the
+     * remedy is read from config when the report is built, by changing config
+     * AFTER the failure is recorded.
      */
-    public function test_the_thrown_message_carries_the_configured_remedy(): void
+    public function test_the_configured_remedy_reaches_the_page_and_not_the_stored_message(): void
     {
-        config()->set(
-            'providers.anthropic.operations.generate_outline.truncation_remedy',
-            'REMEDY-SENTINEL: lower the effort for this stage.',
-        );
+        $story = Story::factory()->create();
+        config()->set('providers.anthropic.operations.generate_outline.truncation_remedy', 'REMEDY-AT-FAILURE');
 
         $message = StreamedMessage::of('{"acts":[', 'max_tokens', 2320, 16000, 3282, 0);
 
         try {
-            $this->settle($message, 'generate_outline');
+            RenderJob::record($story->id, RenderStage::Outline, fn () => $this->settle($message, 'generate_outline'));
             $this->fail('A truncated call must throw.');
         } catch (ScriptWriterException $e) {
-            $this->assertStringContainsString('REMEDY-SENTINEL', $e->getMessage());
-            $this->assertStringNotContainsString('No truncation_remedy is configured', $e->getMessage());
+            $this->assertStringNotContainsString('REMEDY-AT-FAILURE', $e->getMessage());
         }
+
+        $row = RenderJob::query()->where('story_id', $story->id)->where('stage', RenderStage::Outline)->firstOrFail();
+        $this->assertSame(\App\Enums\FailureKind::Truncated, $row->failure_kind);
+        $this->assertSame(['operation' => 'generate_outline'], $row->failure_facts);
+        $this->assertStringNotContainsString('REMEDY-AT-FAILURE', (string) $row->error);
+
+        // The advice changes after the failure. The page follows the code.
+        config()->set('providers.anthropic.operations.generate_outline.truncation_remedy', 'REMEDY-NOW');
+
+        $failure = \App\Support\RenderProgress::for($story->fresh())['failures'][0];
+        $this->assertSame('REMEDY-NOW', $failure['remedy']->text);
+
+        // And an operation with no measured remedy says so rather than guessing.
+        config()->set('providers.anthropic.operations.generate_outline.truncation_remedy', null);
+        $this->assertFalse(\App\Support\RenderProgress::for($story->fresh())['failures'][0]['remedy']->known);
     }
 
     public function test_a_truncated_response_is_archived_before_the_ceiling_check(): void
@@ -186,11 +270,11 @@ class FailedCallLeavesATraceTest extends TestCase
         $message = StreamedMessage::of('{"acts":[]}', 'end_turn', 2320, 5000, 3282, 0);
 
         RenderJob::record($story->id, RenderStage::Outline, function () use ($message): void {
-            [$text] = $this->settle($message, 'generate_outline');
+            [$text, $usage] = $this->settle($message, 'generate_outline');
 
             $decode = new ReflectionMethod($this->writer(), 'decodeJson');
             $decode->setAccessible(true);
-            $decode->invoke($this->writer(), $text, 'outline');
+            $decode->invoke($this->writer(), $text, 'outline', $usage);
         });
 
         $this->assertCount(1, ResponseArchive::forStory($story->id));
@@ -286,6 +370,135 @@ class FailedCallLeavesATraceTest extends TestCase
             mb_strpos($body, '$discarded[] = $usage;'),
             'The attempt must be discarded before the path that records it.',
         );
+    }
+
+    // -- Refusals the writer makes after a call that finished ---------------
+    //
+    // A response that is not JSON, an outline with no acts, an act with no
+    // text, a cast of nobody, no scenes. Until 2026-09-19 each threw a bare
+    // exception with the usage still in a local variable: billed, and never in
+    // the ledger, and "No known repair." on the page. They go through
+    // TalksToClaude::refuseOutput() now, which writes the row first.
+
+    public function test_a_response_that_is_not_json_writes_its_cost_row_and_is_a_refused_output(): void
+    {
+        $story = Story::factory()->create();
+        $writer = $this->writer();
+        $usage = $this->priceOf($writer, StreamedMessage::of('not json', 'end_turn', 900, 3000, 0, 0));
+
+        $e = $this->refusedInside($story, RenderStage::DraftScenes, function () use ($writer, $usage): void {
+            $decode = new ReflectionMethod($writer, 'decodeJson');
+            $decode->setAccessible(true);
+            $decode->invoke($writer, 'not json', 'scenes for act 1', $usage);
+        });
+
+        $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+        $this->assertSame(['check' => 'malformed_response', 'operation' => 'draft_scenes'], $e->failureFacts());
+        $this->assertSame(1, CostEntry::query()->where('story_id', $story->id)->where('operation', 'draft_scenes')->count());
+        $this->assertStringContainsString('cost row #', $e->getMessage());
+    }
+
+    public function test_an_act_with_no_text_writes_its_cost_row_and_names_its_act(): void
+    {
+        $story = Story::factory()->create();
+        $writer = $this->writer();
+        $usage = $this->priceOf($writer, StreamedMessage::of('{"chapters":[]}', 'end_turn', 900, 50, 0, 0));
+        $act = new \App\Support\Providers\ActOutline(sequence: 4, title: 'T', summary: 'S');
+
+        $e = $this->refusedInside($story, RenderStage::ActScripts, function () use ($writer, $usage, $act): void {
+            $from = new ReflectionMethod($writer, 'actDraftFrom');
+            $from->setAccessible(true);
+            $from->invoke($writer, $act, ['chapters' => [['title' => 'x', 'text' => '  ']]], $usage);
+        });
+
+        $this->assertSame(\App\Enums\FailureKind::OutputRefused, $e->failureKind());
+        $this->assertSame('empty_output', $e->failureFacts()['check']);
+        $this->assertSame(4, $e->failureFacts()['act']);
+        $this->assertSame(1, CostEntry::query()->where('story_id', $story->id)->count());
+    }
+
+    /** The outline's own kind, so its remedy is the outline's (Write, --outline-only). */
+    public function test_an_outline_with_no_acts_is_an_outline_refusal_with_its_cost_row(): void
+    {
+        $story = Story::factory()->create();
+        $writer = $this->writer();
+        $usage = $this->priceOf($writer, StreamedMessage::of('{"acts":[]}', 'end_turn', 900, 50, 0, 0));
+        $usage = new \App\Support\Providers\ProviderUsage(
+            $usage->provider, 'generate_outline', $usage->category, $usage->quantity, $usage->unit,
+            $usage->usdCost, $usage->detail, $usage->simulated, $usage->model,
+        );
+
+        $e = $this->refusedInside($story, RenderStage::Outline, function () use ($writer, $usage, $story): void {
+            $from = new ReflectionMethod($writer, 'outlineDraftFrom');
+            $from->setAccessible(true);
+            $from->invoke($writer, $story, 5, ['acts' => []], $usage);
+        });
+
+        $this->assertSame(\App\Enums\FailureKind::OutlineRefused, $e->failureKind());
+        $this->assertSame('act_count', $e->failureFacts()['check']);
+        $this->assertSame(1, CostEntry::query()->where('story_id', $story->id)->where('operation', 'generate_outline')->count());
+    }
+
+    /**
+     * THE FAMILY, BY CONSTRUCTION: no bare ScriptWriterException is left in
+     * the writers. Every throw after a call goes through refuseOutput(), and
+     * the two inline refusals that need a live stream to reach (a cast of
+     * nobody, no scenes) are asserted at their call sites, the scene one with
+     * the discarded attempt it would otherwise lose. Comments stripped, so a
+     * docblock quoting the old shape cannot satisfy or fail it.
+     */
+    public function test_no_writer_refuses_a_billed_response_without_the_ledger_helper(): void
+    {
+        foreach ([ClaudeScriptWriter::class, \App\Services\Claude\ClaudeMetadataWriter::class] as $class) {
+            $source = $this->classSource($class);
+            $this->assertStringNotContainsString('throw new ScriptWriterException', $source, "{$class} throws past the ledger.");
+        }
+
+        $this->assertStringContainsString("refuseOutput('Character extraction returned nobody.'", $this->methodSource(ClaudeScriptWriter::class, 'characters'));
+        $this->assertStringContainsString('...$discarded)', $this->methodSource(ClaudeScriptWriter::class, 'scenes'));
+    }
+
+    /** Where no row supplies the stage, the remedy finds it from the operation. */
+    public function test_a_writer_refusal_names_its_button_from_the_operation(): void
+    {
+        $story = Story::factory()->create(['status' => \App\Enums\StoryStatus::Scripted]);
+
+        $remedy = \App\Support\FailureRemedy::for(
+            \App\Enums\FailureKind::OutputRefused,
+            ['check' => 'empty_output', 'operation' => 'extract_characters'],
+            $story,
+        );
+
+        $this->assertSame(\App\Enums\OperatorAction::DraftSceneList->label(), $remedy->actionLabel);
+        $this->assertNotNull($remedy->unmeasured);
+    }
+
+    private function refusedInside(Story $story, RenderStage $stage, \Closure $work): ScriptWriterException
+    {
+        try {
+            RenderJob::record($story->id, $stage, function () use ($work): void {
+                $work();
+            });
+        } catch (ScriptWriterException $e) {
+            return $e;
+        }
+
+        $this->fail('The writer did not refuse.');
+    }
+
+    private function classSource(string $class): string
+    {
+        $out = '';
+
+        foreach (token_get_all((string) file_get_contents((new \ReflectionClass($class))->getFileName())) as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            $out .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $out;
     }
 
     /**

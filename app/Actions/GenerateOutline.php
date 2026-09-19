@@ -4,13 +4,16 @@ namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
+use App\Enums\FailureKind;
 use App\Enums\RenderStage;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Models\Act;
 use App\Models\RenderJob;
 use App\Models\Story;
+use App\Support\AccompliceArc;
 use App\Support\LocaleGuard;
+use App\Support\OutlineCast;
 use App\Support\Providers\OutlineDraft;
 use App\Support\Providers\ScriptWriterException;
 use Illuminate\Support\Facades\DB;
@@ -156,6 +159,11 @@ class GenerateOutline
      */
     public const DEFAULT_ACTS_ANTHOLOGY = 5;
 
+    /** Said at the dispatch and here, from one copy. */
+    public const NO_ENDING = 'Choose the ending before the outline is written: the narrator\'s new life, '
+        .'or the antagonist\'s year in their own voice. The outline writes the fields the chosen ending '
+        .'needs, so it cannot be picked afterwards without writing the outline again. Nothing was billed.';
+
     /**
      * The act count a story gets when nobody names one.
      *
@@ -247,12 +255,12 @@ class GenerateOutline
         // that cost money.
         if (! $draft->actCountMatches()) {
             throw new ScriptWriterException(sprintf(
-                'Asked for %d acts and got %d. The outline is one call — re-run it. The act count '
+                'Asked for %d acts and got %d. The call was billed and nothing was stored. The act count '
                 .'decides the chapter structure of the finished video, so quietly accepting a '
                 .'different number changes the product.',
                 $draft->requestedActCount,
                 $draft->actCount()
-            ));
+            ), kind: FailureKind::OutlineRefused, facts: ['check' => 'act_count']);
         }
 
         // Same place and same reason as the act count above: a bound the
@@ -270,19 +278,74 @@ class GenerateOutline
 
             if ($over !== []) {
                 throw new ScriptWriterException(sprintf(
-                    'Act %d of the outline came back with a %s. The outline is one call — re-run it. '
-                    .'The call was billed and nothing was stored.',
+                    'Act %d of the outline came back with a %s. The call was billed and nothing was stored.',
                     $act->sequence,
                     implode(' and a ', $over),
-                ));
+                ), kind: FailureKind::OutlineRefused, facts: ['check' => 'act_text_bounds']);
             }
         }
 
-        $this->locale->assert(
-            $draft->proseForInspection(),
-            (string) $story->locale_profile,
-            'outline generation'
-        );
+        // The cast, checked where the act count is and for the same reason: a
+        // shape the schema cannot carry, verified after the cost row. A cast
+        // with no narrator, two antagonists or one name twice cannot be handed
+        // to the act writer or the extractor, and repairing it at Gate 1 would
+        // come after the acts are written against it.
+        $castProblems = OutlineCast::structuralProblems($draft->cast, $story->format);
+
+        if ($castProblems !== []) {
+            throw new ScriptWriterException(
+                'The outline\'s cast cannot be used: '.implode(' ', $castProblems).' The call was billed and nothing was stored.',
+                kind: FailureKind::OutlineRefused,
+                facts: ['check' => 'cast_structure'],
+            );
+        }
+
+        // Names a recent story already used. The prompt listed them as
+        // unavailable, so a reuse here is the writer not reading the list, and
+        // a viewer hearing the same full name in two videos is the defect this
+        // exists for. See OutlineCast for why this checks the outcome rather
+        // than removing the locale guidance's example names.
+        $reused = OutlineCast::reused($draft->cast, $story);
+
+        if ($reused !== []) {
+            throw new ScriptWriterException(sprintf(
+                'The outline reused %s from a recent story, after being told %s unavailable. The '
+                .'call was billed and nothing was stored.',
+                implode(', ', array_map(static fn (array $hit): string => "{$hit['name']} ({$hit['story']})", $reused)),
+                count($reused) === 1 ? 'that name was' : 'those names were',
+            ), kind: FailureKind::OutlineRefused, facts: ['check' => 'reused_name']);
+        }
+
+        // The accomplice's act built on orientation, or on a manner mocked as
+        // unmanly. Excluded by the operator (CLAUDE.md 3g); the prompt says so,
+        // and this is the invariant. Same place and reason as the checks above:
+        // a property of the OUTPUT, verified after the cost row. Gate 1 reports
+        // the same list for an edit, so the two cannot disagree.
+        $coded = AccompliceArc::codedTerms(array_intersect_key(
+            $draft->spine(),
+            array_flip(AccompliceArc::FIELDS),
+        ));
+
+        if ($coded !== []) {
+            throw new ScriptWriterException(sprintf(
+                'The outline built the accomplice\'s act on orientation or on a manner mocked as unmanly '
+                .'(%s). That is excluded: the device is a harmless ROLE the narrator sees through, and it '
+                .'needs none of it. The call was billed and nothing was stored.',
+                implode('; ', array_map(
+                    static fn (string $field, array $terms): string => $field.': "'.implode('", "', $terms).'"',
+                    array_keys($coded),
+                    $coded,
+                )),
+            ), kind: FailureKind::OutlineRefused, facts: ['check' => 'coded_terms']);
+        }
+
+        // KEPT AND SHOWN, NOT REFUSED (2026-09-17). The outline is read and
+        // edited at Gate 1, so a denied term here costs the operator a glance
+        // and a keystroke; refusing it cost the whole call. Gate 1 recomputes
+        // the terms from the stored text (GenerateActScripts::localeDenied),
+        // so an edit that removes one removes its alert. Named on the job row
+        // too, so the stage history says the outline was kept with them.
+        $denied = $this->locale->denied($draft->proseForInspection(), (string) $story->locale_profile);
 
         DB::transaction(function () use ($story, $draft): void {
             /*
@@ -357,20 +420,68 @@ class GenerateOutline
                 $story->forceFill(['outlined_before_betrayal_scene' => false])->save();
             }
 
+            // The cast replaces whatever was there, and the flag clears for
+            // the reason the betrayal flag does: this outline WAS asked.
+            $story->forceFill([
+                'outline_cast' => $draft->castRows(),
+                'outlined_before_cast' => false,
+            ])->save();
+
+            // Written whether or not they are empty. The spine above goes
+            // through array_filter, which is harmless for fields every outline
+            // fills; the accomplice fields are legitimately EMPTY on a story
+            // whose cast has no accomplice, and filtering them would leave the
+            // previous outline's accomplice standing on a story that no longer
+            // has one. Same for the thought, so a regenerated outline never
+            // inherits a joke from the one it replaced. The flag clears for the
+            // reason the other two do: this outline WAS asked.
+            // The antagonist's regret goes the same way and for the same reason:
+            // a regenerated outline must not inherit her chapter from the one
+            // it replaced, and its age flag clears because this outline was
+            // asked.
+            // On the narrator's-new-life ending the regret was not asked for,
+            // and anything a writer returned anyway is dropped rather than
+            // stored: a stored regret is what asks the refusal act for her
+            // chapter on a story with no ending, and a field nothing reads is
+            // a field somebody later believes. See StoryEnding.
+            $spineFields = array_intersect_key($draft->spine(), array_flip([...AccompliceArc::FIELDS, 'running_thought', 'antagonist_regret']));
+
+            if ($story->ending !== null && ! $story->ending->asksForRegret()) {
+                $spineFields['antagonist_regret'] = '';
+            }
+
+            $story->forceFill(array_map(
+                static fn (string $value): ?string => trim($value) === '' ? null : $value,
+                $spineFields,
+            ) + [
+                'outlined_before_accomplice_and_thought' => false,
+                'outlined_before_antagonist_regret' => false,
+            ])->save();
+
             if ($story->status === StoryStatus::Draft) {
                 $story->transitionTo(StoryStatus::Outlined);
             }
         });
 
         $job->note(sprintf(
-            '%d acts written. Spine: %s. Reversal: %s.',
+            '%d acts written. Cast: %d named. Spine: %s. Reversal: %s.',
             $draft->actCount(),
+            count($draft->cast),
             trim($draft->narratorGrievance) !== '' ? 'recorded' : 'MISSING',
             // Named separately from the rest of the spine because it is the
             // half story 21 shipped without, and "the spine is recorded" was
             // true of that story too.
             trim($draft->departure) !== '' && trim($draft->refusal) !== '' ? 'recorded' : 'MISSING',
         ));
+
+        if ($denied !== []) {
+            $job->note(sprintf(
+                'Kept with %d term(s) the %s denylist names, for judgement at Gate 1: %s.',
+                count($denied),
+                $story->locale_profile,
+                implode(', ', array_map(static fn (array $hit): string => '"'.$hit['term'].'"', $denied)),
+            ));
+        }
 
         return $draft;
     }
@@ -385,6 +496,15 @@ class GenerateOutline
      */
     private function assertReady(Story $story): void
     {
+        // The ending is chosen BEFORE the outline, because the outline writes
+        // the fields it needs: the regret for hers, and the new life reads the
+        // cast. Refused here, before the call, so nothing is billed for an
+        // outline that would have to be written again. An anthology has no
+        // ending — each act runs the whole arc — and is not asked.
+        if ($story->format === StoryFormat::Single && $story->ending === null) {
+            throw new RuntimeException(self::NO_ENDING);
+        }
+
         if (in_array($story->status, [StoryStatus::Draft, StoryStatus::Outlined], true)) {
             return;
         }

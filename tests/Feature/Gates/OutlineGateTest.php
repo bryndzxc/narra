@@ -82,6 +82,9 @@ class OutlineGateTest extends TestCase
     public function test_approving_crosses_gate_one(): void
     {
         $story = $this->draftStory(StoryStatus::Outlined);
+        // Written, because approving an outline whose acts have no script is
+        // refused — see the next case.
+        $story->acts()->update(['script' => 'The first invoice came by text at eleven at night.']);
 
         Livewire::test(OutlineGate::class, ['story' => $story])
             ->set('premise', 'A long enough premise to satisfy the validator.')

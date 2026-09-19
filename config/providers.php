@@ -108,6 +108,25 @@ return [
     */
     'default_voice_id' => env('NARRATION_VOICE_ID') ?: 'nPczCjzI2devNBz1zQrb',
 
+    /*
+    | One voice per narrator gender, fixed for the channel (CLAUDE.md, Voice).
+    |
+    | The table that section keeps in prose, as data, because since 2026-09-19
+    | something reads it: the new-story form asks which narrator the story has
+    | and `CreateStory` resolves the voice here, so a woman's story is no longer
+    | right only if somebody remembers `voices:list --set` before narration.
+    | `default_voice_id` stays for callers that name no narrator (a fixture, a
+    | fork), and it is the male entry.
+    |
+    | The premise generator reads the same answer back from `voice_id`
+    | (`NarratorVoice::genderOf()`), so the first person it writes is the person
+    | the voice reads as. No new column: `voice_id` is the record of the choice.
+    */
+    'narrator_voices' => [
+        'male' => env('NARRATION_VOICE_ID_MALE') ?: 'nPczCjzI2devNBz1zQrb',     // Brian
+        'female' => env('NARRATION_VOICE_ID_FEMALE') ?: 'EXAVITQu4vr4xnSDxMaL', // Sarah
+    ],
+
     'anthropic' => [
 
         'api_key' => env('ANTHROPIC_API_KEY'),
@@ -173,6 +192,19 @@ return [
         | nothing consults and gone looking for a knob the stage does not have.
         | A remedy the stage does not have is worse than no remedy: it is
         | confident and it costs an hour.
+        |
+        | NULL MEANS NO KNOWN REPAIR, and the progress page says exactly that.
+        | Since 2026-09-17 only a MEASURED remedy is written here: the outline
+        | and the scene fallback, where a truncation was traced to reasoning
+        | billed as output and an effort setting fixed it. The other five said
+        | "re-run once, then raise ANTHROPIC_MAX_TOKENS_*", which is a variance
+        | re-roll plus the ceiling raise CLAUDE.md records as backwards (a
+        | truncated call is billed at the ceiling). RemediesNameRealKnobsTest
+        | refuses a remedy that advises raising a ceiling.
+        |
+        | The remedy is read at DISPLAY time by App\Support\FailureRemedy, never
+        | copied into the stored error, so editing it here changes what every
+        | existing failure row says the next time the page is loaded.
         */
         'operations' => [
 
@@ -211,15 +243,50 @@ return [
                 // FIRST". That advice was followed on story 28 and cost $0.84
                 // for no outline. The effort is the lever; the ceiling is the
                 // fallback.
+                // "~5,600" was true until 3g and 3h added five fields; counted
+                // with the model's own tokenizer on 2026-09-19 the outline
+                // TEXT was ~5,200-5,600 on stories 22-35, 6,500 on 36 and
+                // ~7,100 on 37 (44% of the ceiling). Reasoning at medium is
+                // bimodal: near zero on five of nine calls, 3,600-7,600 on
+                // four. See CLAUDE.md, the ceiling entry dated 2026-09-19.
                 'truncation_remedy' => 'The outline has no per-act word target — that lever belongs '
-                    .'to the act scripts. The outline TEXT has never needed more than ~5,600 output '
-                    .'tokens; what fills this ceiling is reasoning billed as output, and the stage '
+                    .'to the act scripts. The outline TEXT measured ~7,100 output tokens on story 37 '
+                    .'and grows about 270 per spine field; what fills the rest of this ceiling is '
+                    .'reasoning billed as output, and the stage '
                     .'runs at effort medium by default for that reason (story 28: truncated twice at '
                     .'high, complete at 4,693 output tokens at medium, same prompt). Check '
-                    .'ANTHROPIC_EFFORT_OUTLINE is not set higher. If this truncated AT MEDIUM, that '
+                    .'ANTHROPIC_EFFORT_OUTLINE is not set higher. STANDING POSITION (2026-09-19): '
+                    .'the ceiling is not raised for this stage; the lever left is effort low, which '
+                    .'nothing has measured, so trying it is a Gate 1 quality judgement on the outline it '
+                    .'produces. If this truncated AT MEDIUM, that '
                     .'is new information — something has moved again — so record it before '
                     .'retrying, and do not raise ANTHROPIC_MAX_TOKENS_OUTLINE to absorb it: a '
                     .'truncated call is billed at whatever the ceiling is.',
+            ],
+
+            'generate_premises' => [
+                // Three premise candidates from an operator's idea, at Gate 1
+                // while the story is a draft. SONNET, deliberately, and the
+                // reason is a use pattern rather than quality: the operator
+                // re-rolls it before committing to an outline, and three rolls
+                // on Opus would cost more than the outline they precede.
+                // Estimated before the first call from the outline ledger
+                // (input ~6-9k, output ~5-9k tokens): ~$0.07-0.11 a roll here
+                // against ~$0.18-0.28 on Opus.
+                //
+                // FIRST READING, story 38, 2026-09-19: $0.1269, ABOVE the
+                // estimate. 3,230 input + 7,719 cache write + 10,115 output
+                // (63% of the ceiling). The returned JSON counts 4,181 tokens
+                // on the model's own tokenizer, so ~5,934 of the output (59%,
+                // ~$0.059) was reasoning. Three rolls at that price are $0.38,
+                // more than story 37's outline ($0.2273) — the use pattern
+                // this stage was put on Sonnet for does not hold on one
+                // reading. One reading, not acted on.
+                'model' => env('ANTHROPIC_MODEL_PREMISES', 'claude-sonnet-5'),
+                'effort' => env('ANTHROPIC_EFFORT_PREMISES', 'medium'),
+                'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_PREMISES', 16000),
+                // NO KNOWN REPAIR. One call measured, none truncated.
+                'truncation_remedy' => null,
             ],
 
             'generate_act_script' => [
@@ -250,27 +317,35 @@ return [
                 // outline without connecting them.
                 'effort' => env('ANTHROPIC_EFFORT_ACT_SCRIPT', 'high'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_ACT_SCRIPT', 16000),
-                // The one stage where the per-act word target is real. Measured
-                // at 2,636 output tokens for a 1,123-word act, so ~16% of this
-                // ceiling — and the target only moves the writer by +0.30, so
-                // lowering it is a weak lever and the act count is the strong
-                // one.
-                'truncation_remedy' => 'This is the stage the per-act word target belongs to. A '
-                    .'1,123-word act measures ~2,636 output tokens, about a sixth of this ceiling, '
-                    .'so a truncation here means the act ran several times its target. Check '
-                    .'ScriptSizing::targetWordsPerAct() for this story, then raise '
-                    .'ANTHROPIC_MAX_TOKENS_ACT_SCRIPT. Note the word target only moves the writer '
-                    .'by about +0.30 per word asked, so lowering it is a weak lever.',
+                // NO KNOWN REPAIR, so null, and the page says "No known repair."
+                //
+                // What is measured is a diagnosis, not a repair: a 1,123-word act
+                // bills ~2,636 output tokens, about a sixth of this ceiling, so a
+                // truncation here means the act ran several times its target or
+                // the ceiling filled with reasoning at effort high — the thing
+                // that filled the outline's and the scene fallback's ceilings.
+                // Neither has been observed on this stage. The previous remedy
+                // ended "then raise ANTHROPIC_MAX_TOKENS_ACT_SCRIPT", which is
+                // the reflex CLAUDE.md records as backwards twice: a truncated
+                // call is billed at the ceiling, so raising it makes the failure
+                // dearer. The word target moves the writer by ~+0.30 per word
+                // asked, so lowering it is not a repair either.
+                'truncation_remedy' => null,
             ],
 
             'extract_characters' => [
                 'model' => env('ANTHROPIC_MODEL_CHARACTERS', 'claude-sonnet-5'),
                 'effort' => env('ANTHROPIC_EFFORT_CHARACTERS', 'medium'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_CHARACTERS', 8000),
-                'truncation_remedy' => 'The size here is the CAST — one description per named '
-                    .'character, and a story with a large family produces a large cast. Raise '
-                    .'ANTHROPIC_MAX_TOKENS_CHARACTERS. Do not try to shorten the descriptions to '
-                    .'fit: they are what every still of that character is conditioned on.',
+                // NO KNOWN REPAIR. The size here scales with the cast, one
+                // description per named character, and since 3f the cast is
+                // bounded at the outline (cast.max_named). This stage runs at
+                // effort medium on Sonnet, where reasoning billed as output has
+                // filled a ceiling before. The old remedy said "Raise
+                // ANTHROPIC_MAX_TOKENS_CHARACTERS", unmeasured and backwards.
+                // Shortening the descriptions is not a repair either: every
+                // still of that character is conditioned on them.
+                'truncation_remedy' => null,
             ],
 
             'draft_scenes' => [
@@ -436,18 +511,24 @@ return [
                 'model' => env('ANTHROPIC_MODEL_TITLES', 'claude-opus-5'),
                 'effort' => env('ANTHROPIC_EFFORT_TITLES', 'high'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_TITLES', 8000),
-                'truncation_remedy' => 'Five titles and a description opening cannot approach 8,000 '
-                    .'tokens, so a truncation here means the model wrote something other than what '
-                    .'was asked. Re-run once, then raise ANTHROPIC_MAX_TOKENS_TITLES.',
+                // NO KNOWN REPAIR. Five titles and a description opening cannot
+                // approach 8,000 tokens of text, so a truncation here would be
+                // reasoning at effort high or the model writing something other
+                // than what was asked. It has never happened. The old remedy was
+                // "Re-run once, then raise ANTHROPIC_MAX_TOKENS_TITLES": a
+                // variance re-roll and a ceiling raise, both unmeasured.
+                'truncation_remedy' => null,
             ],
 
             'generate_copy' => [
                 'model' => env('ANTHROPIC_MODEL_METADATA_COPY', 'claude-sonnet-5'),
                 'effort' => env('ANTHROPIC_EFFORT_METADATA_COPY', 'medium'),
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_METADATA_COPY', 4000),
-                'truncation_remedy' => 'Overlay phrases and a pinned comment are short copy; a '
-                    .'truncation here is the model over-writing rather than a real ceiling. Re-run '
-                    .'once, then raise ANTHROPIC_MAX_TOKENS_METADATA_COPY.',
+                // NO KNOWN REPAIR. Overlay phrases and a pinned comment are short
+                // copy and have never come near this ceiling. The old remedy was
+                // "Re-run once, then raise ANTHROPIC_MAX_TOKENS_METADATA_COPY",
+                // unmeasured on both halves.
+                'truncation_remedy' => null,
             ],
 
             'generate_tags' => [
@@ -455,9 +536,11 @@ return [
                 // NULL, and load-bearing. See draft_scenes above.
                 'effort' => env('ANTHROPIC_EFFORT_TAGS') ?: null,
                 'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS_TAGS', 4000),
-                'truncation_remedy' => 'A tag list inside a 500-character budget cannot fill 4,000 '
-                    .'tokens. A truncation here means the model ignored the budget entirely; '
-                    .'re-run once, then raise ANTHROPIC_MAX_TOKENS_TAGS.',
+                // NO KNOWN REPAIR. A tag list inside a 500-character budget cannot
+                // fill 4,000 tokens, and it never has. The old remedy was "re-run
+                // once, then raise ANTHROPIC_MAX_TOKENS_TAGS", unmeasured on both
+                // halves.
+                'truncation_remedy' => null,
             ],
         ],
 

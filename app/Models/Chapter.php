@@ -37,6 +37,9 @@ class Chapter extends Model
         'sequence',
         'title',
         'rehook_line',
+        // Null for the narrator. The cast name of whoever tells it otherwise:
+        // the antagonist, on the one chapter that ends the refusal act.
+        'point_of_view',
         'first_sentence',
         'start_ms',
         'duration_ms',
@@ -85,5 +88,11 @@ class Chapter extends Model
     public function hasRehook(): bool
     {
         return trim((string) $this->rehook_line) !== '';
+    }
+
+    /** Whether someone other than the narrator tells this chapter. */
+    public function isPointOfView(): bool
+    {
+        return trim((string) $this->point_of_view) !== '';
     }
 }

@@ -5,7 +5,9 @@ namespace App\Jobs;
 use App\Actions\ConcatSceneAudio;
 use App\Actions\ConcatVideoClips;
 use App\Actions\PadSceneAudio;
+use App\Enums\FailureKind;
 use App\Enums\RenderStage;
+use App\Exceptions\PipelineFailure;
 use App\Models\Act;
 use App\Models\Chapter;
 use App\Models\RenderJob;
@@ -117,13 +119,21 @@ class ConcatRenderJob extends RenderStageJob
             $audio = $scene->sceneAudio->first();
 
             if ($audio === null || $audio->audio_path === null) {
-                throw new RuntimeException("Scene {$scene->sequence} has no narration audio.");
+                throw new PipelineFailure(
+                    "Scene {$scene->sequence} has no narration audio.",
+                    FailureKind::NarrationMissing,
+                    ['scene' => $scene->sequence],
+                );
             }
 
             $clip = $workspace->clipPath($scene);
 
             if (! is_readable($clip)) {
-                throw new RuntimeException("Missing clip for scene {$scene->sequence}. Re-run the scene-clip stage.");
+                throw new PipelineFailure(
+                    "Missing clip for scene {$scene->sequence}.",
+                    FailureKind::ClipMissing,
+                    ['scene' => $scene->sequence],
+                );
             }
 
             $frames = $scene->framesAt($fps);
@@ -133,12 +143,16 @@ class ConcatRenderJob extends RenderStageJob
             // would pad this scene's audio to the wrong length and desync every
             // scene after it — silently.
             if ($actual !== $frames) {
-                throw new RuntimeException(sprintf(
-                    'Scene %d holds %d frames but its audio needs %d. The clip is stale.',
-                    $scene->sequence,
-                    $actual,
-                    $frames
-                ));
+                throw new PipelineFailure(
+                    sprintf(
+                        'Scene %d holds %d frames but its audio needs %d. The clip is stale.',
+                        $scene->sequence,
+                        $actual,
+                        $frames
+                    ),
+                    FailureKind::ClipMissing,
+                    ['scene' => $scene->sequence],
+                );
             }
 
             $resolved[] = [

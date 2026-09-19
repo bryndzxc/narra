@@ -19,6 +19,13 @@
 @endphp
 
 <x-layouts.app :title="$story->title">
+    {{-- The new-story form flashes what it did and redirects HERE. Nothing
+         here rendered it, so "created and queued" never reached the operator
+         on the page it was written for. --}}
+    @if (session('notice'))
+        <div class="alert ok wide">{{ session('notice') }}</div>
+    @endif
+
     <div class="row mb-1">
         <h1 class="m-none">{{ $story->title }}</h1>
         <span class="badge">{{ $story->status->value }}</span>

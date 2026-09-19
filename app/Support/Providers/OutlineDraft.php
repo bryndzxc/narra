@@ -103,7 +103,36 @@ final class OutlineDraft
          * carries both numbers and the Action checks them, after recording.
          */
         public readonly ?int $requestedActCount = null,
+        /**
+         * Every person the story names, declared before the spine. Last, so a
+         * caller passing the other parameters by position is unchanged.
+         *
+         * @var array<int, CastMember>
+         */
+        public readonly array $cast = [],
+        /*
+         * The accomplice as a person with a stake, and the narrator's running
+         * thought. Last, so every positional caller is unchanged; `spine()`
+         * puts them in narrative order. The three accomplice fields are empty
+         * when the cast declares no accomplice. See CLAUDE.md 3g.
+         */
+        public readonly string $accompliceMotive = '',
+        public readonly string $accomplicePerformance = '',
+        public readonly string $accompliceFall = '',
+        public readonly string $runningThought = '',
+        /*
+         * The last chance the antagonist was offered and threw away, and what
+         * about a year later looks like, told in her own chapter at the end of
+         * the refusal act. Last, so every positional caller is unchanged.
+         */
+        public readonly string $antagonistRegret = '',
     ) {}
+
+    /** @return array<int, array{name: string, role: string, relationship: string}> */
+    public function castRows(): array
+    {
+        return array_map(static fn (CastMember $m): array => $m->toRow(), $this->cast);
+    }
 
     /** Whether the provider returned the number of acts it was asked for. */
     public function actCountMatches(): bool
@@ -127,13 +156,18 @@ final class OutlineDraft
             'hook' => $this->hook,
             'narrator_grievance' => $this->narratorGrievance,
             'antagonist_justification' => $this->antagonistJustification,
+            'accomplice_motive' => $this->accompliceMotive,
+            'accomplice_performance' => $this->accomplicePerformance,
             'betrayal_scene' => $this->betrayalScene,
             'withheld_information' => $this->withheldInformation,
             'exposure_moment' => $this->exposureMoment,
             'narrator_at_exposure' => $this->narratorAtExposure,
             'departure' => $this->departure,
             'reversal_beats' => $this->reversalBeats,
+            'accomplice_fall' => $this->accompliceFall,
+            'running_thought' => $this->runningThought,
             'refusal' => $this->refusal,
+            'antagonist_regret' => $this->antagonistRegret,
         ];
     }
 
@@ -142,6 +176,9 @@ final class OutlineDraft
     {
         return implode("\n", array_merge(
             [$this->title],
+            // Names and relationships go through the locale check too: a name
+            // is the first place a Filipino honorific gets in ("Lola").
+            array_map(static fn (CastMember $m): string => $m->name.' — '.$m->relationship, $this->cast),
             array_values($this->spine()),
             array_map(
                 fn (ActOutline $act): string => implode("\n", [$act->title, $act->summary, $act->escalationBeat]),

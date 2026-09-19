@@ -3,8 +3,11 @@
 namespace App\Actions;
 
 use App\Enums\OperatorAction;
+use App\Enums\StoryFormat;
+use App\Exceptions\DispatchRefusedException;
 use App\Exceptions\GateViolationException;
 use App\Jobs\DraftSceneListJob;
+use App\Jobs\GeneratePremisesJob;
 use App\Jobs\WriteStoryJob;
 use App\Models\Story;
 
@@ -54,7 +57,34 @@ class DispatchTextStage
     ): array {
         $notes = $this->preflight($story, OperatorAction::WriteScript, $checkWorkers);
 
+        // The outline refuses a single narrative with no ending, before its
+        // call. Asked here as well so the refusal is a sentence beside the
+        // button rather than a failed job a minute later. Only when this press
+        // would write the outline: acts already written were outlined against
+        // whatever ending the story had.
+        if ($story->format === StoryFormat::Single && $story->ending === null && ! $story->acts()->exists()) {
+            throw new DispatchRefusedException(GenerateOutline::NO_ENDING);
+        }
+
         WriteStoryJob::dispatch($story->id, $actCount, $actsOnly, $outlineOnly);
+
+        return ['queue' => $this->queue(), 'notes' => $notes];
+    }
+
+    /**
+     * Three premise candidates from an idea. Refused here, in the dispatching
+     * process, for the same reasons the Action refuses, so a refusal is a
+     * sentence on the page and not a failed row a minute later.
+     *
+     * @return array{queue: string, notes: array<int, array{level: string, message: string}>}
+     */
+    public function writePremises(Story $story, string $idea, bool $checkWorkers = true): array
+    {
+        $notes = $this->preflight($story, OperatorAction::WritePremises, $checkWorkers);
+
+        GeneratePremises::assertReady($story, $idea);
+
+        GeneratePremisesJob::dispatch($story->id, trim($idea));
 
         return ['queue' => $this->queue(), 'notes' => $notes];
     }

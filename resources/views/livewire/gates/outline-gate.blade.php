@@ -7,6 +7,199 @@
         <div class="alert err pre-line wide">{{ $problem }}</div>
     @endif
 
+    {{-- The last outline or act-script run, when it failed. --}}
+    @foreach ($this->stageFailures() as $failure)
+        <div class="alert err wide">
+            <strong>{{ $failure['stage'] }} failed</strong> <span class="muted mono small">{{ $failure['at'] }}</span>
+            <div class="pre-line mt-1">{{ $failure['error'] }}</div>
+            @if ($failure['remedy']->known)
+                <p><strong>Repair:</strong> {{ $failure['remedy']->text }}</p>
+                @if ($failure['remedy']->unmeasured)
+                    <p><strong>Not measured:</strong> {{ $failure['remedy']->unmeasured }}</p>
+                @endif
+            @else
+                <p><strong>No known repair.</strong></p>
+            @endif
+        </div>
+    @endforeach
+
+    {{-- Every outline call that stopped at its ceiling, from the ledger, so a
+         successful re-run cannot erase it. The ceiling is not raised: see the
+         standing position in CLAUDE.md. --}}
+    @if ($this->outlineTruncations() !== [])
+        <div class="alert err wide">
+            <strong>The outline hit its output ceiling {{ count($this->outlineTruncations()) }} time(s) on this story.</strong>
+            @foreach ($this->outlineTruncations() as $t)
+                <div class="mono small">{{ $t['at'] }} &middot; {{ number_format($t['output']) }} output tokens &middot; effort {{ $t['effort'] ?? 'not recorded' }} &middot; ${{ $t['usd'] }}</div>
+            @endforeach
+            <p>
+                The ceiling stays where it is: a truncation is billed at the ceiling, and headroom would hide
+                the next one. The outline text grows with every spine field and the reasoning at medium
+                effort is all-or-nothing; the lever left is effort <span class="mono">low</span>, which
+                nothing has measured. Record this before the next attempt.
+            </p>
+        </div>
+    @endif
+
+    {{--
+        PREMISES FROM AN IDEA. Draft only, single narrative, before the outline.
+
+        Every candidate is shown with its checks — refusals in red, Gate 1
+        warnings in amber — and none is dropped for failing: what the generator
+        does badly is information the operator asked to see. The checks are
+        computed from the stored fields when the page is read.
+    --}}
+    @if ($this->canWritePremises())
+        @php($premiseState = $this->premiseState())
+        @php($roll = $this->premiseRoll())
+
+        <div class="panel money" @if (in_array($premiseState['state'], ['queued', 'running'], true)) wire:poll.5s @endif>
+            <label for="idea">Write premises from an idea</label>
+            <div class="muted small mt-1" style="max-width:78ch">
+                Three premises per roll, one billed call. Each follows the genre's opening &mdash; the
+                betrayal done in public, the justification said to the narrator's face, something only the
+                narrator can produce in person &mdash; and is checked before you see it. Pick one and it
+                becomes the premise; the outline is the next press.
+            </div>
+            <textarea id="idea" rows="2" class="mt-3" wire:model.blur="idea"
+                      placeholder="My CEO wife cheated with her deputy&hellip;"></textarea>
+            @error('idea') <div class="alert err wide mt-3">{{ $message }}</div> @enderror
+
+            <table class="mt-3">
+                <tbody>
+                @foreach (app(\App\Support\ModelRoster::class)->lines(['generate_premises']) as $line)
+                    <tr><td class="mono small muted">{{ $line }}</td></tr>
+                @endforeach
+                </tbody>
+            </table>
+
+            @if ($premiseState['state'] === 'queued' || $premiseState['state'] === 'running')
+                <div class="alert run wide mt-4">
+                    {{ $premiseState['state'] === 'queued' ? 'Queued' : 'Writing' }}: three premises. This panel
+                    checks every five seconds.
+                </div>
+            @elseif ($premiseState['state'] === 'failed')
+                <div class="alert err wide mt-4">
+                    <strong>The last roll failed.</strong> <span class="pre-line">{{ $premiseState['error'] }}</span>
+                    @if ($premiseState['remedy']?->known)
+                        <p><strong>Repair:</strong> {{ $premiseState['remedy']->text }}</p>
+                        @if ($premiseState['remedy']->unmeasured)
+                            <p><strong>Not measured:</strong> {{ $premiseState['remedy']->unmeasured }}</p>
+                        @endif
+                    @else
+                        <p><strong>No known repair.</strong></p>
+                    @endif
+                </div>
+            @endif
+
+            @if ($confirmingPremises)
+                <div class="alert warn wide mt-4">
+                    <strong>One billed call</strong> on the <span class="mono">{{ $this->workers()['queue'] }}</span> queue.
+                    @if ($this->workers()['state'] === \App\Support\WorkerHealth::ABSENT)
+                        Nothing is listening on it right now &mdash; the job will wait and nothing is lost, but
+                        nothing happens until a worker starts.
+                    @endif
+                    <div class="mt-4">
+                        <button type="button" class="primary" wire:click="writePremises">Queue it &mdash; 1 call</button>
+                        <button type="button" wire:click="cancelPremises">Back</button>
+                    </div>
+                </div>
+            @else
+                <div class="actions mt-4">
+                    <button type="button" class="primary" wire:click="askToWritePremises"
+                            @disabled(in_array($premiseState['state'], ['queued', 'running'], true))>
+                        {{ $roll ? 'Write three more' : 'Write three premises' }}
+                    </button>
+                    <span class="muted small">Shows the bill first. Nothing is queued by this press.</span>
+                </div>
+            @endif
+        </div>
+
+        @if ($roll)
+            {{-- The one line the operator asked never to miss: an idea that
+                 needed translating, and what it became. The generator's own
+                 report first; the idea's own words as a second reading when
+                 the generator did not report one. --}}
+            @if ($roll['revenge_shaped'])
+                <div class="alert warn wide">
+                    <strong>Your idea was revenge-shaped, and became a refusal.</strong>
+                    {{ $roll['translation'] !== '' ? $roll['translation'] : 'The generator did not say what it became — read the endings below.' }}
+                </div>
+            @elseif ($roll['revenge_markers'] !== [])
+                <div class="alert warn wide">
+                    <strong>Your idea reads as revenge-shaped</strong>
+                    ("{{ implode('", "', $roll['revenge_markers']) }}"), and the generator did not say it
+                    translated it. This genre pays off in a departure and a refusal, not revenge &mdash; read
+                    the endings below before picking one.
+                </div>
+            @endif
+
+            @if (count($roll['candidates']) < $roll['requested'])
+                <div class="alert warn wide">
+                    Asked for {{ $roll['requested'] }} premises and got {{ count($roll['candidates']) }}. Kept,
+                    not refused: each one was paid for.
+                </div>
+            @endif
+
+            @foreach ($roll['candidates'] as $entry)
+                @php($c = $entry['candidate'])
+                @php($checks = $entry['checks'])
+                <div class="panel">
+                    <div class="row">
+                        <label class="grow">Premise {{ $entry['index'] + 1 }}</label>
+                        @if ($entry['chosen'])
+                            <span class="badge ok">this story's premise</span>
+                        @elseif ($checks['problems'] === [] && $checks['warnings'] === [])
+                            <span class="badge ok">passed every check</span>
+                        @else
+                            <span class="badge warn">{{ count($checks['problems']) + count($checks['warnings']) }} finding(s)</span>
+                        @endif
+                    </div>
+
+                    <p class="measure">{{ $c->premise }}</p>
+
+                    @foreach ($checks['problems'] as $problem)
+                        <div class="alert err wide">{{ $problem }}</div>
+                    @endforeach
+                    @foreach ($checks['warnings'] as $warning)
+                        <div class="alert warn wide">{{ $warning }}</div>
+                    @endforeach
+
+                    <details class="mt-3">
+                        <summary class="small">The cast and the answers it was checked on</summary>
+                        <table class="mt-3">
+                            <tbody>
+                            @foreach ($c->cast as $member)
+                                <tr>
+                                    <td>{{ $member->name }}</td>
+                                    <td class="mono small">{{ $member->role?->label() ?? 'no role' }}</td>
+                                    <td class="small muted">{{ $member->relationship }}</td>
+                                </tr>
+                            @endforeach
+                            @foreach ($c->fields as $field => $value)
+                                <tr>
+                                    <td class="mono small">{{ $field }}</td>
+                                    <td colspan="2" class="small">{{ $value !== '' ? $value : '—' }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                        <div class="muted small mt-3">Checked: {{ implode('; ', $checks['ran']) }}.</div>
+                    </details>
+
+                    @unless ($entry['chosen'])
+                        <div class="actions mt-4">
+                            <button type="button" wire:click="usePremise({{ $entry['index'] }})">Use this premise</button>
+                            <span class="muted small">Replaces the premise below. Nothing is billed.</span>
+                        </div>
+                    @endunless
+                </div>
+            @endforeach
+        @endif
+    @elseif ($this->premiseRefusal())
+        <div class="muted small">{{ $this->premiseRefusal() }}</div>
+    @endif
+
     {{-- The writing panel. This stage was `story:write` and nothing else for
          the whole of Phase 2 — the one part of the pipeline with no way into it
          except a terminal, on the page where its output is reviewed. --}}
@@ -16,13 +209,16 @@
 
         @if ($estimate['calls'] > 0)
             <div class="panel money">
-                <label>{{ $estimate['outline'] ? 'Write the outline and the act scripts' : 'Finish the act scripts' }}</label>
+                <label>{{ $estimate['outline'] ? 'Write the outline' : 'Write the act scripts' }}</label>
 
                 <div class="muted small mt-1" style="max-width:78ch">
                     @if ($estimate['outline'])
-                        Nothing has been written yet. The outline comes first, then every act in order —
-                        each one written knowing the ones before it, because a single call cannot hold
-                        7,000 words of coherent narrative without drifting or contradicting itself.
+                        {{-- One press, one decision. This used to queue every act
+                             behind the outline, so the cast and the spine were
+                             read after the acts had been bought against them. --}}
+                        Nothing has been written yet. This writes the outline alone &mdash; its cast and
+                        its spine &mdash; so both are read here before any act is paid for. The acts are
+                        the next press.
                     @else
                         {{-- The resume case, and the reason this is not a bare
                              "regenerate". Six sequential calls that die on act 4
@@ -32,6 +228,17 @@
                         died partway does not cost the whole story again.
                     @endif
                 </div>
+
+                @if ($estimate['outline'] && $this->canChooseEnding())
+                    {{-- Chosen here, before the outline, because the outline
+                         writes the fields the chosen ending needs. Saved as it
+                         is picked; the outline press refuses until it is. --}}
+                    <div class="mt-4">
+                        <x-ending-picker model="ending"
+                                         :recent="$this->recentEndings()['rows']"
+                                         :streak="$this->recentEndings()['streak']" />
+                    </div>
+                @endif
 
                 <x-worker-health :queues="[$this->workers()]" :compact="true" />
 
@@ -66,7 +273,7 @@
                 @else
                     <div class="actions mt-4">
                         <button type="button" class="primary" wire:click="askToWrite">
-                            {{ $estimate['outline'] ? 'Write this story' : 'Write the missing act(s)' }}
+                            {{ $estimate['outline'] ? 'Write the outline' : 'Write the act(s)' }}
                         </button>
                         <span class="muted small">Shows the bill first. Nothing is queued by this press.</span>
                     </div>
@@ -373,6 +580,60 @@
         </x-gate-group>
 
         <x-gate-group>
+            {{-- DENIED terms the outline or an act was KEPT with. These used to
+                 refuse the stage after it was billed; now the phrase is here
+                 and the operator judges it. Loud on purpose, in the refusal's
+                 colour, above the warned terms: it replaced a refusal and may
+                 not be quieter than one. --}}
+            @if ($this->localeDenied())
+                <div class="alert err wide">
+                    <div class="alerthead">
+                        <h2>
+                            {{ count($this->localeDenied()) }} term(s) the {{ $this->localeLabel() }} denylist names{{ $this->localeDeniedInScripts()
+                                ? ', '.count($this->localeDeniedInScripts()).' of them in an act script'
+                                : ', kept for your judgement' }}
+                        </h2>
+                    </div>
+                    <div class="localehits">
+                        @foreach ($this->localeDenied() as $hit)
+                            <div class="hit">
+                                <span class="at">{{ $hit['act'] === null ? 'outline' : 'act '.$hit['act'] }}</span>
+                                <span class="minw">
+                                    <code>{{ $hit['term'] }}</code>
+                                    <span class="small">in the {{ $hit['where'] }}</span>
+                                    <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                    {{-- A script term is not a judgement, and this used to say it
+                         was ("if this one does, leave it"): scene drafting refuses
+                         a denied term in a frame and draws frames from the script,
+                         so keeping one guaranteed a paid refusal a stage later.
+                         Story 38, act 4, twice. The two rules were decided the same
+                         day and never read together; see CLAUDE.md. --}}
+                    @if ($this->localeDeniedInScripts())
+                        <p class="mt-2">
+                            <strong>A denied term in an act script is refused at scene drafting.</strong>
+                            Scenes are drawn from the script and scene drafting refuses a denied term in a
+                            frame, after the scene calls are billed: story 38's act 4 was refused twice, about
+                            $0.73, for one sentence. It is also narration, read aloud.
+                            {{ $this->voice()->removeBeforeApproving() }}
+                            A script is not editable on this page; rewriting that act on its own replaces it
+                            (<code>story:write --acts-only=N</code>).
+                        </p>
+                    @endif
+                    @if (count($this->localeDeniedInScripts()) < count($this->localeDenied()))
+                        <div class="muted small mt-2">
+                            A term in an outline field is fixed by editing that field on this page. The list
+                            says these have no reading in this setting; if one does, it can stay, though the
+                            act writer reads these fields and can carry it into a script.
+                            {{ $this->voice()->judgement() }}
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             {{-- Wrong for the setting, but with a legitimate reading, so the
                  stage was paid for and kept. Computed for two phases and
                  printed only by `story:write` — the one place it could be acted
@@ -400,8 +661,8 @@
                     </div>
                     <div class="muted small mt-2">
                         None of these block anything. Each has a legitimate reading, which is why the
-                        stage was not failed &mdash; the unambiguous terms are refused before an act
-                        is ever stored. {{ $this->voice()->judgement() }}
+                        stage was not failed. The terms the list treats as unambiguous are kept too,
+                        and shown in red above when there are any. {{ $this->voice()->judgement() }}
                     </div>
                 </div>
             @endif
@@ -471,6 +732,25 @@
                         5,500&ndash;8,000 words of script, then 150&ndash;250 stills. It is the
                         cheapest thing here to change.
                     </div>
+                    {{-- The ending, at every status, so the choice the outline
+                         was written to is on the page that reviews it. --}}
+                    @if ($story->format === \App\Enums\StoryFormat::Single)
+                        <div class="small mt-2">
+                            @if ($story->ending !== null)
+                                Ending: <strong>{{ $story->ending->label() }}</strong>.
+                                <span class="muted">{{ $story->ending->description() }}
+                                    {{ $this->canChooseEnding()
+                                        ? 'Changeable in the panel above until the outline is written.'
+                                        : 'Fixed: the outline was written to it.' }}</span>
+                            @elseif ($this->canChooseEnding())
+                                Ending: <strong>not chosen.</strong>
+                                <span class="muted">The outline is refused until it is; choose it in the panel above.</span>
+                            @else
+                                Ending: <strong>outlined before the ending was a choice.</strong>
+                                <span class="muted">This story was asked for a narrator epilogue{{ trim((string) $story->antagonist_regret) !== '' ? ' and the antagonist\'s chapter after it' : '' }}.</span>
+                            @endif
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -506,6 +786,95 @@
     </div>
 
     {{--
+        THE CAST. Every person this story names, declared by the outline before
+        the spine. The act writer is handed this list as the people who exist
+        and the extractor describes these people and nobody else, so a row here
+        is a face that will be picked and paid for, and a row deleted here is a
+        person who stays "his cousin". See App\Support\OutlineCast.
+    --}}
+    @php($castReview = $this->spineReview()['cast'])
+    <div class="panel flush">
+        <div class="panelhead ruled">
+            <div class="sectionhead">
+                <h2>Cast</h2>
+                <p>
+                    Everyone this story names, and nobody else. Witnesses and anyone who appears once
+                    stay unnamed &mdash; a named person is a reference sheet and a face held across every
+                    still they are in. Budget {{ \App\Support\OutlineCast::maxNamed() }}.
+                </p>
+            </div>
+            <span class="badge">{{ count($cast) }} named</span>
+        </div>
+        <div class="pad">
+            @if ($cast === [])
+                <div class="muted small">
+                    @if ($this->story->outlined_before_cast)
+                        This outline was written before it was asked for a cast.
+                    @else
+                        No cast yet.
+                    @endif
+                </div>
+            @else
+                <div class="scrollx">
+                <table>
+                    <thead>
+                    <tr><th>Name</th><th>Role</th><th>Relationship</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    @foreach ($cast as $i => $member)
+                        @php($review = $castReview[$i] ?? null)
+                        <tr wire:key="cast-{{ $i }}">
+                            <td>
+                                <input type="text" id="cast-name-{{ $i }}" aria-label="Cast row {{ $i + 1 }} name"
+                                       wire:model="cast.{{ $i }}.name" @disabled(! $this->editable())>
+                                @if ($review && $review['reused'])
+                                    <span class="badge warn">used in {{ $review['reused'] }}</span>
+                                @endif
+                                @if ($review && $review['unnamed_in_scripts'])
+                                    <span class="badge warn">named in no act</span>
+                                @endif
+                                @error("cast.$i.name") <div class="error">{{ $message }}</div> @enderror
+                            </td>
+                            <td>
+                                <select id="cast-role-{{ $i }}" aria-label="Cast row {{ $i + 1 }} role"
+                                        wire:model="cast.{{ $i }}.role" @disabled(! $this->editable())>
+                                    <option value="">no role</option>
+                                    @foreach (\App\Enums\CastRole::cases() as $role)
+                                        <option value="{{ $role->value }}">{{ $role->label() }}</option>
+                                    @endforeach
+                                </select>
+                                @error("cast.$i.role") <div class="error">{{ $message }}</div> @enderror
+                            </td>
+                            <td>
+                                <input type="text" class="grow" id="cast-relationship-{{ $i }}"
+                                       aria-label="Cast row {{ $i + 1 }} relationship"
+                                       wire:model="cast.{{ $i }}.relationship" @disabled(! $this->editable())>
+                                @error("cast.$i.relationship") <div class="error">{{ $message }}</div> @enderror
+                            </td>
+                            <td>
+                                @if ($this->editable())
+                                    <button type="button" class="tiny danger" wire:click="removeCastMember({{ $i }})">remove</button>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+                </div>
+            @endif
+
+            @if ($this->editable())
+                <div class="actions mt-4">
+                    <button type="button" wire:click="addCastMember">Add a person</button>
+                    <span class="muted small">
+                        Renaming someone here does not rename them in act scripts already written.
+                    </span>
+                </div>
+            @endif
+        </div>
+    </div>
+
+    {{--
         The genre spine. Editable here because Gate 1 is the only place it can
         be fixed cheaply: every act-generation call reads these four fields off
         the story, so a cartoon antagonist here becomes 5,500-8,000 words of
@@ -524,10 +893,11 @@
                 <p>
                     The structure this genre runs on. Every act-generation call reads these fields
                     off the story, so a cartoon antagonist here becomes 5,500&ndash;8,000 words of
-                    cartoon antagonist. The first four say how the narrator is wronged and where it
-                    comes out; the fifth says how the narrator is in the room when it does; the last
-                    three say that they leave, that they are searched for, and what they say when
-                    the antagonist reaches them afterwards.
+                    cartoon antagonist. They say how the narrator is wronged, by whom and with whom;
+                    where it comes out and how the narrator is in the room when it does; that they
+                    leave, that they are searched for while the accomplice loses, and what they say
+                    when the antagonist reaches them afterwards &mdash; with the one private joke
+                    the narrator has kept all video finally said out loud.
                 </p>
             </div>
         </div>
@@ -561,12 +931,33 @@
                              different thing from an outline that should have one and
                              does not, and the warning above says so once. --}}
                         <span class="badge">not in this outline</span>
+                    @elseif ($field['state'] === 'none')
+                        {{-- Not "missing" either. The cast declares no accomplice, so an
+                             empty accomplice field is the right answer: a mother-in-law
+                             does it with nobody. --}}
+                        <span class="badge">no accomplice in the cast</span>
+                    @endif
+                    @if (! empty($field['exposes']))
+                        {{-- Which sentence of his motive the fall brings out in front
+                             of her. "He loses" is worth less than what he loses it for. --}}
+                        <span class="badge run">exposes &ldquo;{{ $field['exposes'] }}&rdquo;</span>
+                    @endif
+                    @if (! empty($field['pays_off']))
+                        {{-- Which refusal sentence finally says the running thought
+                             out loud. --}}
+                        <span class="badge run">said aloud in &ldquo;{{ $field['pays_off'] }}&rdquo;</span>
                     @endif
                     @if (! empty($field['answers']))
                         {{-- Which earlier moment the refusal reaches back to. Shown
                              because "it answers something" is worth less at Gate 1
                              than "it answers act 3". --}}
                         <span class="badge run">answers {{ $field['answers'] }}</span>
+                    @endif
+                    @if (! empty($field['anchored_in']))
+                        {{-- Which day of the story her last chance was offered on.
+                             The reveal lands as the other side of a day the viewer
+                             saw, so the day is named. --}}
+                        <span class="badge run">offered on {{ $field['anchored_in'] }}</span>
                     @endif
                     @if (! empty($field['promises']))
                         {{-- Which part of the departure the hook's closing line
@@ -609,6 +1000,18 @@
             itself &mdash; a hook promising revenge on a story whose payoff is a refusal is selling a
             different video. It draws on the antagonist's justification and does not spend it: the
             same line lands twice in this genre, once as bait and once played out.
+        </div>
+
+        <div class="muted small mt-4">
+            The accomplice has a stake of his own that she does not know, and he talks: in the
+            betrayal scene and every escalation act he performs a harmless role &mdash; the old
+            friend, the considerate one who offers to apologize &mdash; she defends him, and he wins.
+            From the departure on he loses, several times, in public, and his motive comes out in
+            front of her. The first reference's accomplice was silent because he had no stake; the
+            second's wanted the shares and never stopped talking. His act is built on a role, never
+            on orientation or a manner mocked as unmanly &mdash; a generated outline that does is
+            refused, and an edit that does is a problem here. The running thought is the narrator's
+            private joke: tagged as a thought all video, said aloud once in the refusal.
         </div>
 
         <div class="muted small mt-4">
@@ -802,6 +1205,9 @@
                             <span class="mono">{{ $chapter['sequence'] }}.</span>
                             {{ $chapter['title'] }}
                             <span class="mono">from sentence {{ $chapter['first_sentence'] }}</span>
+                            @if ($chapter['point_of_view'] !== null)
+                                <span class="badge run">told by {{ $chapter['point_of_view'] }}</span>
+                            @endif
                             @unless ($chapter['has_rehook'])
                                 <span class="badge warn">no re-hook</span>
                             @endunless

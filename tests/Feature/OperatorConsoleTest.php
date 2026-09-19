@@ -52,6 +52,8 @@ class OperatorConsoleTest extends TestCase
 
         Livewire::test(NewStory::class)
             ->set('premise', 'My younger brother and his wife moved into our late mother\'s house in Ohio without asking anyone.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->set('title', 'The House in Ohio')
             ->call('create');
 
@@ -78,6 +80,8 @@ class OperatorConsoleTest extends TestCase
 
         Livewire::test(NewStory::class)
             ->set('premise', 'Two coworkers who married last year find out one of them was passed over on purpose.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->set('castAgeProfile', 'Both leads late twenties. Workplace and marriage settings, no elderly characters.')
             ->call('create');
 
@@ -93,6 +97,8 @@ class OperatorConsoleTest extends TestCase
 
         Livewire::test(NewStory::class)
             ->set('premise', 'My younger brother moved into our late mother\'s house in Ohio without asking anyone.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->call('create');
 
         $this->assertNull(
@@ -118,6 +124,8 @@ class OperatorConsoleTest extends TestCase
         Livewire::test(NewStory::class)
             ->assertSet('localeProfile', 'en-US')
             ->set('premise', 'A daughter-in-law is told the bride price will be returned to her husband.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->set('localeProfile', 'en-CN')
             ->call('create');
 
@@ -148,6 +156,8 @@ class OperatorConsoleTest extends TestCase
 
         Livewire::test(NewStory::class)
             ->set('premise', 'A premise long enough to get past the length validator on this form.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->set('localeProfile', 'en-XX')
             ->call('create')
             ->assertHasErrors('localeProfile');
@@ -167,7 +177,12 @@ class OperatorConsoleTest extends TestCase
     {
         Queue::fake();
 
-        $story = app(CreateStory::class)->handle('A premise long enough to be a real one, about a house.');
+        // With an ending: a single narrative without one is refused at the
+        // dispatch, before anything queues (EndingChoiceTest).
+        $story = app(CreateStory::class)->handle(
+            'A premise long enough to be a real one, about a house.',
+            ending: \App\Enums\StoryEnding::NewLife,
+        );
 
         Livewire::test(OutlineGate::class, ['story' => $story])->call('write');
 
@@ -187,6 +202,8 @@ class OperatorConsoleTest extends TestCase
 
         Livewire::test(NewStory::class)
             ->set('premise', 'A premise that is comfortably longer than the twenty character minimum.')
+            ->set('narratorGender', 'male')
+            ->set('ending', 'new_life')
             ->call('create');
 
         $this->assertSame(1, Story::query()->count());
@@ -250,6 +267,9 @@ class OperatorConsoleTest extends TestCase
     {
         $checks = [
             [OutlineGate::class, 'canWrite', OperatorAction::WriteScript],
+            // Also conditioned on a single narrative with no acts; the story
+            // here is a factory single with none, so status is the one variable.
+            [OutlineGate::class, 'canWritePremises', OperatorAction::WritePremises],
             [ScenesGate::class, 'canDraftScenes', OperatorAction::DraftSceneList],
             [ScenesGate::class, 'canAlignTimings', OperatorAction::AlignTimings],
             [PreviewGate::class, 'canDispatchRender', OperatorAction::DispatchRender],

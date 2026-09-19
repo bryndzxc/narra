@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\Gate;
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Models\Story;
@@ -27,6 +28,10 @@ class StoryFactory extends Factory
             'slug' => Story::slugFor($title, (string) $this->faker->unique()->numberBetween(1000, 9999)),
             'premise' => $this->faker->paragraph(3),
             'format' => StoryFormat::Single,
+            // Chosen, because a single narrative with no ending is refused at
+            // the outline. The new life, because it asks the outline for less;
+            // a test about the antagonist's chapter says so in its own state.
+            'ending' => StoryEnding::NewLife,
             'locale_profile' => 'en-US',
             'voice_id' => 'narrator-us-01',
             'target_duration_min' => 30,
@@ -76,7 +81,13 @@ class StoryFactory extends Factory
 
     public function anthology(): static
     {
-        return $this->state(fn (): array => ['format' => StoryFormat::Anthology]);
+        return $this->state(fn (): array => ['format' => StoryFormat::Anthology, 'ending' => null]);
+    }
+
+    /** The antagonist's closing chapter, in their own voice. */
+    public function endsInTheAntagonistsVoice(): static
+    {
+        return $this->state(fn (): array => ['ending' => StoryEnding::AntagonistVoice]);
     }
 
     /** Rendered and waiting at Gate 3. */

@@ -518,6 +518,8 @@ fails on a fourth.
    needs the present-day escalation room that the timeframe rule creates —
    28 had one present-day escalation act and there was nowhere to put it —
    and because it has no model in the corpus beyond that one scene.
+   **Built in 3g, and larger than this template**: Fang Zheng's line is one
+   beat of the roughly twelve the second reference gives its accomplice.
 
 3d. **THE CHAPTER IS A UNIT UNDER THE ACT, AND THE WRITER'S NATURAL 1,100 WORDS
    IS THE THING THAT FITS IT.** Measured on 2026-09-13 against a working video
@@ -801,6 +803,16 @@ fails on a fourth.
    agreed and one that does not is variance and not a trend — which is the
    answer the watch existed to get.
 
+   **CORRECTED 2026-09-19: THE 68% NEVER HAPPENED.** The ledger row for story
+   30's outline is 8,004 input and **5,265 output** tokens: 13,269 is the
+   TOTAL, and "about 11,000 of them output" was an estimate that read the
+   total as output. 5,265 is 33% of the ceiling, and 5,263 of it was the
+   outline text itself (counted exactly from the archive), so that call did
+   not reason at all. The real readings were 75%, 33%, 30% — the watch closed
+   on the right answer from a wrong middle number. It was reopened on story
+   37's 91% with the text and the reasoning separated: see the ceiling entry
+   dated 2026-09-19.
+
    Story 30 is at `outlined` with six scripts and twelve chapters, no cast,
    no scenes and no paid asset, so it is free to keep as the first story
    written under all three items or to discard.
@@ -1008,7 +1020,9 @@ fails on a fourth.
    of it**, and both were in the prompt:
 
    - The accomplice is PRESENT, not speaking. The field asks for him in the
-     room and explicitly not for lines.
+     room and explicitly not for lines. **REVERSED IN 3g**: that silence was
+     one variant, explained by the transcript itself — he was a schoolmate
+     asked to pretend, with no stake — and the permission became a motif.
    - "Marry you my ass" was cited in `genreGuidance()` as the model of a
      narrator answering back. It is what he THINKS. The prompt now carries the
      distinction, not a swapped example: the crude line is thought, the
@@ -1307,6 +1321,825 @@ fails on a fourth.
    stated bound — at 88%. The refusal is no longer silent since `RefusedFields`,
    so it would be seen, but the next long search will be refused at save.
 
+3f. **THE CAST IS DECIDED AT THE OUTLINE, AND AN ILLUSTRATION BECAME A
+   SOURCE.** Built 2026-09-15, before the premise batch that names six people
+   per story and places the future partner through one of the narrator's
+   friends.
+
+   **The census that decided it**, on the seven stories with a cast, matching
+   each stored character against the premise, the spine fields and the act
+   scripts:
+
+   | story | named in premise | cast | named in the spine | added by the act writer | invented by the extractor |
+   |---|---|---|---|---|---|
+   | 21 | 0 | 10 | 9 | 1 | 0 |
+   | 23 | 0 | 9 | 6 | 3 | 0 |
+   | 25 | 0 | 13 | 9 | 4 | 0 |
+   | 28 | 1 | 8 | 6 | 0 | 2 |
+   | 32 | 0 | 11 | 8 | 3 | 0 |
+   | 33 | 2 | 12 | 9 | 2 | 1 |
+   | 34 | 0 | 9 | 8 | 1 | 0 |
+
+   76% of the cast was named by the OUTLINE, which the prompt asked for in so
+   many words — "name who is watching", "name the occasion and the witnesses"
+   — and the act prompt twice more, "put the witnesses in the room and name
+   them". Nothing counted them anywhere. `cast_age_profile`, the one per-story
+   cast field, reached exactly one reader: the extractor, which runs after
+   every act is written. A "six named only" line there could not have bound
+   anything, and every character with a scene is a reference sheet.
+
+   **What is in place.** `stories.outline_cast` — name, role, relationship —
+   is a required outline schema field placed BEFORE the hook, because property
+   order is generation order and every spine field names people. Roles are
+   `CastRole`: narrator, antagonist, accomplice, antagonist_side,
+   narrator_side, future_partner. No witness role, deliberately: a cousin who
+   asks one question is "his cousin" in every field and every act. The
+   consumer question, asked in the change:
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline schema + prompt | `cast` first; a budget of `cast.max_named` (8); the roles; the names taken by recent videos | `OutlineCastTest` |
+   | `GenerateOutline` | refuses, after the cost row, no narrator, two antagonists, two future partners, a name twice, and a reused full name; stores the cast; clears `outlined_before_cast` | red/green, drilled |
+   | every act prompt | "THE PEOPLE IN THIS STORY", and "do not name anyone else" | fake record + reflection |
+   | the four witness sentences | "named only if they are in the cast"; a legacy story keeps "name them" | reflection, both ways |
+   | extraction prompt | "describe these people and NOBODY ELSE" | reflection |
+   | `ExtractCharacters` | keeps declared names, drops the rest, NAMES both on the job row; refuses if nothing matched | red/green |
+   | Gate 1 | edit, add, remove rows; problems for structure; warnings for the budget (priced from the rate card), a reused name, and a non-narrator named in no act | Livewire + review |
+   | `story:fork` | the cast and its age | drilled |
+
+   **THE FIRST WRITE PRESS NOW STOPS AFTER THE OUTLINE, and that reverses a
+   documented state.** The Act summary entry below says scripts present at
+   `outlined` is "the ORDINARY state of this gate", and it was: one press
+   queued the outline and every act, so the cast would have been reviewed at
+   Gate 1 after the acts were bought against it. A cast decided where the
+   decision is made has to be readable before the money moves, so the console
+   press passes `outlineOnly` when the story has no acts and the acts are the
+   second press. `story:write` is unchanged. And the split made a latent state
+   ordinary — approving an outline with no scripts moved the story to
+   `scripted`, where writing is refused — so `approve()` now refuses while any
+   act is unwritten, naming the acts.
+
+   **THE EXAMPLE-NAME REUSE, AND THE FIX PICKED.** 16 of the 72 cast entries
+   were the en-CN guidance's eight example names verbatim: Grace Zhou in four
+   of the last five casts, Wang Suhua in four, Kevin Lin and Leo Xu in two.
+   The guidance meant them as the FORM of a name; **the writer read them as a
+   list to draw from.** The fix is the check against recent stories, not
+   removing or rotating the examples, because the viewer-visible defect is the
+   same full name in two videos whatever supplied it, and the model's own
+   favourites repeat without any list. `OutlineCast::recentNames()` reads the
+   last ten non-fixture stories — ten, not five, because a premise batch fills
+   a window of five with itself and forgets the published videos — from both
+   `outline_cast` and `characters`, and skips role labels ("Second Uncle",
+   "Sophie's Father"). The prompt lists them as unavailable; the Action refuses
+   a reuse. On the day it went in the list held 55 names, including six of the
+   guidance's eight examples. **Unchecked, said out loud:** a repeated given
+   name with a different family name (Amy Sun, Amy Tang, Amy Shen). A token
+   match would refuse every shared family name, and Zhou is common for a
+   reason.
+
+   **Also unchecked: a name in the prose that is not in the cast.** Telling a
+   person from a place needs a proper-noun heuristic, and the census counted
+   "Chaozhou" and "Songyuan Machinery" as names. The extractor's drop note is
+   the exact version of that question one stage later.
+
+   **The shared page fixture went red at all eleven statuses again**, for the
+   third field running — it read "the cast is missing" as a PROBLEM on an
+   outline written before the question existed. It now says its age
+   (`outlined_before_cast`). Fourteen drills, run from a file with literal
+   patches: thirteen went red on the first run and one did not — the narrator
+   exemption, because the fixture script named the narrator, so the exemption
+   was never exercised. The fixture now narrates in first person. 1,215 tests
+   before, 1,236 after.
+
+   **THE PREDICTION, ON THE RECORD BEFORE THE FIRST RUN.** A six-name premise
+   with nothing bounding the spine lands at nine to thirteen characters, the
+   band it has always been in. If the next story still extracts nine to
+   thirteen, the spine witnesses are the cost and the array is not reaching
+   them. The extractor's drop note says which names were refused, so the
+   reading is a grep, not an inference.
+
+   **Item 5, and why it is not built.** The future partner is a ROLE, so she
+   has a name, a row the act writer is handed on every act, and a face the
+   extractor describes. Nothing tells the writer when she appears, on purpose:
+   whether a named row alone carries her into the acts is the measurement, and
+   an instruction would make it unreadable. Gate 1 warns when she is named in
+   no act script, which is the same question at act resolution. The scene
+   count on the next story answers it at still resolution.
+
+   **CORRECTION, 2026-09-17: THIS MEASUREMENT HAS NEVER RUN.** It was believed
+   that story 35 had named the partner in its premise and she still never
+   appeared. Neither premise from story 29 onward names a future partner (34's
+   "girlfriend" is the antagonist; 35's Grace Pan is the narrator's DESIGN
+   partner), and stories 35 and 36, the only two with an outline cast, have
+   five rows each and no future_partner row. The role guidance only asks for
+   the row "if the premise names one", so the outline was right not to invent
+   her. The Gate 1 warning above has never had a row to fire on. The next
+   premise has to name her and how she arrives; that is the whole test, and it
+   costs no code. **No separate column**, decided with the operator: if the row
+   alone does not carry her, the next step is a line in the search ending that
+   reads the row the act writer already has.
+
+   **FIRST READING, 2026-09-19, AND IT CAME FROM A DIRECTION NOBODY PREDICTED:
+   THE ROW EXISTED AND THE PREMISE DROPPED HER.** Story 38's idea said "married
+   her best friend". The premise generator declared Vivian Cao as
+   `future_partner` in all three candidates, and none of the three premises
+   names her; every one ends on the departure with no partner anywhere. So the
+   measurement did not reach the act writer at all — the partner was lost one
+   stage before the outline, by the writer holding her row. Cause and repair
+   are in 3i. The act-level question this item was built for is still unread.
+
+   **The role was gendered and is not any more.** It read "the woman the
+   narrator ends up with", written for a man narrating; story 33 is a woman
+   narrating a partner betrayal. It reads "the person the narrator ends up
+   with, … as the premise names them" now, and `OutlineCastTest` holds the old
+   sentence RED against the same detector the live one is GREEN on.
+
+   **THE NARRATOR IS A REQUIRED PROPERTY, NOT A CAST ROW. Built 2026-09-18,
+   after story 37's outline came back with no narrator and was refused.** The
+   archived response (below, under the session-summary entry) holds eight cast
+   rows, exactly `cast.max_named`, every role filled but the narrator, and
+   every relationship written from the narrator's seat: "my girlfriend of four
+   years", "my closest friend", "my mother". The hook, the grievance and the
+   betrayal scene all say "I". The model wrote the cast AS the narrator and
+   left them off it. Stories 35 and 36, same kind of premise, invented Ryan Mo
+   and Aaron Cui; so one of three outlines under the cast missed.
+
+   The prompt made it likely in four ways: the heading asked for "every person
+   this story NAMES", which a first-person narrator is not; the only rule that
+   reached them was the restraint clause ("give anyone else the premise
+   implies a name only if..."); the narrator was counted against a budget the
+   rest of the cast could fill; and the narrator row was one line in a role
+   list under a heading that excluded them.
+
+   **What is in place.** `narrator: {name, relationship}` is a required
+   property of the outline schema, ahead of `cast`, and `narrator` is out of
+   the cast's role enum on a single narrative, so the API cannot return a cast
+   with no narrator or with two. `ClaudeScriptWriter::castFrom()` puts the
+   property back as the first row of `outline_cast`, so Gate 1, the act writer,
+   the extractor and `story:fork` read exactly what they read before. The
+   prompt asks for the narrator first, says the premise will almost never name
+   them and why they still need a name (their face is in more pictures than
+   anyone's), and states the budget as people BESIDES the narrator, which
+   `OutlineCast::budgetCount()` now counts at Gate 1 too. An anthology keeps
+   `narrator` in the enum: each act's story has its own first person, and the
+   property carries act 1's. `OutlineCast::castArrayRoles()` owns the answer for
+   both the enum and the prompt's role list. `structuralProblems()` still
+   refuses 0 or 2 narrators; it is the invariant behind the schema now rather
+   than the only guard. Nine drills, all red for the reason they name. Not
+   measured against the real model until story 37's re-run.
+
+3g. **THE ACCOMPLICE HAS A STAKE, THE NARRATOR'S HEAD IS WHERE THE JOKES LIVE,
+   AND THE ARC IS A DECISION, NOT A FINDING.** Built 2026-09-16 from two more
+   reference transcripts, read separately because they are different kinds:
+   `docs/refence/transcript-lydia.txt` (a betrayal story, ~33:38) and
+   `docs/refence/transcript-declan.txt` (a COMEDY with a fantasy premise,
+   ~32:30, used for one device only). Both have sections the operator removed —
+   Lydia 23:37-25:05 and 33:00-33:38 — and nothing here is built on them.
+
+   **The folder is `docs/refence`, misspelled, and stays that way.** Renaming it
+   would break every path in this file for no gain. A request for
+   `docs/reference/...` means this folder.
+
+   ---------------------------------------------------------------------------
+   **THE DECISION: THE FIVE MOVEMENTS STAY. Recorded as the operator's decision,
+   not as a finding, so a later transcript does not reopen it by accident.**
+   ---------------------------------------------------------------------------
+
+   Lydia runs a different arc from ours. Its narrator holds hidden power (65% of
+   the company, revealed at 12:51, 38% in) and wins every round from 5:35 (16%)
+   on. The divorce is announced at 0:33. Nobody searches: he is found at work at
+   11:11 and at home at 16:42. The exposures cascade (12:51, 23:06, 29:47)
+   rather than landing at the end. It is a face-slap video, and it holds an
+   audience for thirty-three minutes.
+
+   **The operator chose not to trade the arc for that tone.** A narrator with
+   hidden power winning from minute 12 is a different video. What this change
+   builds is comedy INSIDE the five movements: the narrator's head, the
+   narrator's controlled mouth, and the accomplice losing in public in the last
+   three acts.
+
+   **What reopening it would cost, so the next person weighs it rather than
+   rediscovering it.** Every one of these is written against "escalation, then
+   departure, search, refusal":
+
+   - `ActPhase::endsWorseForNarrator()` and the escalation ending: the narrator
+     loses every round before the departure. A face-slap narrator fails it from
+     the first confrontation.
+   - `ActPhase::planFor()`, the `count - 2` departure clamp, and "the reversal
+     is the last three acts" in `genreGuidance()`.
+   - The departure's no-announcement rule and `checkDeparture()`: an announced
+     leaving cannot be searched for.
+   - The search phase: `reversal_beats`, its cost check, and the in-person
+     meetings measured against transcript 3446.
+   - The refusal's no-gloat rule. Lydia's narrator gloats ("You're filthy now
+     too", the stray-dog line), and that is most of its comedy.
+   - Hook beat 5 (promise the departure) and its Gate 1 overlap check.
+   - The probes behind all of it: stories 29-33 are measured against this arc.
+
+   **So a fourth transcript that runs the face-slap shape is not evidence
+   against the decision.** It is another instance of the variant already
+   declined. Reopening needs the costs above weighed explicitly, as a spending
+   decision on the whole contract, not as a correction.
+
+   Two things were forbidden for reasons that have nothing to do with the arc,
+   and they would stay forbidden either way: the narrator's punch (9:40, "blood
+   burst"), under "no violence by the narrator"; and the orientation-coded
+   material, below.
+
+   ---------------------------------------------------------------------------
+   **"THE ACCOMPLICE NEVER SPEAKS" WAS ONE VARIANT, AND THE FIRST REFERENCE
+   SAYS WHY**
+   ---------------------------------------------------------------------------
+
+   3e wrote "the accomplice is PRESENT, not speaking" from transcript 3446, and
+   the prompt carried it in three places as "they do not need a line". Story
+   33's summaries then carried "has not spoken a single quoted word" from act
+   to act as a fact, which is how a permission becomes a motif.
+
+   3446 explains its own silence at 29:29: the "boyfriend" is *"a younger guy
+   from school who had a crush on me"*, asked to pretend. He has no stake, so
+   he has nothing to say. Lydia's Gerald wants the company shares:
+
+   | | Gerald |
+   |---|---|
+   | first words to the narrator | 1:28, 4% in (heard on the phone at 0:45) |
+   | his justification | changes four times: harmless (2:17), contrite (kneels, cries, kowtows, 4:44-5:16), a victim of family pressure (7:07, through Lydia), and then, the act dropped at 11:21, the man in charge ("you're fired", 11:28) |
+   | his real motive | never said by him; guessed by the narrator at 23:13 and confirmed by his silence at 23:27, **the one time he is silent** |
+   | first loss | 8:29 in private (his move for a marriage proposal fails); 9:11 and 9:40 in public |
+   | how often | about twelve losses across the four scenes he shares with the narrator in the text that remains, every scene ending worse for him |
+   | at the public exposure | he holds the microphone; Lydia is not mentioned in the plaza text |
+   | the end | prison, "for even longer" than anyone else, in two sentences of epilogue |
+
+   **Silence follows from having no stake.** That is a genre-level reading from
+   two references pointing opposite ways, and it is the same failure 3d
+   recorded for "no contact" and "no epilogue": one video's specifics written
+   in as the genre's structure. The ledger rule, "no act ends with the
+   narrator winning", fails the same test harder: Lydia's narrator never loses a
+   round after 5:35. It is kept, by the decision above, as a choice rather than
+   as a fact about the genre.
+
+   **The losses fit the arc** because they are the antagonist's side losing,
+   not the narrator winning. They belong to the last three acts.
+
+   ---------------------------------------------------------------------------
+   **WHAT IS IN PLACE**
+   ---------------------------------------------------------------------------
+
+   Three accomplice columns, not one, because the three go to DIFFERENT acts,
+   and the routing is the reason:
+
+   | column | reaches | why |
+   |---|---|---|
+   | `accomplice_motive` | every act's spine block, marked as not coming out before the last three acts | an escalation act plants it |
+   | `accomplice_performance` | every act's spine block; the escalation and departure endings say he talks in it and wins | he speaks from chapter one |
+   | `accomplice_fall` | the departure, search and refusal endings ONLY, and those acts' scene calls | an escalation act told how he ends spends it early, which is the narrator winning early |
+
+   All three are EMPTY when the cast declares no accomplice (a mother-in-law
+   does it with nobody), and Gate 1 reads that as "no accomplice in the cast",
+   not as missing. `OutlineCast::structuralProblems()` now refuses two
+   accomplices, since the spine describes one person.
+
+   The consumer question, asked in the change:
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline schema + prompt | all four, in generation order: his act before the betrayal scene he speaks in, the thought before the refusal that pays it off | `AccompliceArcTest` |
+   | `GenerateOutline` | stores all four WITHOUT `array_filter`, and refuses coded terms after the cost row | red/green, drilled |
+   | genre contract | THE ACCOMPLICE section; movement 1 no longer says he never speaks; movement 3 says he is losing too | reflection |
+   | act 1 | "AND HE TALKS" in chapter one; the running thought planted there; the opening block names both as starting after the beats | reflection, drilled |
+   | every act prompt | motive, performance and thought in the spine block | reflection + fake record |
+   | last three acts | the fall, per phase | reflection, drilled |
+   | last three scene calls | "THE ACCOMPLICE'S FALL (he is in the room when he loses)" | fake record + reflection, drilled |
+   | Gate 1 | editable, states, `exposes` and `said aloud in` badges, six checks | Livewire + GuardsGoRedTest |
+   | `story:fork` | all four and the age | `AccompliceArcTest` |
+   | `ExtractCharacters` | nothing: it reads scripts, not the spine | answered, not wired |
+
+   **`GenerateOutline` does not `array_filter` these four.** The spine is stored
+   through a filter that drops empty values, which is harmless for fields every
+   outline fills. An empty accomplice field is a real answer, so a filter would
+   leave the previous outline's accomplice standing on a re-outline that has
+   none. They are written explicitly, empty as null.
+
+   **THE EXCLUSION.** Gerald's act is orientation-coded mockery: a
+   "sissy-sounding" voice, "I'm not into women", a staged kiss as the lie. The
+   device underneath is a harmless ROLE the narrator sees through, and it needs
+   none of that. The operator excluded it entirely. The prompt asks for a role
+   (the old friend, the loyal colleague, the considerate relative) and says what
+   not to use; that is the request. `AccompliceArc::codedTerms()` is the
+   invariant: `GenerateOutline` refuses an outline carrying one in the three
+   accomplice fields, after the cost row, and Gate 1 reports an operator's edit
+   as a PROBLEM from the same list. It deliberately has **no negation window**:
+   "he is not into women" is not the good case of this check, it is the tell.
+   **Unchecked, said so it is not read as covered:** the act scripts. A story
+   can have a gay character who is not a joke, and a word list cannot read
+   prose.
+
+   Six Gate 1 checks in `checkAccomplice()` and `checkRunningThought()`, each
+   with a red/green pair in `GuardsGoRedTest`:
+
+   - coded terms (a problem)
+   - the act quotes no line: the silent accomplice in a new coat
+   - the fall reads as one humiliation (fewer than three sentences)
+   - the fall has nobody watching
+   - the fall never exposes the motive (overlap, proper nouns removed; the
+     badge names the motive sentence)
+   - the refusal never pays off the thought
+
+   The last one counts only **the thought's own words**, with every word it
+   shares with another spine field removed. A joke about "family helps family"
+   shares those words with every refusal, so plain overlap would pass a refusal
+   that never mentions the joke. **Unchecked:** that the fall starts no earlier
+   than the departure act (the routing enforces that, the field cannot say it),
+   that the narrator is in the scenes he loses, and that thoughts are tagged in
+   the prose.
+
+   ---------------------------------------------------------------------------
+   **THE HEAD AND THE MOUTH: THE THINKS/SAYS RULE, RENAMED AND WIDENED**
+   ---------------------------------------------------------------------------
+
+   The rule was named after its example, "the crude line is what they think".
+   Declan runs the same device about six times as often and funnier, with
+   **no profanity at all**. Measured against the first reference:
+
+   | | 3446 | Declan |
+   |---|---|---|
+   | comic thought lines | ~5 in 34:46, three in the first four minutes | ~30 in 32:30, in all 15 chapters |
+   | gap between thought and spoken line | 34 s (2:56 to 3:30) | usually none: the same sentence |
+   | tagged as a thought | "Marry you my ass" untagged; "In my head" a line later | 28 of 30 tagged ("I thought", "I told myself", "inwardly") |
+   | thoughts paid off later | none | "billing for emotional damages" (0:08) becomes a $50 privacy fee approved at 27:30 and added to salary at 29:44 |
+   | profanity | strong | none |
+
+   Now in `genreGuidance()`: **THE HEAD IS FUNNY; THE MOUTH IS CONTROLLED**, with
+   the 3446 pairing kept as one example and Declan's 10:27 line as another. A
+   thought costs nothing on the ledger, so it can win every exchange without the
+   narrator winning a round. **EVERY THOUGHT IS TAGGED**, because one TTS voice
+   reads both channels and an untagged thought is heard as said aloud.
+   **THE RUNNING THOUGHT**: one private joke, planted in chapter one after the
+   beats, recurring, and said aloud once in the refusal.
+
+   **`running_thought` is a column, not a prompt line, and a prompt line could
+   not have done it.** The refusal act is written from five-sentence summaries
+   of the acts before it, so a thought planted in act 1's prose never reaches
+   act 5. This is the `escalation_beat` finding caught before it shipped: a
+   request that cannot arrive.
+
+   **Held, both measured and both not transferable:**
+
+   - **The reaction device.** Around seven of Declan's laughs are Aurelia
+     reacting to a thought she can hear (1:44, 4:26, 9:17, 13:42, 15:39, 17:33,
+     19:44). That needs the fantasy premise. In our stories only the viewer
+     hears a thought.
+   - **The mistaken narrator.** Declan's thoughts are funny because they are
+     WRONG (fall guy, corpse suit, a hit). A betrayal narrator holds the truth,
+     and "the audience is never confused about who is wrong" rules out a
+     narrator who is.
+
+   Tagging and the running thought's recurrence are **prompt requests with no
+   mechanism** behind them in the prose. The next story's scripts are the
+   measurement.
+
+   ---------------------------------------------------------------------------
+   **FOUR THINGS THE BUILD FOUND**
+   ---------------------------------------------------------------------------
+
+   1. **The locale guard caught British spelling I had written into the PROMPT
+      itself.** "apologise" and "licence" went into the genre contract and the
+      fake. The fake was refused, as it should be, and that is the only reason
+      the prompt copy was noticed. **Nothing checks prompt text against the
+      locale**: the guard reads OUTPUT. A prompt that spells a word the British
+      way teaches the writer the spelling the guard then refuses at a billed
+      call. The pre-existing "colour" in the character-extraction prompt is the
+      same shape, left alone because that prompt does not produce narration.
+      **Closed 2026-09-17**, and "does not produce narration" was the wrong
+      reason to leave it: cast descriptions ARE locale-checked output. See
+      `PromptLocaleTest` under "Where bugs actually live".
+   2. **The shared page fixture went red at all eleven statuses for the third
+      field in a row** ("Running thought is missing"). It was on the plan for
+      this change and was still fixed after the run rather than before it,
+      which is the honest record of how much a plan item is worth against a
+      failing test.
+   3. **Two of eleven drills passed first.** One found a real gap: act 1's
+      no-accomplice branch could restore "they do not need a line" and no test
+      rendered that branch looking for it. One was a broken drill: `forceFill()`
+      takes one argument, and the filter passed as a second one was silently
+      ignored, so the "defect" was a no-op. Both are red now, for the reason
+      they name. Suspect the drill first, again.
+   4. **A GREEN half went red because the fixture's joke had no tally.** The
+      thought "a dollar... the fund" shared only "fund" with a refusal saying
+      "dollars", plural. The check was right. A running tally that states no
+      figure gives the refusal nothing to say back.
+
+   **ON THE RECORD BEFORE THE FIRST PAID RUN.** Nothing here was run against
+   the real model. The prediction for the next story with an accomplice: he
+   speaks in chapter one; the escalation acts show him winning with her; he
+   loses at least three times in the last three acts, in scenes with the
+   narrator; the running thought is tagged in act 1 and said aloud in the
+   refusal. **The cost to watch is the outline ceiling.** Four more required
+   fields at ~300 output tokens each (story 22's measured per-field average) is
+   ~1,200 tokens. On story 35's 13,167 (82%) that is ~14,400, or 90%. That is an
+   estimate from the field average, not a reading. If an outline truncates, it
+   is information to record before retrying, as the ceiling entry says, and
+   the ceiling is not to be raised to absorb it.
+
+3h. **THE LAST CHAPTER IS THE ANTAGONIST'S, ABOUT A YEAR ON, IN THE SAME
+   VOICE.** Built 2026-09-17. Our stories ended on a corridor plea and a
+   narrator epilogue; the reference ends on "Extra 1 — Sophia's POV" (32:20,
+   1:45), which turns on a chance she was offered and threw away that the
+   narrator never saw, and on what the years look like from inside her life
+   ("The wedding dress I had once ordered still sat on the top shelf of my
+   closet"). The arc decision in 3g stands: this is a CHAPTER inside the
+   refusal act, not a sixth movement and not a phase.
+
+   **Three decisions, the operator's, recorded as decisions:**
+
+   - **One chapter, not the reference's two.** The second extra is the new
+     partner's, about 40 seconds, and no story has a partner (see the item 5
+     correction in 3f).
+   - **One voice.** A second voice touches `voice_id`, the pace guard and
+     the fingerprint, for two minutes of audio. The spoken announcement,
+     "Extra — Dana Vasquez's point of view.", is the only marker that the "I"
+     changed hands, which is why it names her and why Gate 1 checks it.
+   - **About a year, not twenty.** Her face is one reference sheet at her age
+     in the story, and ageing texture is refused, so decades could only be
+     drawn as objects. A year is drawable. Gate 1 warns on five or more years
+     or a decade, behind a negation window.
+
+   **What is in place.** `stories.antagonist_regret` (the chance, who offered
+   it, on which day, and the year in things that can be seen), required in the
+   outline schema after `refusal`; `chapters.point_of_view`, the cast name on
+   her chapter and null on every other. `App\Support\AntagonistPointOfView`
+   owns "does this story get her chapter, and whose name": yes only when the
+   regret is written AND the cast names an antagonist, and only in the refusal
+   act.
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline schema + prompt | the field after the refusal, "ABOUT A YEAR, NOT TEN OR TWENTY" | `AntagonistRegretTest` |
+   | real writer decode | the field, and `point_of_view` on every chapter | `AntagonistRegretTest`, drilled |
+   | `GenerateOutline` | stores it (empty clears), clears the age flag | red/green |
+   | genre contract | `"I", never "she"` keeps ONE EXCEPTION, named | reflection |
+   | refusal act prompt | her chapter last, announced, no number, the regret | reflection, drilled |
+   | every other act | nothing: an escalation act would stage the offer | reflection, drilled |
+   | chapter instruction | "THE LAST CHAPTER OF THIS ACT IS THE EXCEPTION" | reflection |
+   | `GenerateActScripts` | stores it; refuses two, misplaced, misnamed, wrong act; not counted toward `max_per_act` | red/green, drilled |
+   | refusal scene call | "I" is her; the year drawn in rooms and faces, never aged | fake record + reflection |
+   | Gate 1 | edit; "offered on" badge; chapter badged; warnings for a missing chapter and a missing announcement | Livewire + GuardsGoRedTest |
+   | `story:fork` | the field and its age | drilled |
+   | `ExtractCharacters` | nothing: it reads names, and "I" is not one | answered, not wired |
+
+   **Her chapter is not refused when it is missing.** A malformed one is a
+   shape and refused after the cost row, like every chapter shape. A missing
+   one is content the writer did not deliver, and Gate 1 reports it the way it
+   reports a chapter that never says its number.
+
+   **Five things the build found:**
+
+   1. **The real writer's decode had no test, for any spine field.** Every
+      test runs on the fake, which builds its own draft, so the drill that
+      deleted `antagonist_regret` from the real decode stayed GREEN.
+      `outlineDraftFrom()` and `actDraftFrom()` are separate from the call
+      now, and one test checks the whole spine through them.
+   2. **The anchor check copied `checkRefusal()`'s first-match loop**, the
+      defect 3e finding 4 records, and named "the departure" for a chance
+      offered at the reception. It takes the best match now, scored on the
+      CHANCE sentences only, because the year-on sentence ("changed her
+      number") out-voted the offer's own words. **`checkRefusal()` itself is
+      still first-match**, unchanged here.
+   3. **The negation window was case-sensitive**, so "Not twenty years later"
+      read as a twenty-year jump. The GREEN half of the pair caught it.
+   4. **The fake's last narrated chapter ended mid-sentence**, harmless while
+      nothing followed it. With her chapter after it, the join check refused
+      the merged sentence, correctly, and the fake closes its sentence now.
+   5. **The shared page fixture went red at all eleven statuses again**, the
+      fourth field running (betrayal scene, cast, accomplice arc, this).
+
+   **The pronouns in the new text are neutral** ("the antagonist", the name,
+   "their"). The existing contract says "she" for the antagonist throughout,
+   and story 33's antagonist is a husband; that older text is unchanged.
+
+   Nothing was run against the real model: no outline or act has been
+   generated under this. The next story is the measurement.
+
+3i. **PREMISES FROM AN IDEA, AND THE SPINE QUESTIONS HAVE ONE COPY.** Built
+   2026-09-19. The operator types an idea ("my CEO wife cheated so I made
+   them pay"); three premises come back, each checked against Gate 1 before it
+   is picked. Findings 3c and 3e both said the premise shapes the outline more
+   than any field: a history-shaped premise got its history staged as acts
+   (29-32), and the one premise written to contain the betrayal scene (33) got
+   the scene on the reference's clock. This writes premises in that shape.
+
+   **The refactor came first, because without it this was the fourth copy.**
+   The spine questions were clauses inside one `sprintf` in `outlinePrompt()`.
+   They are `App\Support\SpineQuestions`, one method each, called by the
+   outline prompt and the premise prompt. The outline prompt was rendered for
+   seven story shapes before and after the move: system prompts byte-identical,
+   user prompts identical except the one space `withheld_information:the` had
+   been missing. `PremiseGeneratorTest` asserts every spine field the outline
+   SCHEMA requires is asked, from the one copy, and that no question's text is
+   back in `ClaudeScriptWriter`. **The first version of that test was
+   vacuous**: it walked `OUTLINE_ORDER`, so a drill that dropped `departure`
+   from the list shrank the assertion with it and stayed green. It reads the
+   schema now, an independent list, and the drill is red. **Seen, not folded
+   in:** the hook's five beats have a second, pre-existing copy in act 1's
+   `hookInstruction()`, worded for the act writer. Folding it would change the
+   act 1 prompt that `ActOneOpeningContractTest` holds, so it is recorded
+   rather than moved.
+
+   **What the premise prompt adds, and nothing else:** the premise's own shape
+   (six or seven sentences, first person, the narrator unnamed; opens in the
+   room where the betrayal is done; FRIENDS as the witnesses, not family; one
+   incident, no enumerated history; names `cast.premise_named` = 6 people
+   besides the narrator; ends on the departure), what the three differ in (the
+   occasion and what only the narrator can produce in person, nothing else),
+   and the revenge translation. The genre contract, the format, the locale
+   guidance, the cast question and six spine questions are CALLED. "Friends as
+   witnesses" is new and lives in the premise prompt only: the outline's
+   `betrayal_scene` question does not carry it, deliberately, because adding
+   it there changes every outline and that is a separate decision.
+
+   **The shape, from the title finding.** One `candidates` array of identical
+   items and no labelled slots: the title schema's `short_titles` field
+   returns a short title every time, because a required field gets filled.
+   Each candidate is the narrator, the cast, seven spine answers, then the
+   premise LAST, so the prose is written to its answers. Top-level,
+   `idea_was_revenge_shaped` and a one-sentence `translation`, decided before
+   any candidate is written.
+
+   **Sonnet, medium, 16,000 ceiling**, because the use is re-rolling: three
+   rolls must cost less than the outline they precede. Estimated before the
+   first call from the outline ledger at ~$0.07-0.11 a roll against ~$0.18-0.28
+   on Opus. **Not measured: nothing here has been run against the real model.**
+   The first rows replace the estimate.
+
+   **Checked on an unsaved story, shown rather than dropped.**
+   `ValidateOutlineSpine::premiseChecks()` puts a candidate's cast and answers
+   on an unsaved copy of the story and calls the SAME private checks `handle()`
+   runs: cast structure, reused names, coded terms, justification, betrayal
+   scene (audience, said aloud, done not found), narrator at exposure,
+   departure. Severity follows the OUTLINE: a reused name is a Gate 1 warning
+   but a premise problem, because the cast prompt tells the outline to use the
+   premise's names exactly and refuses a reused one. Then the PROSE, because
+   the outline reads the premise and nothing else: every named person must
+   appear in it, four answers must be carried by it (the overlap every spine
+   check uses), and it must not enumerate history ("first time / second time",
+   or two years). Checks are computed when Gate 1 is read, from the stored
+   fields, so they never go stale; `ran` lists every check, so a clean
+   candidate reads as checked rather than unexamined. Problems red, warnings
+   amber, every candidate shown. **Unchecked, said so it is not read as
+   covered:** that the prose opens in the room, that the witnesses are friends,
+   the sentence count, and that it ends on the departure.
+
+   **The revenge line.** When the generator reports the idea as revenge-shaped,
+   Gate 1 says so above the candidates with its one-sentence translation. When
+   it does not but the idea's own words carry a revenge phrase
+   (`PremiseIdea::revengeMarkers()`), Gate 1 says the idea reads as revenge-
+   shaped and the generator did not say it translated it. Two readings, so a
+   silent translation still leaves a line.
+
+   **Where it lives.** `cost_entries.story_id` is NOT NULL, so a spend needs a
+   story. The new-story form offers "an idea" (single narratives only), which
+   creates the draft and queues nothing; the premises are a billed, two-press
+   button on Gate 1 at `draft` (`OperatorAction::WritePremises`), queued on the
+   text queue with a `premises` stage row, and the panel polls only while one
+   is in flight. "Use this premise" writes the premise column and nothing else:
+   `save()` moves a draft to `outlined`, which would close the panel before any
+   outline exists. The latest roll is `stories.premise_candidates`; every roll
+   keeps its cost row. The form also asks who narrates (voice item A, now
+   built). Hidden on an anthology, with the reason said.
+
+   **Found on the way:** the gate page never rendered `session('notice')`, so
+   the new-story form's "created and queued" message had never reached the
+   operator on the page it redirects to. It renders now.
+
+   Thirteen drills, all red for the reason they name after the vacuous test
+   was fixed. The backslash hazard hit three patch scripts written through a
+   Bash heredoc across 09-18 and 09-19: one landed correct only because `\E`
+   is not a Python escape, one was stopped by its own match assertion, one was
+   caught before it ran. Measured: `a\\b` in a QUOTED heredoc reaches the
+   program as `a\b`, so quoting the delimiter is no protection. Patch scripts
+   are written as files with the Write tool.
+
+   **THE FIRST ROLL, story 38, 2026-09-19.** Idea: "My CEO wife cheated with
+   her intern. I divorced her and married her best friend." en-CN, male
+   narrator. **$0.1269**: 3,230 input + 7,719 cache write + 10,115 output (63%
+   of the 16,000 ceiling). The returned JSON counts **4,181 tokens** on the
+   model's own tokenizer, so **~5,934 (59%) was reasoning**, about $0.059.
+   Above the $0.07-0.11 estimate, and three rolls ($0.38) now cost more than
+   story 37's outline ($0.2273), which is the use pattern this stage was put
+   on Sonnet for. One reading; not acted on.
+
+   What worked, recorded so it is not changed by accident: the three varied
+   the occasion (stock listing / anniversary dinner / industry gala) and the
+   in-person item (share certificate / business licence / notarised deed) and
+   nothing else; none is revenge although the idea is revenge-shaped (the
+   generator said false, and the idea's own words carry no phrase
+   `revengeMarkers()` knows, so no line was shown either way); and the
+   narrator's lines are funny ("a hand-holding fee", "the meeting where growth
+   got redefined as an intern").
+
+   **Three findings, all three candidates, so the prompt and not chance. Two
+   of the three were partly the INSTRUMENT, and reading the stored rows is what
+   separated them:**
+
+   1. **"The accomplice never speaks" was a detector that could not see single
+      quotes — and under it, a real defect about WHO he speaks to.** All three
+      fields and all three premises quote Ethan Bao: *'I only ever tried to
+      carry what she couldn't carry alone...'*. Single quotes, which is how a
+      writer avoids escaping a double quote inside a JSON string.
+      `AccompliceArc::quotesALine()` knew only double quotes, so Gate 1 said
+      "described and never spoken" three times and the operator reported a
+      silent accomplice. It now accepts single quotes, straight and curly, with
+      an apostrophe rule (opening mark not after a letter, closing mark not
+      before one), paired RED/GREEN. What IS real: every line is said to the
+      ROOM ("told the table", "told the guests gently"). `accomplice_
+      performance` asked for a line "TO THE NARRATOR"; `betrayal_scene` asked
+      for "the line that makes her defend him in front of everyone" and named
+      no addressee, and the model followed the scene question. Both questions
+      now say to the narrator's face; unchecked, because telling an addressee
+      from prose is a reading a word list cannot make. The premise prompt never
+      carried "they do not need a line" — the grep is clean — so that was not
+      the cause.
+   2. **"The justification is not said in the betrayal scene" is true of the
+      FIELD and false of the PROSE.** All three premises have her say it
+      verbatim, aloud, to his face, in the room. All three `betrayal_scene`
+      fields write *"delivers the justification to his face"* — a pointer to
+      another field, which shares no words with it, so the overlap check fired.
+      The question now says QUOTE HER HERE and names the pointer as the thing
+      not to write. The ORDER was left alone on purpose: a witness's question
+      answered with a different line, the accomplice, then the justification to
+      the narrator's face is transcript 3446's order exactly (2:05 the
+      question, 2:09 "He's my boyfriend", 2:41 the justification to his face),
+      and 3e is built on that reading.
+   3. **The premise never names people in its own cast, and the prompt TOLD IT
+      TO NAME ONLY SOME.** Zhou Bin and Vivian Cao are in all three casts and
+      no prose. The premise prompt asked for a COUNT ("names 6 people besides
+      the narrator"); the cast instruction it calls then said "The premise may
+      name the people it needs" — a sentence about the premise as the
+      outline's INPUT, which read by the premise writer is permission — and
+      allowed `max_named` (8) rows against `premise_named` (6). And "ENDS ON
+      THE DEPARTURE" left a partner who arrives afterwards nowhere to be. Here
+      the count equalled the cast and was still not obeyed: the stated-count
+      finding has a limit, and it is a competing permission in the same
+      prompt. Now: the premise names EVERY person in its cast and nobody else,
+      the cast instruction takes `forPremise` (the premise limit and "everyone
+      in this cast is named in the premise you write"; the outline's text is
+      byte-identical), and the future partner is placed BEFORE the departure,
+      in the room for the betrayal or already in the narrator's life. Gate 1
+      reports a missing partner on her own line, naming her, not as one name
+      in a list. That is the item 5 reading, recorded in 3f.
+
+   **Two decisions, the operator's, 2026-09-19, so a later roll does not
+   reopen them by accident:**
+
+   - **The betrayal scene's order stays.** Witness's question, an answer that
+     is not the justification, the accomplice's line, then the justification
+     to the narrator's face — transcript 3446 at 2:05, 2:09 and 2:41. Not
+     changed on one roll.
+   - **"A soft, apologetic voice" is a performance, not a coded tell.** It is
+     what Gerald does in the Lydia transcript; the ban is for orientation-coded
+     mockery, not for a quiet voice. `AccompliceArc::CODED_TERMS` stays as it
+     is and does not gain "soft".
+
+   **THE COST WATCH, opened on this reading.** $0.1269 with 59% reasoning puts
+   three rolls above one outline, which was the argument for Sonnet. **If the
+   next two rolls land in the same place (about $0.12 or more, reasoning over
+   half the output), that is the trend, and the stage is revisited: effort
+   `low` here, or a shorter prompt.** Split each roll the way this one was:
+   count the archived response with `countTokens` and subtract from billed
+   output. Archives survive until the story renders.
+
+   **ROLL 2, the same idea, under the round-one prompt fixes.** $0.1190:
+   3,679 input (+449, the new premise bullets arriving) + 7,719 cache write
+   (byte-identical system prompt) + 9,230 output; the returned JSON counts
+   4,352, so **~4,878 (53%) was reasoning**. The cost watch's second reading
+   agrees with the first: one more like it is the trend. What the round-one
+   fixes did, all three candidates: every cast member is named in the prose,
+   and the cast shrank to the five the prose uses; **Chloe Rong, the future
+   partner, is placed in the room in all three** ("the only person at that
+   table who reached for my hand instead of Nicole's"); every betrayal-scene
+   field quotes her justification and the prose carries it verbatim; the
+   accomplice's line is to the narrator's face in all three fields and in two
+   of three premises — premise 3 has him answer the bride's mother. Gate
+   warnings fell from nine to two.
+
+   **Of the two, one is real and one is the check.** Premise 1's prose never
+   mentions the loan guarantee it withholds — a true positive. Premise 3's
+   "narrator at the exposure names nothing only they can produce" is a false
+   fire: the fields share mortgaged/mortgage, signature/sign, refinanced/
+   refinance and bank/bank's, and `distinctiveWords()` matches exact tokens, so
+   it saw only "nicole's". The same matcher PASSED candidate 2 on "narrator" +
+   "board" — "narrator" is in nearly every spine field. So the overlap check
+   is form-blind in one direction and too generous in the other. Reported,
+   not built: `distinctiveWords()` is shared by every overlap check at Gate 1
+   (refusal, hook, justification, regret, premise prose), so stemming it or
+   adding "narrator" to its common words changes them all at once, and that
+   wants its own measurement against the stored spines first.
+
+   **"booked" is a sense-blind marker, and it is not alone. Fixed the same
+   day, below.** Measured over every real `betrayal_scene` in the database (stories
+   33-37) and all three candidates: the discovery check fires on TWO of eight,
+   and both are false — this roll's "the restaurant booked for their
+   anniversary", and story 36's "she holds her phone out... and asks me to
+   take the photo", which was live on story 36's Gate 1 and was never noticed.
+   Zero true positives on real output; every true positive the check has ever
+   matched is a hand-written sample. The class is a word list matching a word
+   in a different sense: `pencil` in `CharacterTextGuard` (a skirt), "announces"
+   in the departure check (3e finding 3, the antagonist announcing), and these
+   two. `pencil` was fixed with a PHRASE-EXCEPTION list (`NOT_AN_OBJECT`), which
+   is the longer-list repair and is always one phrase behind. The discovery
+   check was given a structure instead — verbs alone, evidence only with
+   somebody finding it in the same sentence — built the same day; see the entry
+   on checks that fire on good output, under "Where bugs actually live", which
+   also records that this check has never caught a true case.
+
+3j. **THE ENDING IS CHOSEN BY THE OPERATOR, BEFORE THE OUTLINE, AND THERE ARE
+   TWO.** Built 2026-09-19. `stories.ending`, `App\Enums\StoryEnding`. The five
+   movements are untouched; this is the last two or three minutes.
+
+   **Why.** Measured on every story with a written refusal act (29-37): the
+   refusal act was asked for an optional narrator epilogue — "what the
+   narrator's life is now, and one concrete fact that shows her loss from the
+   outside" — and, whenever `antagonist_regret` was written, her chapter
+   stacked after it. The regret was REQUIRED in the outline schema, so from
+   story 37 on every outline asked for both. Every epilogue came back as the
+   same list: a headcount and square meters, her decline in three facts, one
+   object — stories 33 and 35 send back the same red envelope unopened. And
+   story 37's two endings restated one year: the regret field asked for "one
+   fact about where the narrator is now", and her chapter repeated the
+   showroom, the daughter and the full banquet the epilogue had just listed.
+   Story 36's four-chapter refusal act (37.3 min) was the narrator's four
+   chapters, not hers; 37 is the only story that ever had her chapter.
+
+   **Two endings, exclusive, the operator's decision:**
+
+   | ending | what it is | does NOT carry |
+   |---|---|---|
+   | `new_life` | a year on, ONE SCENE of the narrator's life, its own numbered chapter. The cast decides the partner: a `future_partner` row puts them on screen; none is "alone and fine", with nobody treating single as a gap | the antagonist's year; no gesture back at her; at most one clause touching her |
+   | `antagonist_voice` | a year on, the antagonist's own chapter: the chance thrown away and the year from inside | the narrator's year; no narrator epilogue; the narrator seen only from outside, in ONE fact |
+
+   A third, "somebody else tells him what happened to her", was dropped: its
+   content was already the second half of every epilogue, and what made it
+   different was only that it was a scene. "Alone" and "with the partner" are
+   one ending because the partner is a fact about the CAST. The year rule
+   stands for both.
+
+   **The epilogue's content, fixed for whichever ending:** the new life is ONE
+   SCENE, told as it happens, with an exchange in their own words — "NO
+   NUMBERS: no headcount, no floor area, no salary, no contract value". Stated
+   as the move, not a phrase list.
+
+   **Why an operator column set before the outline**, not the others: a model
+   left to choose converges (16 of 72 cast names were the setting's own
+   examples; every epilogue took one shape) and sees one story, so it cannot
+   vary the channel. Gate 1 after the outline is too late: each ending needs
+   fields written upstream. The premise is optional. The new-story form
+   requires it on a single narrative, `story:write --premise` requires
+   `--ending`, Gate 1 shows the picker at draft (saved as picked, nothing
+   billed) and a readout at every status, and `GenerateOutline::NO_ENDING`
+   refuses an unchosen single narrative at the Action, the dispatch and the
+   Gate 1 button, all before the call. An anthology has none.
+
+   **The history is beside the picker** (`RecentEndings`, one component
+   `x-ending-picker` for both surfaces): the last five non-fixture stories,
+   newest first; three in a row with one ending is said in a warning box. A
+   story outlined before the column is READ from its chapters (a closing
+   chapter in the antagonist's voice, or not) and labelled as read, never as
+   chosen.
+
+   | consumer | what it gets | assertion |
+   |---|---|---|
+   | outline schema + prompt | `antagonist_regret` only on her ending (`SpineQuestions::outlineOrderFor`), ~439 output tokens back at 91% of the ceiling | `PremiseGeneratorTest`, both endings |
+   | `GenerateOutline` | refuses no ending before the call; drops a regret the new life did not ask for | `EndingChoiceTest`, drilled |
+   | `AntagonistPointOfView::nameFor` | the ending decides first; NULL keeps the regret-presence rule | drilled |
+   | refusal act (`closingFor`) | exactly one ending, with `doesNotCarry()`; the partner from the cast | drilled both ways |
+   | genre contract | movement 5: one ending, never both | `BetrayalSceneTest` |
+   | Gate 1 | regret on the new life named as the other ending's material, not as a missing antagonist; a missing regret is `none` on the new life; a partner on her ending; a partner missing from the new life's last chapter | RED/GREEN, drilled |
+   | metadata brief + rule 1 | "How the video ends", and "PROMISE ONLY THE ENDING THIS VIDEO HAS" | drilled |
+   | `story:fork` | copies it | `EndingChoiceTest` |
+   | fake writer | the regret only when asked | via the above |
+
+   **NULL is legacy and honest**, not backfilled: those stories were asked for
+   neither ending cleanly. They keep the stacked shape (only 37, published,
+   has a regret). **Unchecked, said so it is not read as covered:** that the
+   new life is a scene rather than a list, and that it carries no report on
+   her. Both are requests; nothing reads a scene from a list.
+
+   **Two things the build found.** The last-chapter check first read the act's
+   FIRST chapter: `Act::chapters()` already orders ascending, so an appended
+   `orderByDesc()` was a secondary sort that did nothing; the RED case named
+   the wrong chapter, and it is `reorder()` now. And a negated-jump GREEN in
+   `GuardsGoRedTest` stayed green for the wrong reason the moment endings
+   landed — the regret checks returned early on a new-life story — so the
+   regret cases state her ending and the fixture assertion checks both. Also
+   fixed on the way: `story:fork` built a 65-character slug for a 64-character
+   column on long titles (two runs in six on random factory titles); it uses
+   `Story::slugFor` now, with a deterministic case.
+
+   Twelve drills plus one, all red for the reason they name. 1,382 tests
+   before, 1,401 after. Not run against the real model: the next outline and
+   refusal act are the measurement, including whether "one scene, no numbers"
+   is obeyed.
+
 4. **Narration is generated per scene, never as one 40-minute file.** One giant TTS
    call means one bad sentence forces a full re-bill. Per-scene audio is
    re-generatable in isolation and concatenated at mux time.
@@ -1379,7 +2212,10 @@ that differs, and for `en-US` it turned out to be empty.
 - Imperial units. USD. American spelling.
 - No Filipino idiom leakage. `"Ay naku"`, `"po/opo"`, `"barangay"`, `"jeepney"`,
   `"sari-sari store"` and similar must never appear. Run a denylist check on every
-  generated act and fail the job loudly rather than passing it to Gate 1.
+  generated outline and act. **Since 2026-09-17 a hit there KEEPS the text and
+  shows the phrase at Gate 1, in red, for the operator to judge**, instead of
+  failing a billed call; scene frames and the cast still fail the stage. See
+  "Denied locale terms are judged at Gate 1" under "Where bugs actually live".
 - The prompt template stores a `locale_profile` field so this is data, not
   hardcoded prose.
 
@@ -1397,15 +2233,16 @@ that differs, and for `en-US` it turned out to be empty.
   | female | Sarah — mature, reassuring, confident | `EXAVITQu4vr4xnSDxMaL` | not yet — `narration:measure` after story 33's batch |
 
   "A channel keeps one narrator" became two, deliberately, and this table is
-  what stops it becoming five. **What is NOT mechanised, said so the rule is
-  not read as enforced:** `providers.default_voice_id` is still Brian, the
-  new-story form has no narrator-gender input, and nothing selects Sarah on
-  its own. A woman's story is moved with `voices:list --set=<story>
-  --voice=EXAVITQu4vr4xnSDxMaL` BEFORE narration — after it, every paid scene
-  is stale and re-bills. A config key for the female voice was not added,
-  because a key nothing reads is a documented guard with nothing behind it;
-  the mechanism, when it is wanted, is a narrator field on the new-story form
-  that picks from this table.
+  what stops it becoming five. **Mechanised 2026-09-19** (option A below):
+  the table is `providers.narrator_voices`, the new-story form asks who
+  narrates (required, no default) and `CreateStory` resolves the voice from
+  the table via `NarratorVoice`, and `story:write --premise` requires
+  `--narrator`. `voice_id` is still the record of the choice; the premise
+  generator reads the gender back from it. **What it does not catch:** the
+  wrong radio pressed. `default_voice_id` (Brian) remains for callers that
+  name no narrator — a fork, a fixture. `voices:list --set` is still the
+  override, and still must run BEFORE narration: after it, every paid scene
+  is stale and re-bills.
 - Until Sarah is measured, her stories' runtime estimates borrow Brian's
   locale rate and the pace guard cannot enforce. See 3e.
 
@@ -1555,6 +2392,8 @@ both.
 ```
 id, story_id, act_id, sequence (int, within the act),
 title, rehook_line (nullable),
+point_of_view (nullable — null for the narrator; the antagonist's cast name on the
+               one chapter closing the refusal act, see 3h),
 first_sentence (int — 1-indexed offset into acts.script, SentenceSplitter unit),
 start_ms (nullable — filled after render), duration_ms (nullable)
 ```
@@ -1786,12 +2625,21 @@ Written for Phase 1, but Phase 0 code should not contradict it.
 
 **stories**
 ```
-id, title, premise, cast_age_profile (nullable),
+id, title, premise, premise_candidates (json, nullable — the latest premise roll, see 3i),
+cast_age_profile (nullable),
+outline_cast (json, nullable — [{name, role, relationship}], see 3f),
+outlined_before_cast (bool, default false),
 hook,
 narrator_grievance, antagonist_justification,
+accomplice_motive, accomplice_performance (nullable — empty when the cast has no accomplice, see 3g),
 betrayal_scene, outlined_before_betrayal_scene (bool, default false),
 withheld_information, exposure_moment, narrator_at_exposure,
-departure, reversal_beats, refusal,
+departure, reversal_beats, accomplice_fall (nullable, 3g),
+running_thought, outlined_before_accomplice_and_thought (bool, default false),
+refusal,
+antagonist_regret, outlined_before_antagonist_regret (bool, default false, 3h),
+ending (varchar, nullable — new_life | antagonist_voice, the operator's choice before the
+        outline; null on stories outlined before it existed, 3j),
 format (enum: single, anthology),
 locale_profile (default 'en-US'), voice_id,
 target_duration_min (default 30), target_duration_max (default 40),
@@ -1873,8 +2721,11 @@ pipeline section.
 **render_jobs**
 ```
 id, story_id, stage, status, started_at, finished_at,
-output_path, log (longtext), error (text, nullable)
+output_path, log (longtext), error (text, nullable),
+failure_kind (varchar, nullable — App\Enums\FailureKind), failure_facts (json, nullable)
 ```
+`error` holds what happened and nothing about what to do. The repair is built
+from `failure_kind` when the page is read — see "A failure row names its kind".
 
 **cost_entries**
 ```
@@ -2067,6 +2918,9 @@ The app generates the `.ass` file from per-scene timings, offset into whole-vide
 Each stage is a queued job, dispatched in a chain, each writing to `render_jobs`.
 
 ```
+GeneratePremises                     [optional, at draft: three premises
+                                      from an idea, one Sonnet call per
+                                      roll; the operator picks one, 3i]
 GenerateOutline           → gate 1   [free — text only]
 GenerateActScripts        (sequential, each fed prior summaries)
 DraftScenes               → gate 2   [free — text only, no paid assets yet]
@@ -3080,7 +3934,14 @@ Closed since:
   has exactly one right answer today. Retyping the predicate is the shape that
   gave one narration three prices.
 
-- **Gate 1's retry EXISTS. What is missing is the failure.** Worth correcting on
+- **Gate 1's retry EXISTS. What is missing is the failure. CLOSED 2026-09-19:**
+  Gate 1 shows the failed `outline` or `act_scripts` row with its error and
+  its `FailureRemedy`, for as long as the row is the stage's latest word, and
+  lists every outline truncation from the LEDGER, which a re-run cannot
+  reset. The judgement call left below (show a failure older than the last
+  success?) answered itself: a re-run overwrites the row, so only the ledger
+  can show an older one, and it does for the one kind of failure the ceiling
+  position needs seen. Worth correcting on
   the record, because the reasonable read of the incident was "a red panel and no
   button" and it is the other way round.
 
@@ -5156,6 +6017,75 @@ Closed since:
   that is seen, not be absorbed by headroom nobody would notice being used.
 
   ---------------------------------------------------------------------------
+  **2026-09-19: STORY 37 AT 91%. THE TEXT IS GROWING STEADILY AND THE
+  REASONING IS NOT GROWING AT ALL — IT IS BIMODAL. The ceiling is not raised.**
+  ---------------------------------------------------------------------------
+
+  > **STANDING POSITION, the operator's, 2026-09-19. When the outline
+  > truncates, do not reach for `ANTHROPIC_MAX_TOKENS_OUTLINE`.** There were
+  > about four average spine fields of room left on story 37's measurement.
+  > The only lever left is outline effort `low`, which nothing has measured.
+  > Whether a low-effort outline is good enough is a Gate 1 judgement on the
+  > outline it produces, as medium was. A truncation is information, and it
+  > has to be SEEN: the cost row records `stop_reason` and `effort` (since this
+  > date), and Gate 1 lists every outline call that stopped at the ceiling,
+  > read from the ledger, so the successful re-run that resets the job row
+  > cannot hide it. The truncation remedy in config says the same.
+
+  Measured, not converted: the returned outline's tokens were COUNTED with the
+  outline model's own tokenizer (`countTokens`, free), exactly on stories 29,
+  30 and 32 from their archived responses, and on the rest from the stored
+  spine, cast and act titles plus the archived mean outline act summary (378
+  tokens; the stored summaries are the act writer's once scripts exist).
+  Reasoning is billed output minus that text. The rebuilt rows carry about
+  ±500 tokens of estimate error, visible as small negative "reasoning" on
+  calls that did not reason.
+
+  | story | effort | output | text | reasoning | text % of 16,000 |
+  |---|---|---|---|---|---|
+  | 22-25 | high | 4,970-5,483 | 5,364-5,731 | ~0 | 33-35% |
+  | 26, 27 | high | 14,727, 13,511 | 5,635, 5,615 | 9,092, 7,896 | 35% |
+  | 28 | medium | 4,693 | 5,225 | ~0 | 32% |
+  | 29 | medium | 12,001 | 6,084 exact | 5,917 | 38% |
+  | 30, 32 | medium | 5,265, 4,832 | 5,263, 4,830 exact | **2 and 2** | 30-32% |
+  | 33, 34 | medium | 5,619, 5,348 | 5,488, 5,224 | ~0 | 32-34% |
+  | 35 | medium | 13,167 | 5,597 | 7,570 | 34% |
+  | 36 | medium | 10,104 | 6,478 | 3,626 | 40% |
+  | 37 | medium | 14,580 | 7,066 | 7,514 | **44%** |
+
+  **Reasoning is bimodal, not trending.** At medium, five of nine calls
+  reasoned for essentially nothing — stories 30 and 32 billed two tokens more
+  than their text — and four reasoned 3,600-7,600 tokens. Story 37's own two
+  attempts, on prompts 249 tokens apart, billed 5,952 and 14,580. The high-
+  water mark at medium is 7,570 (story 35); story 37's 7,514 is not a new
+  peak. What made 37 the highest reading is the TEXT floor under it.
+
+  **The text is the part that grows, and it grows with every field.** 5,200-
+  5,600 tokens on stories 22-35, 6,478 on 36 (3g's four accomplice and
+  thought fields), 7,066 on 37 (3h's regret, 439 tokens, and the narrator
+  row). Story 37's spine is fifteen fields at a mean of 273 tokens, from 88
+  (the justification, the running thought) to 459 (the betrayal scene).
+
+  **What the next field does.** Headroom for reasoning on story 37 is 16,000 −
+  7,066 = 8,934 tokens. The largest reasoning seen at medium is 7,570. One
+  more average field (~273) leaves ~8,660; that clears the medium peak by
+  ~1,100, which is about four average fields. The margin that is ALREADY gone:
+  story 26 reasoned 9,092 at high, and on today's text that call would
+  truncate. So at medium the outline is roughly four fields from a call that
+  reasons as hard as story 35 did failing at the ceiling — billed in full at
+  about $0.48 (16,000 output tokens at $25/M, plus story 37's input) — and
+  nothing about the reasoning half is predictable per call.
+
+  The lever is not the ceiling (a truncation bills at the ceiling, and
+  headroom hides the next shift) and it is not the field count on its own.
+  **Unmeasured and named, not built:** effort `low` on the outline would bound
+  the reasoning mode, and nothing has measured whether a low-effort outline is
+  as good — that was a Gate 1 judgement for medium and would be one again. A
+  field that the outline asks for and nothing downstream reads would be the
+  cheap cut; there is none today, since every spine field has a reader. The
+  outline-ceiling watch the memory file had closed is REOPENED on this reading.
+
+  ---------------------------------------------------------------------------
   **THREE DEFECTS ON THE FAILURE PATH, ALL OF THEM "A CALL THAT COSTS MONEY
   AND LEAVES NO TRACE", ALL CLOSED.**
   ---------------------------------------------------------------------------
@@ -5942,12 +6872,554 @@ Closed since:
   it works is the next run's refusal count, which is a measurement and not a
   green test.
 
+- **THE GUARD CHECKED WHAT THE MODEL SENT BACK AND NEVER WHAT WE SENT IT. OUR
+  PROMPTS WERE TEACHING THE SPELLINGS IT REFUSES.** Found by the 3g build, when
+  "apologise" in the new genre text was caught only because the fake outline
+  used the same word. Swept 2026-09-17.
+
+  `LocaleGuard` refuses a stage after the call is billed. A prompt that spells
+  a word the British way teaches the writer that spelling, and the guard then
+  refuses its answer: a paid call lost to text we wrote. The prompt sources
+  carried **eleven "colour" and two "grey"**, plus "the year the flat was
+  bought" in every act prompt and "a driveway at dusk" as a scene example on
+  en-CN. Nearly all of them were in the cast and scene prompts, and cast
+  descriptions and scene frames are exactly the outputs the guard refuses. All
+  reworded. The deliberate ones stay: the Tito/Lola ban has to name the words,
+  and "a flat courtesy" and "flat and sleek" are the adjective.
+
+  **The sweep undercounted, and the guard's own docblock is why.** `hits()`
+  said "every match… all of them, not the first", and returns the first
+  occurrence of each TERM. That is right for refusing a stage and wrong for
+  counting, so the first sweep reported 3 "colour" where the source held 11.
+  The docblock now says what the code does, and `occurrences()` counts, on the
+  same single pattern.
+
+  **`PromptLocaleTest`, at test time, because every writer prompt is built from
+  repo code and repo config and no env var reaches one.** Two halves:
+
+  - **Static, the half that matters.** Every string literal (single, double,
+    heredoc, nowdoc; comments excluded) in every app file a prompt writer can
+    reach, held to the lists every profile SHARES: British spelling and
+    operator idiom. **The file set is DERIVED, not listed**: class references
+    from `ClaudeScriptWriter` and `ClaudeMetadataWriter`, followed through
+    tokens. A hand list goes stale the way a hand matrix does, and a closure
+    built from `use` lines alone missed `TalksToClaude`, which is same-namespace
+    and needs no import. 72 files, and the test asserts the closure contains the
+    files known to feed a prompt, so a zero is a zero about the right files.
+  - **Rendered.** 352 variants: both profiles, both formats, every phase, the
+    phaseless branches, optional fields filled and empty, chapter announcements
+    on and off. Each is held to ITS OWN profile's lists, because en-US
+    guidance correctly says "Thanksgiving" and en-CN denies it.
+
+  Denylist: zero, with ONE exception since 2026-09-19, excised by its exact
+  text: the line `LocaleGuard::americanWordsLine()` appends to every profile's
+  guidance, naming each denied British term beside its American word ("car
+  park → parking lot", all sixteen, from `locale.american_words`, the map the
+  denylists are keyed on). The operator's decision: the list knew the wrong
+  word and nothing told the writer the right one — three refusals and about
+  $0.90 on "car park" while "parking lot" sat in fourteen act scripts. **The
+  risk, taken knowingly:** the line quotes the banned words, and the cast
+  prompt's quoted "weathered square jaw" came back as "weathered-shaped
+  square face" on story 38. A denied term from the list appearing MORE often
+  in act prose after this than before is the reading that reverses it. The
+  Tagalog and US-institution terms have no one-word American equivalent and
+  are not in the map. Otherwise zero: a denied word in a prompt is read only by the
+  writer. Warnlist: allowed only by an exception keyed on its PHRASE, so the ban
+  stays allowed and a new use of the same word anywhere else fails. The one
+  over-report the closure produced ("queue" in `artisan queue:restart`, reached
+  through `RunFingerprint`) is an exception with its reason written down. And
+  the claim that the locale guidance is the only config PROSE a writer receives
+  is itself asserted: every `config('…')` a reachable file reads must be non-prose
+  or on a named exemption list, so a prompt sentence moved into config fails
+  instead of escaping both halves.
+
+  **Drilled, 11 drills and 14 expectations, every one as intended.** The pair
+  that justifies the static half: "favourite" in a new private method no matrix
+  renders turns the static test RED and leaves the rendered test GREEN. That is
+  the fixture-too-small failure, caught by the half that does not depend on a
+  fixture.
+
+  **Not covered, said so it is not read as covered:**
+  - Story data: premise, spine, summaries typed at Gate 1. Not in the repo; the
+    output guard is still the only check on it.
+  - The image generator's config strings (the art style's "hair colour", the
+    reference frame's "mid-grey"). Out of scope on purpose: no writer reads
+    them, the spelling means nothing to that model, and they are
+    env-overridable.
+  - British forms the lists do not contain. The prompts still say "ageing"
+    (the cast prompt, and the `CharacterTextGuard` rule summary sent on a
+    retry), "greying" (two description examples) and "centre part". The check
+    enforces the lists, so it cannot see those. Adding them to the denylist
+    would also refuse ACT OUTPUT that uses them, which is a guard change, not a
+    prompt fix.
+
+    **Leaving these alone was the operator's decision, and it was made on
+    incomplete information (noted 2026-09-19 so it reads honestly later).**
+    Nobody had checked whether another guard already catches any of them. One
+    does, for a different reason: `CharacterTextGuard`'s expression ban lists
+    "demeanour" beside "demeanor", so in a cast description that word was always
+    a choice between a character refusal and a locale one, not between a
+    refusal and nothing. "ageing", "greying" and "centre" are caught by nothing.
+    "ageing" looked caught on story 38 because the refusal printed the guard's
+    own category label, 'ageing texture "weathered"'; the word refused was
+    "weathered". Measured the same day, with the search shown able to find
+    "gray" in 49 acts: none of the three is in any act script or publish
+    sheet. "centre" is in 8 stored cast descriptions ("centre part", copied
+    from the prompt's example) and in 213 image prompts, which only the image
+    generator reads. **The coupling to remember:** adding "centre" to the
+    locale list would start refusing cast extractions, because the cast prompt
+    teaches it. The list and that prompt have to change together.
+
+- **DENIED LOCALE TERMS ARE JUDGED AT GATE 1, NOT REFUSED, FOR THE OUTLINE AND
+  THE ACT SCRIPTS.** Built 2026-09-17, after story 36's act 2 was thrown away
+  over "car park": a real leak, but the refusal cost the billed act (~$0.20) and
+  the run, and a denied term with a reading the list never anticipated costs
+  the same ("fourth of july" as a date did, before it moved to the warnlist).
+
+  The old argument, still in `LocaleViolationException`'s docblock beside its
+  reversal, was that an operator reading 7,000 words will scroll past one leaked
+  idiom. That is an argument about FINDING the term, and Gate 1 now finds it:
+
+  - The outline and act stages call `LocaleGuard::denied()`, keep the text, and
+    name the terms on the stage's `render_jobs` row.
+  - `GenerateActScripts::localeDenied()` recomputes them from the STORED text:
+    title, cast, every spine field, each act's title, summary and beat, and each
+    act's script and chapter titles. Recomputed, not recorded, so fixing the
+    text clears the alert and nothing can go stale.
+  - Gate 1 shows them in a `.alert.err` above the warned terms, the term in the
+    refusal's red, each with its act and where it sits: an outline field is
+    edited on the page, a script is kept or that act is rewritten
+    (`story:write --acts-only=N`). It replaced a refusal, so it may not be
+    quieter than one. `story:write` prints them as errors.
+
+  **Scene frames and the cast still refuse**, deliberately: a frame or a
+  description is one of 150-250 strings nobody reads as prose, and no page puts
+  its phrase in front of anyone, so the old argument still holds there.
+
+  Nothing blocks approval, as nothing at Gate 1 does. Three drills red: the
+  throw restored, the panel hidden, scripts dropped from the read (the first
+  version of that drill broke PHP syntax and was re-run; a parse error is not a
+  red).
+
+  **CORRECTED 2026-09-19: "a script is kept or that act is rewritten" was not
+  a real choice. Keeping it guaranteed a paid refusal a stage later.** The two
+  bolded rules above were decided the same day and contradict each other:
+  scene drafting refuses a denied term in a frame, and the scene writer draws
+  its frames from the script. Story 38's act 4 had "car park" in one sentence;
+  Gate 1 showed it and said keep it or rewrite; scene drafting was then refused
+  twice, about $0.73. The panel now says a denied term in an act script is
+  refused at scene drafting and "has to come out before you approve"
+  (`GateVoice::removeBeforeApproving()`, settled past Gate 1 as "Until it comes
+  out, scene drafting refuses it"). Only an outline-field term is still the
+  operator's judgement. Fixed on story 38 by hand, free, on the operator's
+  instruction: act 4 sentence 53 "car park" -> "parking lot", sentence count
+  unchanged, noted on act-scripts row #13644. See the entry on two decisions
+  read together, under "Where bugs actually live".
+
+- **A FAILURE ROW KEPT TELLING THE OPERATOR A RULE THE CODE NO LONGER HAD,
+  BECAUSE THE EXCEPTION STORED ADVICE BESIDE THE FACTS.** Story 36's act 2
+  failure, on the render progress page after the change above, still read *"The
+  stage failed rather than passing this to Gate 1… Re-run the stage"*.
+  `RenderJob::fail()` stores `getMessage()` verbatim, and the message held two
+  kinds of sentence: what happened (the stage, the locale, "car park" and its
+  context), which stays true for as long as the row exists, and how the
+  pipeline works, which was true only until the next change to the pipeline.
+
+  **The rule: an error stored on a job row says what happened; how-it-works
+  advice is rendered at display time from current code.**
+  `LocaleViolationException` now composes facts only; `adviceFor(RenderStage)`
+  holds the behaviour, and `RenderProgress::failures()` attaches it beside any
+  row `recognises()` as one of these. The class that writes the shape is the
+  class that reads it back, since the row holds a string and not a class. A
+  test builds the row from the real exception, and two drills went red:
+  advice put back into the message, and the page not attaching it.
+
+  **Swept, the same day — see the next entry.** The regex recognition and
+  `adviceFor()` described above are gone; the row records a kind.
+
+  **DECLINED BY THE OPERATOR, 2026-09-17, NOT AN OVERSIGHT: marking older rows
+  as carrying retired advice.** Rows written before this change still hold the
+  old advice in their stored text; the page now shows current behaviour beside
+  them, but nothing says the stored sentence is out of date. Doing that needs a
+  record of WHEN each behaviour changed, to compare against a row's timestamp,
+  and that is a larger thing to build and keep true than a stale failure row is
+  worth. Rows also age out of view as stages re-run (`updateOrCreate` overwrites
+  them), which is how story 36's own row went. Do not re-open this as a gap.
+
+- **A FAILURE ROW NAMES ITS KIND; THE REPAIR IS BUILT WHEN THE PAGE IS READ,
+  AND "No known repair." IS A REPAIR STATE, NOT A GAP.** Built 2026-09-17.
+  Every progress-page failure used to be its raw message, cut to 300
+  characters, except locale refusals. Two remedies had already cost runs by
+  naming things that were not there, and the sweep found more:
+
+  | advice | where it lived | what was wrong |
+  |---|---|---|
+  | "confirm with `php artisan providers:show`" | WhisperX message, behind 328 failed alignments | no such command |
+  | "`python` on PATH is often the Microsoft Store alias stub" | WhisperX, any other silence | the interpreter that WORKS here is the Store build |
+  | "Re-run once, then raise ANTHROPIC_MAX_TOKENS_*" | five `truncation_remedy` strings | unmeasured re-roll, plus the ceiling raise this file calls backwards |
+  | "apply_text_normalization=on against a flash model" | ElevenLabs 422 | a guess, never observed |
+  | "Rate limited. Nothing was billed" | ElevenLabs 429 | never observed |
+  | "Rework the premise at Gate 1" | every model decline | true only for the outline |
+  | "re-run this act (story:write --acts-only=N)", "re-run it" | act, scene and outline refusals | frozen into rows, and unmeasured for all but one |
+
+  **What is in place.** `render_jobs.failure_kind` and `failure_facts`,
+  written by `RenderJob::fail()` from `FailureKind::of()`. An exception that
+  knows its kind implements `ClassifiedFailure`; a vendor or database exception
+  is read by class and message (cURL 28, a truncated column). Unrecognised is
+  `Unclassified`. `FailureRemedy::for()` builds the repair against the code and
+  the story's status as they are now. It names a button only when
+  `OperatorAction::permittedAt()` allows it, says which status blocks it
+  otherwise, and gives the command beside it. `story:write` and `story:scenes`
+  print the same remedy. Every classified message was stripped to facts.
+
+  **A kind exists only where the repair is known**: certain from the failure
+  itself (a quota body, a missing module, a missing voice, a missing clip), or
+  measured here (the summary bound, 3 of 3 retries passed; a timed-out still,
+  story 28 scene 131). Everything else is "No known repair.", rendered bold
+  and in the ordinary text colour, with no softer sentence. That includes the
+  chapter-shape and scene-bound refusals, a narration timeout, the five
+  truncation remedies now null, the pace guard, `CharacterTextGuard`, and
+  every pipeline invariant.
+
+  **CORRECTED 2026-09-18: THAT RULE COLLAPSED TWO CASES, AND THE OUTLINE
+  REFUSALS WERE IN THE WRONG ONE.** "No move exists" and "one certain move
+  exists and nobody has measured whether it works" both came out as "No known
+  repair.", so story 37's outline, refused for its cast, showed that sentence
+  above the one button that repairs it. The second case is now its own shape,
+  `Remedy::unmeasuredMove()`: the button, and a separate `unmeasured` sentence
+  the page renders as its own "Not measured:" line above the button, so an edit
+  to the advice cannot drop the caveat. What made the old re-run advice wrong
+  was the claim that it would work, not the naming of the move. The five
+  refusals `GenerateOutline` makes after the cost row (act count, act text
+  bounds, cast structure, reused name, coded terms) carry
+  `FailureKind::OutlineRefused` with the check as a fact; the outline
+  `ModelDeclined` remedy moved to the same shape. A re-run only belongs here
+  when it is the ONLY move. `RemediesNameRealKnobsTest` pins it both ways at
+  every status: never unknown, and never the button without the caveat.
+
+  **CORRECTED AGAIN 2026-09-19: THE FIX WAS APPLIED TO THE OUTLINE AND NOT TO
+  THE CLASS, SO IT ARRIVED ONE STAGE PER FAILURE.** The 2026-09-18 correction
+  named the rule — a certain move with an unmeasured outcome is not "No known
+  repair." — and wired it for the outline only. The next two real failures
+  were the same shape one stage along: act-script chapter shapes, then story
+  38's cast, refused twice by `CharacterTextGuard` for "often" and
+  "weathered", both "No known repair." beside the draft button. The operator
+  had asked for the family the first time. **A rule written down for one
+  instance is the instance, not the rule** — this file's "fixed at one call
+  site" finding, committed on the remedy that was written to end it.
+
+  Now one kind for the family, `FailureKind::OutputRefused` (facts: `stage`,
+  `check` from `OUTPUT_CHECKS`, `act`), thrown at every check after a billed
+  text call that stores nothing: premises (no candidates), act scripts (chapter
+  shape, point-of-view chapter), cast (character text, no declared names),
+  scenes (frame or expression bounds, ranges that do not tile), metadata (every
+  title over the hard limit, description over the limit). `ModelDeclined` on
+  every operation and `LocaleRefused` on the cast and scene stages take the same
+  move. `FailureRemedy::rerunStage()` holds ONE table of stage -> button,
+  command and what re-running touches, and every entry carries the "Not
+  measured:" line. The cast's is the one with a record, and it is said, not
+  softened: on the ledger 7 of 24 extraction runs ended refused, and the three
+  runs made within minutes of a refusal (story 21 twice, story 32 once) were
+  refused again. `FailureRemedy::for()` takes the row's stage, because a locale
+  refusal and a decline cannot say where they were thrown.
+
+  **Deliberately still unknown:** a truncation (effort is a second lever, per
+  the ceiling position, so a re-run is not the only move), a narration
+  timeout (a spending question), an asset stage (no text re-run), and a cast
+  refused on a REBUILD, which left the old cast standing — the draft button
+  would keep it rather than extract, so the remedy says nothing is left to
+  repair. **Seen, not built:** Gate 2 does not show a failed `extract_cast` or
+  `draft_scenes` row at all, only `/renders/{slug}` does, though the button
+  the remedy names is on Gate 2 — Gate 1's "the retry exists, the failure is
+  missing" finding, one gate on. And a scene draft refused at act N discards
+  acts 1 to N-1 too, billed, because `persist()` runs after the loop; the
+  message used to say "no scene from this act is stored", which was true and
+  short, and now says nothing from the draft is. Eleven drills, all red for the
+  reason they name. 1,401 tests before, 1,408 after.
+
+  **AND THE SWEEP THAT SHOULD HAVE BEEN PART OF IT FOUND EIGHT MORE, EACH A
+  LEDGER GAP AS WELL AS A MISSING REPAIR.** The writers themselves refuse what
+  some calls return: a response that is not JSON (all eight decode sites), an
+  outline with no acts, an act with no text, a cast of nobody, no scenes, and
+  titles, a description opening or tags that come back empty. Every one threw
+  a bare exception AFTER the call finished, with the usage still in a local
+  variable, so the call was billed by the vendor, never reached `cost_entries`,
+  and read "No known repair." — non-negotiable #4 failing in the shape
+  `TalksToClaude` already closed for truncations and declines. The writer's own
+  comments name the hazard beside the checks moved to the Actions; these stayed
+  behind because the Action never sees an empty result. They go through
+  `TalksToClaude::refuseOutput()` now, which writes the row (and a discarded
+  scene attempt's) and throws the outline's kind or the family's, with the
+  operation as a fact so the remedy can find the stage without a row. The
+  scene-list precondition before its call bills nothing and is a
+  RuntimeException, not a refusal. `FailedCallLeavesATraceTest` asserts no bare
+  ScriptWriterException is left in either writer, which is what found the three
+  metadata ones. Six drills red, 1,413 tests.
+
+  **THE SCOPED PER-FIELD CAST REPAIR IS HELD, THE OPERATOR'S DECISION,
+  2026-09-19.** Time goes to three things never measured against the real
+  model: the two endings, "one scene, no numbers", and whether the partner
+  reaches act 5. **What holding it costs:** a refused cast is retried whole, so
+  characters that were clean on the first attempt are re-sampled and can come
+  back worse. On the record that has happened on two stories: story 32 (twice,
+  a new violation on a different character each retry) and story 38 (attempt 1
+  failed on "expression" for Marcus Pei and Felix Tan; attempt 2 fixed both and
+  broke Nicole Pei and Pei Guoliang). **If it happens a third time on a story
+  the operator cares about, the decision flips** and the repair is built as
+  designed under "The extraction repair loop re-asks the same question". The
+  record the decision rests on, stated plainly because the two readings differ:
+  on the ledger 7 of 24 extraction runs ended refused, and the re-runs made
+  within minutes of a refusal (story 21 twice, story 32 once) were refused
+  again; a retry is not yet shown to be the cheap path that works.
+
+  **`RemediesNameRealKnobsTest`, written first.** Every command, flag and env
+  var named in any string literal in app/ and config/ (literals joined across
+  `.`, comments excluded), in any view (Blade comments excluded), and in every
+  remedy `FailureRemedy` can produce for every kind at every status, is checked
+  against `Artisan::all()` and the env names config reads. A remedy that says
+  to raise a ceiling fails ("do not raise" passes), and the cases with no
+  known repair are pinned unknown. It went red on the live tree for exactly
+  `providers:show` and the raise-the-ceiling remedies. The detector has
+  red/green pairs, including the first false positive it found:
+  `<livewire:dashboard />` read as a command. Eleven drills, all red.
+
+  **Two things it does not cover, said so it is not read as covered:** a
+  remedy that names a real knob for the wrong reason (only measurement
+  catches that, which is why only measured remedies are known), and the
+  history problem below. The page can only advise on a failure that is still
+  the stage's latest row.
+
+  **The backslash-in-transit hazard happened twice during this build**, in
+  Python heredocs used to patch PHP: `\b` arrived as 0x08 in a test regex,
+  caught by `nonprintable-scan`, and `\'` arrived as a bare quote, caught by
+  `php -l`. Both were redone with exact-match edits.
+
+- **A STICKY HEADING MEASURES FROM THE NEAREST SCROLL CONTAINER, NOT THE PAGE,
+  AND WRITING DOWN THE FIRST TRIGGER DID NOT STOP THE SECOND.** Gate 1's cast
+  table, story 36: the narrator's row was hidden under the column headings and
+  its remove button stuck out above them. Every `th` is `position: sticky; top:
+  var(--chrome-h)`. The table sits in `.scrollx`, whose `overflow-x: auto` makes
+  the wrapper its own scroll container, so the 48px offset was measured from the
+  wrapper and the heading was drawn over row one.
+
+  `base-css` already documented this exact breakage beside `.panel.flush`,
+  triggered there by `overflow: hidden`. That note named the PROPERTY ("no
+  `overflow: hidden` here"), so the same mechanism came back through a different
+  property. **Any overflow other than `visible` creates a scroll container, and
+  a sticky element inside one measures from it.** That sentence is the thing to
+  remember, not either trigger. Fixed with `.scrollx th { position: static; }`
+  (confirmed in headless Chrome), and the `.panel.flush` note now points at it.
+  The dashboard's one `.scrollx` table gets the same fix, since it had the same
+  bug.
+
+- **A SESSION SUMMARY IS A CLAIM ABOUT THE WORK, NOT A RECORD OF IT, AND IT IS
+  THE ONE ARTEFACT HERE THAT NOTHING CHECKS.**
+
+  What happened, 2026-09-18. The summary Claude wrote at the end of the
+  failure-remedy work said that work listed "press Write at Gate 1" as the fix
+  for outline refusals on act count, bounds, cast structure, reused name and
+  coded terms. None of that was built. All five refusals in `GenerateOutline`
+  threw with no kind, and the CLAUDE.md entry written in the same work said
+  the opposite, in so many words: "every outline refusal" was "No known
+  repair." The operator read the summary as a description of what was built,
+  and when story 37's outline was refused, handed the list back as though it
+  were in the repo. The report that followed started by checking whether the
+  wiring was "narrower than the list says"; the list did not exist anywhere.
+
+  **Two records of the same work, written by the same author on the same day,
+  disagreed, and the one people read was the one with no check behind it.**
+  The code is checked by tests, the stylesheet and views by four audits,
+  CLAUDE.md at least sits beside the code it describes and gets read against
+  it. The summary lives only in the chat. It is written after the work, from
+  the author's memory of what they MEANT to build, in the author's own words
+  about the author's own work, and nobody reads it against the diff. It is rule
+  3 turned round: the one account of the work that we composed ourselves and
+  that nothing outside it can contradict.
+
+  The operator's count: **the fifth time in this project a reported thing did
+  not match the built thing, and the first time the operator carried it
+  forward.** That second half is the new part. Every earlier instance was
+  caught by whoever read it next; this one travelled from Claude's summary,
+  through the operator, and back to Claude as a premise, and it read as fact
+  every step of the way because it was specific.
+
+  **The practice, which costs a grep:** a summary's claim that something was
+  built names the file and the line it lives at, and anything that cannot be
+  pointed at is written as a plan. When a summary is read back, as a premise
+  or as a status, the claim is checked against the code before anything is
+  built on it, exactly as an absence in a probe has to be shown able to report
+  a presence.
+
+  **Where the evidence for this finding lives, and where it does not.** Story
+  37's failure row, `render_jobs` #12916 (`failure_kind = unclassified`, the
+  "0 narrators" refusal), will be overwritten by the successful re-run:
+  `RenderJob::record()` reopens a stage's row with `updateOrCreate`, the gap
+  already listed under "Still open". So the job history will not show that
+  this happened. What survives is the archived raw response,
+  `storage/app/private/responses/37/12916-generate_outline-1aec8a87.json.gz`
+  (eight cast rows, no narrator), and the cost row: `generate_outline`, 19,654
+  total tokens, $0.2273.
+
+  **CORRECTED 2026-09-19: THE ARCHIVE DID NOT SURVIVE, AND THE SENTENCE ABOVE
+  WAS FALSE WITHIN A DAY OF BEING WRITTEN.** Story 37 was rendered, and
+  `PurgeRenderScratch` calls `ResponseArchive::purge()` on a successful
+  render, which deletes every archived response for the story — the refused
+  outline included. `responses/37/` is empty. The only record of what that
+  call returned is the reading of it in this file (eight cast rows, every role
+  but the narrator, every relationship written "my ...") and the conversation
+  that made it. **The cost row is the one piece of evidence that survives a
+  render**: it is the only record here that no stage of our own pipeline
+  deletes.
+
+  That is this entry's own finding, committed while writing it. A claim about
+  what survives is a claim about the FUTURE, and it was checked against the
+  disk as it stood that hour rather than against what the pipeline does to
+  that disk next. The purge is correct and stays: a story that rendered is
+  the case its docblock says can spare its payloads. But a failure somebody
+  has written up as a finding is exactly the payload worth keeping, and
+  nothing marks one as such.
+
+- **A CHECK THAT FIRES ON GOOD OUTPUT IS WORSE THAN ONE THAT MISSES: IT SENDS
+  THE OPERATOR TO FIX SOMETHING THAT WAS NEVER WRONG. Two of the three findings
+  on the first premise roll were the checks.** Story 38, 2026-09-19. The
+  operator read the candidates' warnings, saw three findings repeated across
+  three candidates, and concluded — reasonably, from the page — that the
+  prompt caused all three, and asked for the prompt to be changed three ways.
+  Reading the stored rows beside the checks split them:
+
+  | finding on the page | what the stored output held | what the check did |
+  |---|---|---|
+  | the accomplice's act "has no line in it" | a quoted line in every field and every premise, in single quotes | **blind**: `quotesALine()` knew only double quotes. Fired on good output three times |
+  | the justification "is not said in the betrayal scene" | said verbatim, aloud, to his face, in the room, in every PREMISE; every FIELD pointed at it ("delivers the justification") | **right about the wrong subject**: it read the field, and the outline is written from the prose. The field is thrown away when a premise is picked |
+  | the prose "never names" two cast members | exactly that | correct |
+
+  Both wrong checks had a real residue under them — the accomplice speaks to
+  the ROOM, and the field was a pointer — and the prompt changes made in 3i
+  are aimed at those residues, not at what the warnings said. That the
+  residue happened to be there is luck of the same kind as the three rescues
+  recorded above: had the lines been said to the narrator in single quotes,
+  the warning would have fired identically and the right repair would have
+  been none.
+
+  **Why it is worse than a miss, which this file has said about tools and not
+  yet about an operator.** A miss leaves a defect in the output. A false fire
+  puts a defect in the PROMPT: somebody reads it, believes it, and edits a
+  thing that works to satisfy an instrument that is wrong. Repetition made it
+  more convincing, not less — three candidates carrying the same warning reads
+  as a cause, and a blind detector produces exactly that pattern, because it
+  is blind the same way every time. **A finding that repeats across
+  candidates is evidence about the prompt OR about the check, and only the
+  stored output says which.**
+
+  The practice, and it is the probe rule turned on a warning: **before a
+  warning becomes a prompt change, read the text it fired on.** Here that was
+  one query and one archived file. The prompt changes would have landed either
+  way; what reading bought was knowing which three, and fixing the detector
+  instead of teaching the writer to satisfy it.
+
+  **Three sense-blind markers are now on record in the betrayal and departure
+  checks** — "announces" (story 33, the antagonist announcing), "her phone"
+  (story 36, holding it out for a photo, never noticed) and "booked" (story 38,
+  the restaurant booked for the anniversary) — plus `pencil` in
+  `CharacterTextGuard`. Measured on the discovery list: 2 fires in 8 real
+  `betrayal_scene` texts, 0 true.
+
+  **BUILT, 2026-09-19, on the operator's word: two kinds of word, not a
+  longer list.** The discovery list mixed them. VERBS are the finding by
+  themselves (`found out`, `discovered`, `overheard`, `copied me`) and fire
+  alone, as before — `DISCOVERY_MARKERS`. NOUNS are evidence (`booking`,
+  `booked`, `email`, `messages`, `photos`, `posted`, `receipt`, `her phone`) and
+  are only a discovery when somebody comes upon them, so they fire only with a
+  `DISCOVERY_FINDERS` word — found, read, saw, noticed, copied, forwarded — in
+  the SAME SENTENCE: `DISCOVERY_EVIDENCE`, through
+  `ValidateOutlineSpine::discoveryHits()`. No exception phrase per false fire.
+  Both real false fires are GREEN cases in `GuardsGoRedTest`, word for word,
+  and story 38's roll no longer reports "found". Four drills, each red for the
+  reason it names: the finder requirement removed (both verbatim cases red),
+  the evidence pass dropped, the verbs dropped, and the finder looked for across
+  the whole field instead of the sentence — story 36's last sentence says "has
+  found his level", so a field-wide window puts the false fire straight back.
+
+  **THE LIMIT, PLAINLY: THIS CHECK HAS NEVER CAUGHT A TRUE CASE.** No real
+  `betrayal_scene` has ever described a found betrayal — the field was added
+  after stories 23 and 25, the two whose betrayals were found — so every
+  positive it keeps is one written by hand, in a fixture. Its recall on real
+  output is unmeasured. **A quiet discovery check is not evidence that the
+  premises or outlines are clean**; it is evidence that none of these words
+  appeared in these shapes. Read the scene.
+
+  **And one wrong case it keeps, pinned as a test so it is not mistaken for
+  coverage:** "She reads the booking aloud to the table" is the GOOD case, the
+  betrayal done in public, and has a noun and a finder in one sentence, so it
+  is called found. The check cannot tell WHO comes upon the evidence or whether
+  anybody is watching. If that pinned test ever goes green, this paragraph is
+  out of date.
+
+  **"announces" is left alone, deliberately.** It is the same class by
+  SUBJECT — whose announcement it is — which is sentence parsing, for one
+  false fire (story 33).
+
+- **TWO DECISIONS, EACH REASONABLE ALONE, BROKEN AS A PAIR — AND NOTHING IN THIS
+  PROJECT READS TWO DECISIONS TOGETHER.** Story 38, 2026-09-19. On 2026-09-17
+  two locale rules were settled in one entry, a paragraph apart:
+
+  | decision | its reasoning, sound on its own |
+  |---|---|
+  | a denied term in act prose is KEPT and shown at Gate 1 for judgement | refusing threw away a billed act over a word the list may have misread |
+  | a denied term in a scene frame is REFUSED | a frame is one of 150-250 strings nobody reads, so nobody would catch it |
+
+  Each is right about its own stage. Together they are wrong, because one
+  stage feeds the other: the scene writer draws its frames from the act
+  script. A term "kept" at Gate 1 is not kept at all; it is a refusal deferred
+  to the next stage, after its calls are billed. Gate 1 offered a choice that
+  did not exist ("if this one does, leave it") and story 38 paid for two
+  refused scene drafts, about $0.73, for "car park" in one sentence of act 4.
+  The phrase had been on the Gate 1 page, in red, the whole time.
+
+  **Why nothing caught it.** Every check here is about one decision: a guard
+  tests its rule, a remedy is checked for real knobs, the voice is checked for
+  claims at each status. Nothing asks whether what one stage lets through, the
+  next stage refuses. It is the axis question one level up. 3a-3j record
+  decisions one at a time, and a decision is read when its own entry is read,
+  never beside the entry about the stage that consumes its output. This is the
+  act-1 finding again ("three instructions, each tested for presence, none for
+  whether they can all hold at once") moved from a prompt to the pipeline: act
+  1 held three instructions that contradicted each other; this is two stages
+  whose rules did.
+
+  **Fixed as the finding, not the phrase.** The Gate 1 panel says what is
+  true: a denied term in an act script is refused at scene drafting and has to
+  come out before approval; only an outline-field term is a judgement. And the
+  writer is now told the right word for each denied British term
+  (`LocaleGuard::americanWordsLine()`), which is the same pair read from the
+  other side: the list knew what was wrong and nothing said what was right.
+
+  **The standing question, cheap and not a tool:** when a stage is told to
+  KEEP something (a warning, a kept term, a soft rule), name the stage that
+  consumes its output and ask what that stage does with it. When a stage is
+  told to REFUSE something, name the stages upstream that are allowed to
+  produce it. If the two answers disagree, one of the decisions is only
+  deferring the other's cost. **One more pair already on the record, of the same
+  shape and latent:** the cast prompt teaches "centre part" and the cast stage
+  refuses denied terms, so adding "centre" to the list would make the prompt
+  produce what the stage refuses (recorded beside the British-spelling
+  decision). No full sweep of stage pairs has been done.
+
 Still open, none blocking, all findable here rather than one gate at a time:
 
-- **The one-voice-per-narrator-gender rule has no mechanism — the console-audit
-  shape. Costed 2026-09-14, not built.** Today the default is Brian and a
-  woman's story is right only if somebody remembers `voices:list --set` before
-  narration; story 33 was caught by a person reading it.
+- **The job history cannot answer questions about past failures, so any claim
+  starting "this has never happened" is unsupported by it.** `RenderJob::record()`
+  reopens a stage's row with `updateOrCreate`, and a later success overwrites
+  the failure. Story 28's two outline truncations were lost from its stage list
+  this way, and on 2026-09-17 it meant nobody could say whether one of our own
+  prompts had ever cost a paid call: `render_jobs` showed one locale refusal,
+  `failed_jobs` two, and neither is a complete record. Until failures are kept,
+  an absence in `render_jobs` is not evidence of an absence.
+
+- **The one-voice-per-narrator-gender rule: A IS BUILT (2026-09-19), B IS
+  NOT.** Costed 2026-09-14; A went in with the premise generator, because the
+  generator needs the narrator's gender and one form input answers both. See
+  Voice under Target audience. B stays unbuilt, per the recommendation below.
 
   *A — a narrator field on the new-story form.* `providers.narrator_voices`
   (`male` => Brian, `female` => Sarah) beside `default_voice_id`;
@@ -6172,6 +7644,16 @@ Still open, none blocking, all findable here rather than one gate at a time:
   `callers()` names "ScenesGate::reopen() and its blade"; both call
   `$status->canReopenScenesGate()` directly instead. Same answer today — the
   case delegates to that method — which is exactly why it can drift silently.
+- **`CharacterTextGuard`'s refusal does not say which findings are a word to
+  remove and which are a sentence to decide.** Each line names its category,
+  but only texture, posture and expression carry a repair ("put age in
+  hairline...", "belongs to the frame"); a conditional, a carried verb or a
+  handheld object gets none, and the closing paragraph is one block for all.
+  "often a white blazer" is not a word to delete: whether she wears it in every
+  frame is a decision, and today nobody but the next re-roll makes it, because a
+  refused cast stores nothing and cast text is read-only in the console. **The
+  operator's call, 2026-09-19: a small change worth making when something else
+  takes you into that file, and not on its own.**
 - **The extraction repair loop re-asks the same question, and should be scoped
   to the offending field. Designed, deliberately not built.**
 
@@ -7115,6 +8597,18 @@ Still open, none blocking, all findable here rather than one gate at a time:
   When the answer matters and a direct observation is cheap, take the direct
   observation: nine seconds of listening settled what two rounds of alignment
   arithmetic could not.
+
+  **The second corollary: a measurement is only as good as the thing that
+  produced it, and a docblock is not that thing.** The prompt locale sweep
+  (2026-09-17) counted with `LocaleGuard::hits()`, whose docblock said "every
+  match… all of them, not the first". It returned the first occurrence of each
+  WORD. The sweep reported 3 "colour" where the source held 11, and the operator
+  sized the rewording decision on that number, wrong by nearly 4x. The control
+  passed, because the control used each term once. Nothing was wrong with the
+  calibration; the counter underneath was not what its description said. When a
+  number decides something, read the code that produced it, not the sentence
+  above the code, and pick a control that could expose the difference: a term
+  used twice, not once.
 
   ---------------------------------------------------------------------------
   **HOW DEFECTS ARE ACTUALLY FOUND HERE: BY WORKING NEXT TO THEM. THIS IS THE

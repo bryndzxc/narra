@@ -4,9 +4,12 @@ namespace App\Services\Claude;
 
 use Anthropic\Client;
 use App\Contracts\MetadataWriter;
+use App\Enums\CastRole;
+use App\Enums\StoryEnding;
 use App\Models\Act;
 use App\Models\Story;
 use App\Support\LocaleGuard;
+use App\Support\OutlineCast;
 use App\Support\Providers\MetadataCopyDraft;
 use App\Support\Providers\ScriptWriterException;
 use App\Support\Providers\TagDraft;
@@ -81,7 +84,7 @@ class ClaudeMetadataWriter implements MetadataWriter
             schema: $this->titleSchema(),
         );
 
-        $decoded = $this->decodeJson($content, 'titles');
+        $decoded = $this->decodeJson($content, 'titles', $usage);
 
         $titles = [];
 
@@ -101,17 +104,16 @@ class ClaudeMetadataWriter implements MetadataWriter
         }
 
         if ($titles === []) {
-            throw new ScriptWriterException('The title call returned no titles.');
+            $this->refuseOutput('The title call returned no titles.', 'empty_output', $usage);
         }
 
         $opening = trim((string) ($decoded['description_opening'] ?? ''));
 
         if ($opening === '') {
-            throw new ScriptWriterException(
-                'The title call returned no description opening. Those two or three sentences are what '
-                .'shows in search and above the fold; a description without them is a chapter list with '
-                .'a footer.'
-            );
+            // Those two or three sentences are what shows in search and above
+            // the fold; a description without them is a chapter list with a
+            // footer.
+            $this->refuseOutput('The title call returned no description opening.', 'empty_output', $usage);
         }
 
         return new TitleDraft($titles, $opening, $usage);
@@ -126,7 +128,7 @@ class ClaudeMetadataWriter implements MetadataWriter
             schema: $this->copySchema(),
         );
 
-        $decoded = $this->decodeJson($content, 'thumbnail text and pinned comment');
+        $decoded = $this->decodeJson($content, 'thumbnail text and pinned comment', $usage);
 
         $phrases = [];
 
@@ -154,7 +156,7 @@ class ClaudeMetadataWriter implements MetadataWriter
             schema: $this->tagSchema(),
         );
 
-        $decoded = $this->decodeJson($content, 'tags');
+        $decoded = $this->decodeJson($content, 'tags', $usage);
 
         $tags = [];
 
@@ -171,7 +173,7 @@ class ClaudeMetadataWriter implements MetadataWriter
         }
 
         if ($tags === []) {
-            throw new ScriptWriterException('The tag call returned no tags.');
+            $this->refuseOutput('The tag call returned no tags.', 'empty_output', $usage);
         }
 
         return new TagDraft($tags, $usage);
@@ -206,6 +208,7 @@ class ClaudeMetadataWriter implements MetadataWriter
             '- How and when the narrator leaves: '.$this->orNone($story->departure),
             '- What it costs the antagonist to find them: '.$this->orNone($story->reversal_beats),
             '- What the narrator says when found, and what it answers: '.$this->orNone($story->refusal),
+            ...$this->endingLines($story),
             '',
             'ACTS, in order. These are the YouTube chapters.',
         ];
@@ -227,6 +230,52 @@ class ClaudeMetadataWriter implements MetadataWriter
         );
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * How the video ends, for the packaging. A title states the ending — rule
+     * 1 below — so it must be told WHICH ending this video has. An idea that
+     * says "married her best friend" on a story whose ending is the
+     * antagonist's chapter would otherwise become a title promising a payoff
+     * the video never shows. See App\Enums\StoryEnding.
+     *
+     * Nothing on a story with no ending: it was outlined before the choice
+     * existed, and its acts, listed below, are what the brief has.
+     *
+     * @return array<int, string>
+     */
+    private function endingLines(Story $story): array
+    {
+        if ($story->ending === null) {
+            return [];
+        }
+
+        $partner = null;
+
+        foreach (OutlineCast::members($story->outline_cast) as $member) {
+            if ($member->role === CastRole::FuturePartner && trim($member->name) !== '') {
+                $partner = $member;
+
+                break;
+            }
+        }
+
+        $noPartnerPromise = 'Do not promise a wedding, a remarriage or a new love: the video does not show one.';
+
+        return [match ($story->ending) {
+            StoryEnding::NewLife => $partner !== null
+                ? sprintf(
+                    '- How the video ends: the narrator\'s new life, a year on, with %s (%s) on screen.',
+                    $partner->name,
+                    $partner->relationship !== '' ? $partner->relationship : 'the person they end up with',
+                )
+                : '- How the video ends: the narrator\'s new life, a year on, alone and fine. There is no new '
+                    .'partner in this video. '.$noPartnerPromise,
+            StoryEnding::AntagonistVoice => '- How the video ends: the antagonist\'s own chapter, a year on, in '
+                .'their own voice — the chance they threw away and what the year looks like. The narrator\'s '
+                .'new life is NOT shown'.($partner !== null ? ', and '.$partner->name.' is not on screen at the end' : '')
+                .'. '.$noPartnerPromise,
+        }];
     }
 
     private function orNone(?string $value): string
@@ -263,7 +312,9 @@ class ClaudeMetadataWriter implements MetadataWriter
             '',
             '1. THE TITLE STATES THE ENDING. This niche does not withhold. "You will not believe what',
             '   happened next" is the wrong genre entirely — the title is the hook precisely BECAUSE it',
-            '   promises the payoff. Name the betrayal and name that it lands.',
+            '   promises the payoff. Name the betrayal and name that it lands. PROMISE ONLY THE ENDING',
+            '   THIS VIDEO HAS: the brief says how it ends, and a title promising a payoff the video',
+            '   never shows is a promise the viewer finds broken at minute thirty-eight.',
             '',
             '2. THE HOOK GOES ON THE LEFT. Search results, mobile and the sidebar all truncate from the',
             '   right. Whatever the emotional payload is, it is in the first forty characters or it is',

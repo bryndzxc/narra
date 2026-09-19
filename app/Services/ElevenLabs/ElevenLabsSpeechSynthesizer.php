@@ -5,6 +5,8 @@ namespace App\Services\ElevenLabs;
 use App\Contracts\SpeechSynthesizer;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Enums\FailureKind;
+use App\Exceptions\PipelineFailure;
 use App\Models\Scene;
 use App\Support\Providers\ProviderUsage;
 use App\Support\Providers\SpeechQuota;
@@ -72,7 +74,7 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
         );
 
         if ($response->failed()) {
-            throw new RuntimeException($this->explainFailure($response->status(), $response->body(), $scene, $voiceId));
+            throw $this->failure($response->status(), $response->body(), $scene);
         }
 
         $bytes = $response->body();
@@ -502,15 +504,21 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
     }
 
     /**
-     * Turn a vendor status code into something the operator can act on.
+     * The failure for a vendor status code: what happened, and what kind.
      *
      * 401 is the interesting one and it is why this method exists. On a plan
      * without overage, an exhausted allowance is not a billing event — it is a
      * refusal, arriving mid-batch on whichever scene happened to cross the
      * line. Reported as a generic HTTP failure it reads as a broken key; it is
-     * not, and the fix is a different one.
+     * not, and the fix is a different one. The message says which it is, read
+     * off the response; the repair is built at display time from the kind.
+     *
+     * Two causes this used to name are gone, because neither was ever seen
+     * here: a 422 blamed on apply_text_normalization against a flash model, and
+     * a 429 described as "nothing was billed". Both were plausible and neither
+     * was measured, so those statuses are Unclassified and the page says so.
      */
-    private function explainFailure(int $status, string $body, Scene $scene, string $voiceId): string
+    private function failure(int $status, string $body, Scene $scene): PipelineFailure
     {
         $base = sprintf(
             'ElevenLabs refused narration for scene %d (HTTP %d): %s',
@@ -522,28 +530,18 @@ class ElevenLabsSpeechSynthesizer implements SpeechSynthesizer
         $quotaHit = str_contains($body, 'quota') || str_contains($body, 'credits');
 
         return match (true) {
-            $status === 401 && $quotaHit => $base
-                ."\n\nThis is an exhausted allowance, not a broken key. Free and Starter plans have NO "
-                .'overage — generation stops at the limit rather than billing past it, so a batch that '
-                .'crosses the line mid-run leaves the remaining scenes unnarrated and the earlier ones '
-                ."paid for.\nTop up or upgrade the plan, then re-press Generate assets: every scene that "
-                .'already has audio is skipped and not re-billed.',
+            $status === 401 && $quotaHit => new PipelineFailure(
+                $base."\n\nThis is an exhausted allowance, not a broken key: the plan has NO overage, so "
+                .'generation stops at the limit rather than billing past it.',
+                FailureKind::SpeechQuotaExhausted,
+            ),
 
-            $status === 401 => $base
-                ."\n\nThe key was rejected. Check ELEVENLABS_API_KEY, and check the key still carries "
-                .'`text_to_speech` permission in the ElevenLabs dashboard.',
+            $status === 401 => new PipelineFailure(
+                $base."\n\nThe key was rejected, and the response does not mention the allowance.",
+                FailureKind::SpeechKeyRejected,
+            ),
 
-            $status === 422 || $status === 400 => $base
-                ."\n\nThe request was malformed for this model. The usual causes are a voice_id that is "
-                .sprintf('not on this account (this call used "%s" — run `php artisan voices:list` to see ', $voiceId)
-                .'what is), or apply_text_normalization=on against a flash/turbo model, which those '
-                .'models reject outright rather than ignoring.',
-
-            $status === 429 => $base
-                ."\n\nRate limited. Nothing was billed for this call. Run fewer `assets` workers, or "
-                .'re-press Generate assets once the batch settles — finished scenes are not re-billed.',
-
-            default => $base,
+            default => new PipelineFailure($base, FailureKind::Unclassified),
         };
     }
 

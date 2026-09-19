@@ -5,23 +5,31 @@ namespace App\Services\Fake;
 use App\Contracts\ScriptWriter;
 use App\Enums\ActPhase;
 use App\Enums\ActTimeframe;
+use App\Enums\CastRole;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
 use App\Enums\StoryFormat;
 use App\Models\Act;
 use App\Models\Chapter;
 use App\Models\Story;
+use App\Support\AntagonistPointOfView;
 use App\Support\ChapterAnnouncement;
+use App\Support\OutlineCast;
 use App\Support\Providers\ActOutline;
+use App\Support\Providers\CastMember;
 use App\Support\Providers\ActScriptDraft;
 use App\Support\Providers\ChapterDraft;
 use App\Support\Providers\CharacterCast;
 use App\Support\Providers\CharacterProfile;
+use App\Support\NarratorVoice;
 use App\Support\Providers\OutlineDraft;
+use App\Support\Providers\PremiseCandidate;
+use App\Support\Providers\PremiseDraftSet;
 use App\Support\Providers\ProviderUsage;
 use App\Support\Providers\SceneDraft;
 use App\Support\Providers\SceneDraftSet;
 use App\Support\Providers\ScriptWriterException;
+use App\Support\SpineQuestions;
 
 /**
  * A script writer that never touches the network.
@@ -75,6 +83,12 @@ class FakeScriptWriter implements ScriptWriter
 
     /** Text the next cast will contain, same reason. */
     public ?string $injectIntoCharacters = null;
+
+    /**
+     * Return the fixed CAST whatever the outline declared — the extractor
+     * ignoring its list, which is the state ExtractCharacters drops names for.
+     */
+    public bool $ignoreOutlineCast = false;
 
     /** How many further extraction attempts should come back with a prop in style_notes. */
     public int $dirtyStyleNotesForAttempts = 0;
@@ -168,6 +182,104 @@ class FakeScriptWriter implements ScriptWriter
      * fixture story in the suite, which is how a detector stops being read.
      */
     public bool $suppressChapterNumbers = false;
+
+    /**
+     * The antagonist's closing chapter, and the malformed shapes of it that
+     * GenerateActScripts refuses after the cost row. Each resets after one act.
+     *
+     *  - omitPointOfView: the refusal act comes back without it (a Gate 1
+     *    warning, not a refusal).
+     *  - pointOfViewName: told under this name instead of the cast's.
+     *  - pointOfViewInAnyAct: returned in an act that was not asked for it.
+     *  - pointOfViewFirst: placed first rather than last.
+     */
+    public bool $omitPointOfView = false;
+
+    public ?string $pointOfViewName = null;
+
+    public bool $pointOfViewInAnyAct = false;
+
+    public bool $pointOfViewFirst = false;
+
+    /** Candidates to return instead of the default three. Each is a PremiseCandidate. */
+    public ?array $premiseOverride = null;
+
+    /** What the fake says about the idea. The real writer decides; tests set it. */
+    public bool $premiseRevengeShaped = false;
+
+    public string $premiseTranslation = '';
+
+    /**
+     * Three premises that pass every premise check by default, differing only
+     * in the occasion and the thing the narrator must produce in person, as
+     * the real writer is told to. A test breaks ONE thing through
+     * `premiseOverride` and asserts that check alone fires.
+     */
+    public function premises(Story $story, string $idea, int $count): PremiseDraftSet
+    {
+        $this->calls[] = [
+            'method' => 'premises',
+            'story_id' => $story->id,
+            'idea' => $idea,
+            'count' => $count,
+            // The arrival assertion for the narrator field: what the real
+            // prompt is told about who the first person is.
+            'narrator_gender' => NarratorVoice::genderOf($story->voice_id),
+        ];
+
+        $candidates = $this->premiseOverride ?? array_map(
+            fn (array $variant): PremiseCandidate => $this->premiseCandidate($story, ...$variant),
+            array_slice([
+                ['his cousin\'s wedding reception', 'sixty guests', 'house', 'title office'],
+                ['our college reunion dinner', 'twenty of our friends', 'restaurant lease', 'landlord\'s office'],
+                ['his firm\'s anniversary party', 'his colleagues', 'family trust', 'trustee meeting'],
+            ], 0, $count),
+        );
+
+        return new PremiseDraftSet(
+            candidates: $candidates,
+            ideaWasRevengeShaped: $this->premiseRevengeShaped,
+            translation: $this->premiseTranslation,
+            requested: $count,
+            usage: ProviderUsage::free('fake', 'generate_premises', CostCategory::Text),
+        );
+    }
+
+    public function premiseCandidate(Story $story, string $occasion, string $audience, string $item, string $place): PremiseCandidate
+    {
+        $cast = $this->castFor($story);
+        [, $husband, $sister, $adviser] = array_map(fn (CastMember $m): string => $m->name, $cast);
+
+        return new PremiseCandidate(
+            premise: "At {$occasion}, in front of {$audience}, my husband {$husband} walked in beside "
+                ."{$adviser} and took the seat that had been set for me. His sister {$sister} asked why, "
+                ."and {$adviser} said it was his fault for not wanting a scene. {$husband} said to my face "
+                .'that he had spent ten years being careful and was allowed one evening that belonged to '
+                .'him. I said the seat was set for me, and the whole table laughed with him. What none of '
+                ."them knew was that the {$item} was in my name alone and its renewal needed my signature "
+                .'in person. Two days later I packed one suitcase and left the city without telling anyone '
+                .'where I was going.',
+            cast: $cast,
+            fields: [
+                'antagonist_justification' => 'I have spent ten years being careful, and I am allowed one '
+                    .'evening that belongs to me.',
+                'accomplice_motive' => "{$adviser} wants the management fee on the {$item} for himself.",
+                'accomplice_performance' => "{$adviser} plays the loyal adviser who hates a scene. He says to "
+                    .'me, "I only want everyone to have a nice night."',
+                'betrayal_scene' => "At {$occasion}, in front of {$audience}, {$husband} takes the seat set "
+                    ."for me beside {$adviser}. {$sister} asks why. {$adviser} says, \"It's my fault, I didn't "
+                    ."want a scene.\" {$husband} says to my face that he has spent ten years being careful and "
+                    .'is allowed one evening that belongs to him. I say the seat was set for me, and the whole '
+                    .'table laughs with him.',
+                'withheld_information' => "The {$item} is in my name alone, and its renewal needs my signature "
+                    ."in person at the {$place}.",
+                'narrator_at_exposure' => "I walk into the {$place} on the morning of the renewal and put my "
+                    .'signature, in person, on the page nobody else can sign.',
+                'departure' => 'Two days later I pack one suitcase and leave the city without telling anyone '
+                    .'where I am going.',
+            ],
+        );
+    }
 
     public function outline(Story $story, int $actCount): OutlineDraft
     {
@@ -290,13 +402,116 @@ class FakeScriptWriter implements ScriptWriter
                 .'thought the eleven months of payments had been.',
             // Answers the grievance in the grievance's own words, which is what
             // the refusal check looks for: shared, specific language.
+            // Answers the grievance in the grievance's own words, and pays off
+            // the running thought in ITS own words (the fund, the four hundred
+            // and twelve dollars) — the second overlap Gate 1 measures.
             refusal: 'When Dana reached me in the parking lot after the reception, she asked me to come '
                 .'back and help, because family helps family. I said her own sentence back to her and then '
                 .'I said no. She had called me embarrassing at every dinner for eleven months; I told '
-                .'her she was welcome to say it again, to anyone she liked, and I went back inside.',
+                .'her she was welcome to say it again, to anyone she liked. Then I told her the family '
+                .'helps family fund had closed at four hundred and twelve dollars, and I went back inside.',
             requestedActCount: $actCount,
+            cast: $this->castOverride ?? $this->castFor($story),
+            // The accomplice, with a stake, an act that quotes a line to the
+            // narrator, and a fall of several public losses that reuses the
+            // motive's own words (commission, house, power of attorney). Built
+            // on a ROLE, and clear of every coded term, so a healthy fixture
+            // raises nothing; the RED halves in GuardsGoRedTest break one part.
+            accompliceMotive: $this->accompliceOverride['accomplice_motive'] ?? 'Paul Ostrander wants the '
+                .'commission on selling our mother\'s house, which he can only arrange once Dana holds '
+                .'power of attorney, and Dana does not know he has already found a buyer.',
+            accomplicePerformance: $this->accompliceOverride['accomplice_performance'] ?? 'Paul plays the '
+                .'old family adviser who only wants the sisters to get along. He tells me, "I would hate '
+                .'for money to come between two sisters," and offers to apologize to me on Dana\'s '
+                .'behalf, so that Dana defends him to the whole table. I think he sounds like a man '
+                .'billing by the hour.',
+            accompliceFall: $this->accompliceOverride['accomplice_fall'] ?? 'After I have gone, Dana asks '
+                .'Paul in front of both aunts why the care home has not been paid, and he has no answer. '
+                .'At the family meeting the power of attorney he drafted is read aloud to everyone, and '
+                .'our mother asks him to leave. At the reception, in front of eighty guests, the buyer\'s '
+                .'letter about our mother\'s house is on the table and Dana hears that Paul wanted the '
+                .'commission all along. He loses his adviser\'s license and ends up further out than '
+                .'Dana does.',
+            runningThought: $this->accompliceOverride['running_thought'] ?? 'Every time Dana says family '
+                .'helps family, I add a dollar in my head to the family helps family fund, and by the '
+                .'reception it stands at four hundred and twelve dollars.',
+            // Anchored on a day the refusal names (the reception, the parking
+            // lot), about a year on, and drawn in objects. The RED halves in
+            // GuardsGoRedTest break one of those.
+            // Only when the chosen ending asks for it, as the real writer's
+            // schema does (SpineQuestions::outlineOrderFor). An override still
+            // wins, so a test can hand GenerateOutline a regret it did not ask
+            // for and watch it be dropped.
+            antagonistRegret: $this->accompliceOverride['antagonist_regret']
+                ?? (in_array('antagonist_regret', SpineQuestions::outlineOrderFor($story->ending), true)
+                    ? 'On the night of the '
+                        .'reception, in the parking lot, Dana told him to walk over and apologize before the car '
+                        .'pulled out, and he said she would be back by Sunday. About a year later the anniversary '
+                        .'watch is still in its box on the hall shelf, and he learns from a cousin that she has '
+                        .'moved to Denver and changed her number.'
+                    : ''),
         );
     }
+
+    /**
+     * Replace the next outline's cast, to hand GenerateOutline a broken one.
+     *
+     * @var array<int, CastMember>|null
+     */
+    public ?array $castOverride = null;
+
+    /**
+     * Replace any of the next outline's accomplice or running-thought fields,
+     * to hand GenerateOutline one it must refuse. Keyed by column.
+     *
+     * @var array<string, string>
+     */
+    public array $accompliceOverride = [];
+
+    /**
+     * The outline cast: the same four people `characters()` describes, with
+     * roles, so an extraction run through this fake keeps all four.
+     *
+     * A name a recent story already used is swapped for the same given name
+     * with the next spare family name, the way the real writer is told to
+     * avoid them. Without this, any test that outlines two stories would be
+     * refused on the second for reusing Erin Vasquez — which is the check
+     * working, and not what those tests are about.
+     *
+     * @return array<int, CastMember>
+     */
+    private function castFor(Story $story): array
+    {
+        $taken = OutlineCast::recentNames($story);
+        // Paul is the ACCOMPLICE since 3g, so every fixture outline declares one
+        // and the accomplice fields below have somebody to be about. He was a
+        // narrator-side old boss before, and nothing read that role.
+        $roles = [CastRole::Narrator, CastRole::Antagonist, CastRole::AntagonistSide, CastRole::Accomplice];
+        $relationships = ['the narrator', 'the narrator\'s husband', 'his sister', 'the family\'s financial adviser'];
+        $members = [];
+
+        foreach (self::CAST as $index => [$name]) {
+            $chosen = $name;
+
+            foreach (array_merge([''], self::SPARE_FAMILY_NAMES) as $family) {
+                $candidate = $family === '' ? $name : strtok($name, ' ').' '.$family;
+
+                if (! isset($taken[OutlineCast::normalise($candidate)])) {
+                    $chosen = $candidate;
+                    break;
+                }
+            }
+
+            $members[] = new CastMember($chosen, $roles[$index], $relationships[$index]);
+        }
+
+        return $members;
+    }
+
+    private const SPARE_FAMILY_NAMES = [
+        'Calloway', 'Whitfield', 'Brennan', 'Marsh', 'Okafor', 'Lindqvist', 'Duarte', 'Pryce',
+        'Halloran', 'Szabo', 'Fairbanks', 'Moreau',
+    ];
 
     /**
      * One act's beat, in the direction its phase runs.
@@ -352,6 +567,20 @@ class FakeScriptWriter implements ScriptWriter
             // act 1 stages it, and the later acts must not re-stage its first
             // saying or must hand it back.
             'betrayal_scene' => $story->betrayal_scene,
+            // The names the act writer was handed, recorded in the change that
+            // added the field — the escalation_beat lesson, asked up front.
+            'outline_cast' => array_column((array) ($story->outline_cast ?? []), 'name'),
+            // The accomplice and the running thought, recorded in the change
+            // that added them (3g). The fall is the story's, so this records
+            // the story field; which acts the PROMPT hands it to is asserted
+            // on the real builder, where the routing lives.
+            'accomplice_motive' => $story->accomplice_motive,
+            'accomplice_performance' => $story->accomplice_performance,
+            'accomplice_fall' => $story->accomplice_fall,
+            'running_thought' => $story->running_thought,
+            // Recorded in the change that added it. Which act's PROMPT carries
+            // it is asserted on the real builder, where the routing lives.
+            'antagonist_regret' => $story->antagonist_regret,
             'prior_summaries' => count($priorSummaries),
             'target_words' => $targetWords,
             'outline_size' => count($fullOutline),
@@ -375,6 +604,46 @@ class FakeScriptWriter implements ScriptWriter
         // the script is their join. Two by default, which is the floor and
         // what a real act at the fake's target divides into.
         $chapters = $this->chaptersFor($script, $act->sequence, $this->firstChapterNumberFor($story, $act));
+
+        // The antagonist's chapter, last, on the refusal act of a story that
+        // asks for it — the way the real writer is told to return it. The
+        // switches below build the malformed shapes GenerateActScripts refuses.
+        $herName = $this->pointOfViewName
+            ?? (AntagonistPointOfView::endsAct($story, $act->phase) || $this->pointOfViewInAnyAct
+                ? AntagonistPointOfView::nameFor($story) ?? 'Somebody Else'
+                : null);
+
+        if ($herName !== null && ! $this->omitPointOfView) {
+            $hers = new ChapterDraft(
+                title: 'A Year On',
+                rehookLine: 'The watch is still in its box.',
+                text: ChapterAnnouncement::pointOfViewSentence($herName).' The watch is still in its box. '
+                    .$this->prose(170, 90 + $act->sequence),
+                pointOfView: $herName,
+            );
+
+            // prose() stops at a word count, so the narrator's last chapter can
+            // end mid-sentence. It was last before; now a chapter follows it,
+            // and GenerateActScripts' join check refused the merged sentence —
+            // correctly. The real writer is told every chapter ends on a
+            // complete sentence, so the fake does the same.
+            $last = array_key_last($chapters);
+            $chapters[$last] = new ChapterDraft(
+                title: $chapters[$last]->title,
+                rehookLine: $chapters[$last]->rehookLine,
+                text: preg_match('/[.!?]["\']?$/u', $chapters[$last]->text)
+                    ? $chapters[$last]->text
+                    : rtrim($chapters[$last]->text, " ,;:").'.',
+            );
+
+            $this->pointOfViewFirst ? array_unshift($chapters, $hers) : $chapters[] = $hers;
+        }
+
+        $this->pointOfViewName = null;
+        $this->pointOfViewInAnyAct = false;
+        $this->pointOfViewFirst = false;
+        $this->omitPointOfView = false;
+
         $script = implode("\n\n", array_map(fn (ChapterDraft $c): string => $c->text, $chapters));
 
         return new ActScriptDraft(
@@ -478,13 +747,24 @@ class FakeScriptWriter implements ScriptWriter
             // Recorded so a test can assert the retry actually carried the
             // reason back rather than blindly re-rolling.
             'rejection_notes' => $rejectionNotes,
+            'outline_cast' => array_column((array) ($story->outline_cast ?? []), 'name'),
         ];
 
         $profiles = [];
 
-        foreach (self::CAST as [$name, $description, $wardrobe, $importance]) {
+        // Describe the outline's people when there are any, the way the real
+        // extractor is told to. Their descriptions come from CAST by position.
+        $declared = $this->ignoreOutlineCast
+            ? []
+            : array_values(array_filter(array_column((array) ($story->outline_cast ?? []), 'name')));
+
+        foreach (self::CAST as $index => [$name, $description, $wardrobe, $importance]) {
+            if ($declared !== [] && ! isset($declared[$index])) {
+                break;
+            }
+
             $profiles[] = new CharacterProfile(
-                name: $name,
+                name: $declared[$index] ?? $name,
                 // Physical and fixed. No mood, no posture, no action - a fake
                 // whose descriptions drifted per scene would let a broken
                 // consistency mechanism pass its own test.
@@ -541,10 +821,19 @@ class FakeScriptWriter implements ScriptWriter
             'antagonist_justification' => $story->antagonist_justification,
             // What the real prompt hands act 1's scene call: who is in the room.
             'betrayal_scene' => $act->sequence === 1 ? $story->betrayal_scene : null,
+            // What the real prompt hands the last three acts' scene calls: the
+            // accomplice's fall, so he is drawn in the room when he loses.
+            'accomplice_fall' => in_array($act->phase?->value, ['departure', 'search', 'refusal'], true)
+                ? $story->accomplice_fall
+                : null,
             // The chapter boundaries this call could see, recorded in the
             // change that added them. A scene straddling one puts the last
             // still of one chapter under the opening line of the next.
             'chapter_boundaries' => $act->chapters()->pluck('first_sentence')->all(),
+            // Who tells the act's point-of-view chapter, as this call could see
+            // it — what the real prompt reads to stop the narrator being drawn
+            // into the antagonist's "I". Recorded in the change that added it.
+            'point_of_view' => $act->chapters()->whereNotNull('point_of_view')->value('point_of_view'),
         ];
 
         $total = count($sentences);

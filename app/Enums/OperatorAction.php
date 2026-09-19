@@ -43,6 +43,17 @@ enum OperatorAction: string
      */
     case WriteScript = 'write_script';
 
+    /**
+     * Write three premise candidates from the operator's idea.
+     *
+     * Only at `draft`, before the outline exists: a premise is what the
+     * outline is written from, and once there is an outline a new premise
+     * would describe a story nobody wrote. One billed Sonnet call, and a
+     * separate button from Write because choosing a premise is its own
+     * decision — the outline is the second press.
+     */
+    case WritePremises = 'write_premises';
+
     /** Back to Gate 1 to edit the act outline. */
     case ReopenOutlineGate = 'reopen_outline_gate';
 
@@ -98,6 +109,7 @@ enum OperatorAction: string
     {
         return match ($this) {
             self::WriteScript => 'Write the outline and act scripts',
+            self::WritePremises => 'Write three premises from an idea',
             self::ReopenOutlineGate => 'Reopen Gate 1',
             self::DraftSceneList => 'Extract the cast and draft the scenes',
             self::ReopenScenesGate => 'Reopen Gate 2',
@@ -114,6 +126,7 @@ enum OperatorAction: string
     {
         return match ($this) {
             self::WriteScript => 'story:write, NewStory::create(), OutlineGate::write(), DispatchTextStage',
+            self::WritePremises => 'OutlineGate::writePremises(), DispatchTextStage::writePremises()',
             self::ReopenOutlineGate => 'OutlineGate::reopen() and its blade',
             self::DraftSceneList => 'story:scenes, ScenesGate::draftScenes(), DispatchTextStage',
             self::ReopenScenesGate => 'ScenesGate::reopen() and its blade',
@@ -143,6 +156,9 @@ enum OperatorAction: string
             // Only from `scripted`. Walking further back than one step is a
             // walk, not a jump: scenes drafted against this outline exist, and
             // the operator returns through Gate 2 first.
+            // Draft and nothing else. See the case.
+            self::WritePremises => $status === StoryStatus::Draft,
+
             self::ReopenOutlineGate => $status === StoryStatus::Scripted,
 
             // `scripted` is the first draft; `scenes_drafted` is a re-draft the
@@ -231,6 +247,10 @@ enum OperatorAction: string
             // that moved the status first would leave a story reading
             // `outlined` with no acts in it if the provider refused.
             self::WriteScript => null,
+
+            // Candidates are written beside the story; nothing moves until
+            // the operator writes the outline from one of them.
+            self::WritePremises => null,
 
             self::ReopenOutlineGate => StoryStatus::Outlined,
 
@@ -358,6 +378,13 @@ enum OperatorAction: string
 
             self::CancelRender => 'nothing is in flight. There is a batch to cancel only at '
                 .'assets_generating or rendering.',
+
+            self::WritePremises => sprintf(
+                'the story has an outline (it is at "%s"). A premise is what the outline is written '
+                .'from, so a new one now would describe a story nobody wrote. Premises are written '
+                .'at "draft", before the outline.',
+                $status->value,
+            ),
 
             self::WriteMetadata => 'there is no finished render. Chapters are derived from act timings '
                 .'and act timings are written by the mux, so a sheet written now would carry timestamps '

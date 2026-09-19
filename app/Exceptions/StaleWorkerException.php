@@ -2,21 +2,34 @@
 
 namespace App\Exceptions;
 
+use App\Enums\FailureKind;
 use RuntimeException;
 
 /**
- * This worker is running different code or config than the process that queued
- * the job.
+ * A queue worker disagrees with the process that dispatched its job about how
+ * the asset should be made — provider, fingerprint or code — and refused
+ * before generating or billing anything.
  *
- * Its own type for the same reason NarrationPaceException has one: SceneAssetJob
- * cancels the whole batch on this and only this. The batch policy everywhere
- * else — three failures out of 186 flag for retry and do not fail the video — is
- * right because those failures are independent. This one is not. A stale worker
- * is wrong about every job it will ever pick up, and the damage is not the
- * failures, it is the successes: if a second, current worker shares the queue,
- * some scenes are generated the new way and some the old, and the story ends up
- * internally inconsistent in a way no per-scene check can see.
- *
- * That is exactly what 117 scenes at speed 1.0 beside 69 at 0.9 looked like.
+ * Classified as StaleWorker with the queue as its fact, so the page can name
+ * the restart command for THAT queue's service at display time. The message
+ * holds the disagreement and nothing about how to restart: that procedure has
+ * changed once already (queue:restart and a manual start, then
+ * Restart-Service) and a stored sentence would have gone on naming the old one.
  */
-class StaleWorkerException extends RuntimeException {}
+class StaleWorkerException extends RuntimeException implements ClassifiedFailure
+{
+    public function __construct(string $message, private readonly ?string $queue = null)
+    {
+        parent::__construct($message);
+    }
+
+    public function failureKind(): FailureKind
+    {
+        return FailureKind::StaleWorker;
+    }
+
+    public function failureFacts(): array
+    {
+        return $this->queue === null ? [] : ['queue' => $this->queue];
+    }
+}

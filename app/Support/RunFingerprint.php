@@ -268,16 +268,17 @@ final class RunFingerprint
             'This job was dispatched by a process that does not agree with this worker about how the '
             ."narration should be made.\n\n%s\n\n%s",
             implode("\n", $lines),
+            // Facts only. The repair ("restart the worker, generate again") is
+            // built at display time by FailureRemedy from the exception's kind,
+            // because this text is stored on the failure row and read long after
+            // the restart procedure it used to describe (queue:restart, then a
+            // manual start) was replaced by Restart-Service.
             $codeDiffers
                 ? 'The CODE marker differs, which means this worker is running a different version of '
                   .'app/ or config/ than the process that queued the job — it booted before a change '
-                  ."and has been holding the old code in memory ever since.\nThat is the failure that "
-                  .'synthesised 117 scenes at the wrong speed with no speed provenance: the guards that '
-                  ."would have caught it were not in the worker's loaded code.\n\nStop the workers, "
-                  .'CONFIRM the processes have actually exited, start them again, and re-press Generate '
-                  .'assets. Nothing was generated and nothing was billed.'
-                : "Nothing was generated and nothing was billed.\nRun `php artisan queue:restart`, "
-                  .'confirm the worker has actually exited, start it again, and re-press Generate assets.',
+                  .'and has been holding the old code in memory ever since. Nothing was generated and '
+                  .'nothing was billed.'
+                : 'Nothing was generated and nothing was billed.',
         );
     }
 

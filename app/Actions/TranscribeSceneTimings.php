@@ -5,6 +5,8 @@ namespace App\Actions;
 use App\Contracts\SpeechSynthesizer;
 use App\Contracts\Transcriber;
 use App\Enums\AssetStatus;
+use App\Enums\FailureKind;
+use App\Exceptions\PipelineFailure;
 use App\Models\Scene;
 use App\Models\SceneAudio;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -59,9 +61,10 @@ class TranscribeSceneTimings
         $audio = $scene->sceneAudio()->first();
 
         if ($audio === null || $audio->audio_path === null) {
-            throw new RuntimeException(
-                "Scene {$scene->sequence} has no narration audio to transcribe. Narration is generated "
-                ."before timings, and this scene's audio stage has not succeeded."
+            throw new PipelineFailure(
+                "Scene {$scene->sequence} has no narration audio to transcribe: this scene's audio stage "
+                .'has not succeeded.',
+                FailureKind::NarrationMissing,
             );
         }
 
@@ -89,7 +92,7 @@ class TranscribeSceneTimings
         if (! is_readable($path)) {
             throw new RuntimeException(sprintf(
                 "Scene %d's narration row points at %s, which is not readable. The row claims audio "
-                .'that is not on disk — regenerate the narration for this scene.',
+                .'that is not on disk.',
                 $scene->sequence,
                 $audio->audio_path,
             ));

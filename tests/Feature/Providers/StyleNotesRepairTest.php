@@ -161,6 +161,38 @@ class StyleNotesRepairTest extends TestCase
         }
     }
 
+    /**
+     * The refusal reaches the row as a refused output of the cast stage, so
+     * the page offers the draft button with its caveat rather than "No known
+     * repair." — story 38, 2026-09-19. Through the real Action and
+     * RenderJob::fail(), not by building the kind by hand.
+     */
+    public function test_a_refused_cast_is_recorded_as_a_refused_output_the_page_can_repair(): void
+    {
+        $story = $this->story();
+
+        /** @var FakeScriptWriter $writer */
+        $writer = app(FakeScriptWriter::class);
+        $writer->dirtyStyleNotesForAttempts = 5;
+
+        try {
+            app(ExtractCharacters::class)->handle($story);
+            $this->fail('A cast dirty on both attempts must be refused.');
+        } catch (RuntimeException) {
+        }
+
+        $row = \App\Models\RenderJob::where('story_id', $story->id)
+            ->where('stage', \App\Enums\RenderStage::ExtractCast)->firstOrFail();
+
+        $this->assertSame(\App\Enums\FailureKind::OutputRefused, $row->failure_kind);
+        $this->assertEquals(['stage' => 'extract_cast', 'check' => 'character_text'], $row->failure_facts);
+
+        $failure = collect(\App\Support\RenderProgress::for($story->fresh())['failures'])->first();
+        $this->assertTrue($failure['remedy']->known);
+        $this->assertNotNull($failure['remedy']->unmeasured);
+        $this->assertSame(\App\Enums\OperatorAction::DraftSceneList->label(), $failure['remedy']->actionLabel);
+    }
+
     public function test_a_clean_first_answer_costs_one_call(): void
     {
         $story = $this->story();

@@ -3,13 +3,16 @@
 namespace App\Actions;
 
 use App\Contracts\ScriptWriter;
+use App\Enums\FailureKind;
 use App\Enums\RenderStage;
 use App\Enums\StoryStatus;
+use App\Exceptions\PipelineFailure;
 use App\Models\Character;
 use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
+use App\Support\OutlineCast;
 use App\Support\Providers\CharacterCast;
 use App\Support\Providers\CharacterProfile;
 use Illuminate\Support\Facades\DB;
@@ -130,6 +133,98 @@ class ExtractCharacters
     }
 
     /**
+     * Keep the people the outline declared, drop anyone else, and SAY both.
+     *
+     * The extractor used to decide the cast. Measured on seven stories it
+     * invented three characters from role labels the script never used as
+     * names, and every character kept is a reference sheet. With an outline
+     * cast the list is decided at Gate 1, and this is the invariant behind the
+     * prompt's request: a name the prompt was told not to return is not
+     * persisted however it arrived.
+     *
+     * Silent in neither direction. A dropped entry is an editorial judgement
+     * the model made — somebody it thought was drawn often enough to need a
+     * face — and a declared member it did not return is a person the outline
+     * named who may never appear in the script. Both go on the job row, the
+     * way `DraftScenes` reports a name it could not resolve.
+     *
+     * Matched case-folded on the full name, because the prompt asks for each
+     * name exactly as written; a looser match here would be a second copy of
+     * `ImagePromptBuilder::resolve()` with its own opinion.
+     *
+     * A story outlined before the cast existed is untouched.
+     */
+    private function restrictToOutlineCast(Story $story, CharacterCast $cast, RenderJob $job): CharacterCast
+    {
+        $declared = [];
+
+        foreach (OutlineCast::members($story->outline_cast) as $member) {
+            if ($member->name !== '') {
+                $declared[OutlineCast::normalise($member->name)] = $member->name;
+            }
+        }
+
+        if ($declared === []) {
+            return $cast;
+        }
+
+        $kept = [];
+        $dropped = [];
+
+        foreach ($cast->characters as $profile) {
+            $key = OutlineCast::normalise($profile->name);
+
+            if (isset($declared[$key])) {
+                $kept[$key] = $profile;
+            } else {
+                $dropped[] = $profile->name;
+            }
+        }
+
+        // Nobody matched is not a small cast, it is an extraction that ignored
+        // the list, and persisting zero characters would leave every scene
+        // drawn with no descriptions at all. Refused after the cost row.
+        if ($kept === [] && $cast->characters !== []) {
+            // Facts only, and the names are the facts: comparing them against
+            // what the act scripts say is how an operator tells an extractor
+            // that ignored the list from an outline cast the scripts never
+            // used.
+            throw new PipelineFailure(
+                sprintf(
+                    'The extractor returned %d character(s) (%s) and none of them is in the outline cast '
+                    .'(%s). Nothing was stored; the call was billed.',
+                    count($cast->characters),
+                    implode(', ', array_map(fn (CharacterProfile $p): string => $p->name, $cast->characters)),
+                    implode(', ', $declared),
+                ),
+                FailureKind::OutputRefused,
+                ['stage' => RenderStage::ExtractCast->value, 'check' => 'cast_names'],
+            );
+        }
+
+        $missing = array_values(array_diff_key($declared, $kept));
+
+        if ($dropped !== []) {
+            $job->note(sprintf(
+                'Dropped %d not in the outline cast: %s. Nobody gets a sheet or a description who was '
+                .'not declared at Gate 1; add them to the cast there if the story needs their face.',
+                count($dropped),
+                implode(', ', $dropped),
+            ));
+        }
+
+        if ($missing !== []) {
+            $job->note(sprintf(
+                'Not returned from the outline cast: %s. Either they never appear in the script, or the '
+                .'extractor missed them.',
+                implode(', ', $missing),
+            ));
+        }
+
+        return new CharacterCast(array_values($kept), $cast->usage);
+    }
+
+    /**
      * Extract, and give it one chance to fix character text it got wrong.
      *
      * A retry rather than a refusal because the failure is narrow, mechanical
@@ -170,6 +265,10 @@ class ExtractCharacters
             // billed whatever the answer turns out to be.
             $this->costs->handle($story, $cast->usage);
 
+            // Before the text guard, so a character about to be dropped
+            // cannot buy a retry for a word in their description.
+            $cast = $this->restrictToOutlineCast($story, $cast, $job);
+
             $notes = $this->textProblems($cast);
 
             // A line per billed attempt. Without it the row says only that
@@ -192,7 +291,21 @@ class ExtractCharacters
         // of this field is that it is applied unconditionally — a bad one is
         // not a cosmetic flaw, it is a prop in every frame that character is
         // in. See CharacterTextGuard.
-        $this->text->assert($cast->characters, 'character extraction');
+        //
+        // Classified here rather than in the guard, because the stage is this
+        // Action's to name. Unclassified until 2026-09-19: story 38's refusal
+        // reached the page as "No known repair." beside the draft button that
+        // runs extraction again.
+        try {
+            $this->text->assert($cast->characters, 'character extraction');
+        } catch (RuntimeException $e) {
+            throw new PipelineFailure(
+                $e->getMessage(),
+                FailureKind::OutputRefused,
+                ['stage' => RenderStage::ExtractCast->value, 'check' => 'character_text'],
+                $e,
+            );
+        }
 
         return $cast;
     }

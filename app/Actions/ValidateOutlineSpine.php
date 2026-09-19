@@ -4,11 +4,19 @@ namespace App\Actions;
 
 use App\Enums\ActPhase;
 use App\Enums\ActTimeframe;
+use App\Enums\CastRole;
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Models\Act;
 use App\Models\Chapter;
 use App\Models\Story;
+use App\Support\AccompliceArc;
+use App\Support\AntagonistPointOfView;
 use App\Support\ChapterAnnouncement;
+use App\Support\LocaleGuard;
+use App\Support\OutlineCast;
+use App\Support\Providers\PremiseCandidate;
+use App\Support\ReferenceRateCard;
 use App\Support\SentenceSplitter;
 
 /**
@@ -128,13 +136,68 @@ class ValidateOutlineSpine
      * allows. The field can still describe the moment she confirms a found
      * betrayal aloud in front of people — and when it does, it usually still
      * names what was found, which is why this reports rather than refuses.
+     *
+     * ---------------------------------------------------------------------
+     * TWO KINDS OF WORD, SINCE 2026-09-19
+     * ---------------------------------------------------------------------
+     *
+     * These are the VERBS: each is the finding by itself, and fires alone.
+     * `DISCOVERY_EVIDENCE` holds the NOUNS, which are only a discovery when
+     * somebody comes upon them, so they fire only with a `DISCOVERY_FINDER` in
+     * the same sentence.
+     *
+     * One list did both jobs until then, and on real output it fired only on
+     * nouns used in another sense: story 36's "she holds her phone out over
+     * the cold dishes and asks me to take the photo", live on its Gate 1 and
+     * never noticed, and story 38's premise candidate "At the restaurant
+     * booked for their fifth wedding anniversary". Measured over every real
+     * betrayal_scene then stored (stories 33-37 and story 38's three
+     * candidates): 2 fires in 8 texts, both false. The fix is a second axis,
+     * not a list of exception phrases — `CharacterTextGuard::NOT_AN_OBJECT`
+     * is that other repair, and it is always one phrase behind.
+     *
+     * ---------------------------------------------------------------------
+     * THE CHECK HAS NEVER CAUGHT A TRUE CASE
+     * ---------------------------------------------------------------------
+     *
+     * No real betrayal_scene has ever described a found betrayal: the field
+     * was added after stories 23 and 25, the two whose betrayals were found.
+     * Every positive this check keeps is hand-written — the fixtures in
+     * GuardsGoRedTest and PremiseGeneratorTest. So its recall on real output
+     * is UNMEASURED, and a quiet check is not evidence that a premise or an
+     * outline is clean. It is evidence that none of these words appeared in
+     * these shapes.
+     *
+     * KNOWN WRONG CASE, kept rather than patched with an exception: "she reads
+     * the booking aloud to the table" is the good case — the betrayal done in
+     * public — and has a noun and a finder in one sentence, so it fires. The
+     * check cannot tell who comes upon the evidence or whether anybody is
+     * watching; the audience check beside it speaks to the second.
      */
     private const DISCOVERY_MARKERS = [
         'found out', 'finds out', 'find out', 'discovered', 'discovers', 'discover',
+        'copied me', 'overheard', 'overhears', 'overhear',
+    ];
+
+    /**
+     * Evidence of a betrayal. A discovery only when a `DISCOVERY_FINDER` is in
+     * the same sentence: see `DISCOVERY_MARKERS`.
+     */
+    private const DISCOVERY_EVIDENCE = [
         'email', 'e-mail', 'emails', 'text message', 'messages', 'screenshot',
         'screenshots', 'posted', 'photos', 'booking', 'booked', 'receipt',
-        'receipts', 'bank statement', 'her phone', 'his phone', 'copied me',
-        'overheard', 'overhears', 'overhear',
+        'receipts', 'bank statement', 'her phone', 'his phone',
+    ];
+
+    /**
+     * Somebody coming upon something. Words, still: "read" is also reading
+     * aloud, which is the known wrong case in `DISCOVERY_MARKERS`.
+     */
+    private const DISCOVERY_FINDERS = [
+        'found', 'finds', 'find', 'discovered', 'discovers', 'saw', 'sees', 'see', 'seen',
+        'read', 'reads', 'noticed', 'notices', 'came across', 'comes across', 'copied',
+        "cc'd", 'forwarded', 'showed me', 'shows me', 'opened', 'opens', 'scrolled',
+        'scrolls', 'checked', 'checks', 'spotted', 'spots', 'stumbled', 'overheard',
     ];
 
     /**
@@ -175,6 +238,17 @@ class ValidateOutlineSpine
         "doesn't", "didn't", "won't", "wouldn't", "isn't",
         'refuses', 'refusing', 'refused', 'avoids', 'avoiding', 'avoided',
         'instead', 'rather', 'silently', 'quietly', 'secretly', 'unannounced',
+    ];
+
+    /**
+     * A time jump her face cannot carry. About a year is the decision; two
+     * years is allowed through as "about", five or more is not, and a decade
+     * in any spelling is not.
+     */
+    private const LONG_JUMP_MARKERS = [
+        '/\b([5-9]|[1-9][0-9])\s+years\b/iu',
+        '/\b(five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty|several|many)\s+years\b/iu',
+        '/\bdecades?\b/iu',
     ];
 
     /**
@@ -288,6 +362,24 @@ class ValidateOutlineSpine
         $predatesBetrayalScene = (bool) $story->outlined_before_betrayal_scene
             && trim((string) $story->betrayal_scene) === '';
 
+        // The fourth age, frozen the same way (3g): outlined before the
+        // accomplice had a stake and the narrator a running thought. All four
+        // fields empty, or an operator has started typing and gets the
+        // ordinary checks back.
+        $predatesAccompliceArc = (bool) $story->outlined_before_accomplice_and_thought
+            && collect([...AccompliceArc::FIELDS, 'running_thought'])
+                ->every(fn (string $field): bool => trim((string) $story->{$field}) === '');
+
+        // The fifth age, frozen the same way: outlined before the antagonist's
+        // regret and her closing chapter were asked. Typing it in ends it.
+        $predatesRegret = (bool) $story->outlined_before_antagonist_regret
+            && trim((string) $story->antagonist_regret) === '';
+
+        // Empty accomplice fields are the RIGHT answer on a story whose cast
+        // declares no accomplice — a mother-in-law does it with nobody — so
+        // they are "none", not missing.
+        $hasAccomplice = AccompliceArc::declared($story->outline_cast);
+
         foreach ($this->fields() as $key => $meta) {
             $value = trim((string) $story->{$key});
             $state = 'ok';
@@ -299,6 +391,17 @@ class ValidateOutlineSpine
                 $state = 'absent';
             } elseif ($value === '' && $predatesBetrayalScene && ($meta['betrayal_later'] ?? false)) {
                 $state = 'absent';
+            } elseif ($value === '' && $predatesAccompliceArc && ($meta['arc_later'] ?? false)) {
+                $state = 'absent';
+            } elseif ($value === '' && $predatesRegret && ($meta['regret_later'] ?? false)) {
+                $state = 'absent';
+            } elseif ($value === '' && ! $hasAccomplice && ($meta['needs_accomplice'] ?? false)) {
+                $state = 'none';
+            } elseif ($value === '' && ($meta['her_ending_only'] ?? false)
+                && $story->ending !== null && ! $story->ending->asksForRegret()) {
+                // Not asked: the chosen ending is the narrator's new life, and
+                // the regret is the other ending's material. See StoryEnding.
+                $state = 'none';
             } elseif ($value === '') {
                 $problems[] = "{$meta['label']} is missing. {$meta['why']}";
                 $state = 'missing';
@@ -349,8 +452,36 @@ class ValidateOutlineSpine
                 .'outline asks it; typing a betrayal scene in by hand gets the ordinary checks back.';
         }
 
+        $cast = $this->checkCast($story, $problems, $warnings, $legacy || $unasked || $predatesBetrayalScene);
+
+        // Said once, and not on top of an older age's warning, each of which
+        // already says a regenerated outline is the repair for all of it.
+        $olderAgeWarned = $legacy || $unasked || $predatesBetrayalScene
+            || ((bool) $story->outlined_before_cast && OutlineCast::members($story->outline_cast) === []);
+
+        if ($predatesAccompliceArc && ! $olderAgeWarned) {
+            $warnings[] = 'This outline was generated before it was asked for the accomplice\'s stake and '
+                .'the narrator\'s running thought. On an outline that was never asked, the accomplice is '
+                .'the one the first reference taught this prompt — present at the betrayal, silent, and '
+                .'gone — and there is no private joke for the refusal to pay off. Re-generating the '
+                .'outline asks both; typing either in by hand gets the ordinary checks back.';
+        }
+
+        // Said once, and never on top of an older age's warning: each of those
+        // already says a regenerated outline asks everything since.
+        if ($predatesRegret && ! $olderAgeWarned && ! $predatesAccompliceArc) {
+            $warnings[] = 'This outline was generated before it was asked for the antagonist\'s regret, so '
+                .'the refusal act ends on the narrator and the antagonist\'s own closing chapter is not '
+                .'asked for. The reference\'s ending is the antagonist\'s — a chance thrown away that the '
+                .'narrator never saw, and what the years look like from inside that life. Re-generating '
+                .'the outline asks it; '
+                .'typing it in by hand gets the ordinary checks back.';
+        }
+
         $this->checkHook($story, $warnings, $spine);
         $this->checkJustification($story, $warnings, $spine);
+        $this->checkAccomplice($story, $problems, $warnings, $spine, $hasAccomplice);
+        $this->checkRunningThought($story, $warnings, $spine);
         $this->checkBetrayalScene($story, $warnings, $spine);
         $this->checkExposure($story, $warnings, $spine);
         $this->checkNarratorAtExposure($story, $warnings, $spine);
@@ -358,12 +489,379 @@ class ValidateOutlineSpine
         $this->checkDeparture($story, $warnings, $spine);
         $this->checkReversalBeats($story, $warnings, $spine);
         $this->checkRefusal($story, $warnings, $spine);
+        $this->checkAntagonistRegret($story, $warnings, $spine);
+        $this->checkEnding($story, $warnings);
         $this->checkEscalation($story, $problems, $warnings);
         $this->checkPhases($story, $problems, $warnings, $legacy);
         $this->checkChapterAnnouncements($story, $warnings);
+        $this->checkPointOfViewChapter($story, $warnings);
         $this->checkFormat($story, $warnings);
 
-        return ['problems' => $problems, 'warnings' => $warnings, 'spine' => $spine];
+        return ['problems' => $problems, 'warnings' => $warnings, 'spine' => $spine, 'cast' => $cast];
+    }
+
+    /**
+     * The Gate 1 checks a premise candidate can be held to, before the
+     * operator picks it.
+     *
+     * ---------------------------------------------------------------------
+     * THE SAME CHECKS, CALLED, ON AN UNSAVED STORY
+     * ---------------------------------------------------------------------
+     *
+     * The candidate's cast and spine answers are put on an unsaved copy of the
+     * story and handed to the private checks `handle()` runs — the same
+     * methods, not a second copy of their rules. The copy keeps the story's id
+     * so the reused-name check skips the story itself and the act reads find
+     * the story's acts, of which a draft has none, so every act-dependent
+     * branch is inert. Nothing is saved: the copy is never persisted.
+     *
+     * Severity follows what the OUTLINE would do, not what Gate 1 says after
+     * it. A reused name is a Gate 1 warning because an outline carrying one
+     * is refused before it gets there; here it is a problem, because the cast
+     * prompt tells the outline to use the premise's names exactly, so a
+     * premise naming a taken name produces a refused outline almost by
+     * construction.
+     *
+     * ---------------------------------------------------------------------
+     * AND THE PROSE, BECAUSE THE FIELDS ARE NOT WHAT THE OUTLINE READS
+     * ---------------------------------------------------------------------
+     *
+     * The outline writer is handed the premise and nothing else. A spine
+     * answer the prose does not carry is a claim about a premise nobody will
+     * see, so four answers are tied back to the prose by the overlap every
+     * spine check uses (two distinctive words, proper nouns removed), every
+     * named person must appear in it, and it must not enumerate history — the
+     * one premise rule the outline has no check for, because it was a finding
+     * about premises (stories 29-32 opened "The first time... The second
+     * time...").
+     *
+     * UNCHECKED, said so it is not read as covered: that the prose opens in
+     * the room, that the witnesses are friends rather than family, that it is
+     * six or seven sentences, and that it ends on the departure. The overlap
+     * says the prose CARRIES the scene and the departure, not where.
+     *
+     * `ran` names every check that ran, so a clean candidate reads as checked
+     * rather than as unexamined.
+     *
+     * @return array{problems: array<int, string>, warnings: array<int, string>, ran: array<int, string>}
+     */
+    public function premiseChecks(Story $story, PremiseCandidate $candidate): array
+    {
+        $problems = [];
+        $warnings = [];
+        $spine = [];
+
+        $probe = $story->replicate();
+        $probe->id = $story->id;
+        $probe->forceFill(['outline_cast' => array_map(fn ($m) => $m->toRow(), $candidate->cast)] + $candidate->fields);
+
+        $members = $candidate->cast;
+        $hasAccomplice = AccompliceArc::declared($probe->outline_cast);
+        $meta = $this->fields();
+
+        foreach (PremiseCandidate::FIELDS as $field) {
+            // Empty accomplice answers are right on a cast with no accomplice.
+            $optional = ($meta[$field]['needs_accomplice'] ?? false) && ! $hasAccomplice;
+
+            if ($candidate->fields[$field] === '' && ! $optional) {
+                $problems[] = "{$meta[$field]['label']} is missing. {$meta[$field]['why']}";
+            }
+        }
+
+        foreach (OutlineCast::structuralProblems($members, $story->format) as $problem) {
+            $problems[] = 'Cast: '.$problem.' The outline would be refused for the same cast.';
+        }
+
+        foreach (OutlineCast::reused($members, $story) as $hit) {
+            $problems[] = sprintf(
+                '%s was already used by %s. The outline is told to use the premise\'s names exactly and '
+                .'refuses a reused name, so an outline written from this premise would be refused.',
+                $hit['name'],
+                $hit['story'],
+            );
+        }
+
+        $named = OutlineCast::budgetCount($members);
+        $target = (int) config('cast.premise_named', 6);
+
+        if ($named > $target) {
+            $warnings[] = sprintf(
+                'The premise names %d people besides the narrator against a target of %d. The outline '
+                .'adds the people the spine needs; a premise that spends the budget leaves it none.',
+                $named,
+                $target,
+            );
+        }
+
+        $this->checkJustification($probe, $warnings, $spine);
+        $this->checkAccomplice($probe, $problems, $warnings, $spine, $hasAccomplice);
+        $this->checkBetrayalScene($probe, $warnings, $spine);
+        $this->checkNarratorAtExposure($probe, $warnings, $spine);
+        $this->checkDeparture($probe, $warnings, $spine);
+
+        $prose = $candidate->premise;
+
+        if ($prose === '') {
+            $problems[] = 'The premise itself is empty. The outline is written from the premise and nothing else.';
+        } else {
+            $this->checkPremiseProse($candidate, $warnings);
+        }
+
+        $denied = app(LocaleGuard::class)->denied(
+            implode("\n", [$prose, ...array_values($candidate->fields)]),
+            (string) $story->locale_profile,
+        );
+
+        foreach ($denied as $hit) {
+            $problems[] = sprintf(
+                '"%s" is on the %s denylist ("%s"). It would reach the outline in the premise.',
+                $hit['term'],
+                $story->locale_profile,
+                $hit['context'],
+            );
+        }
+
+        return [
+            'problems' => $problems,
+            'warnings' => $warnings,
+            'ran' => [
+                'every spine answer present', 'cast structure', 'names not used by a recent video',
+                'names within the premise target', 'justification not a confession', 'accomplice act',
+                'betrayal done in front of people', 'justification said aloud in the betrayal',
+                'betrayal done rather than found', 'narrator produces something in person',
+                'departure not announced', 'names and answers carried by the prose',
+                'no enumerated history', 'locale denylist',
+            ],
+        ];
+    }
+
+    /**
+     * The premise's prose against its own fields. See premiseChecks().
+     *
+     * @param  array<int, string>  $warnings
+     */
+    private function checkPremiseProse(PremiseCandidate $candidate, array &$warnings): void
+    {
+        $prose = $candidate->premise;
+        $lower = mb_strtolower($prose);
+
+        $absent = [];
+        $partner = null;
+
+        foreach ($candidate->cast as $member) {
+            if ($member->role === CastRole::Narrator || $member->name === '') {
+                continue;
+            }
+
+            if (! str_contains($lower, mb_strtolower($member->name))) {
+                // The future partner is reported on her own line: she is the
+                // measurement CLAUDE.md 3f item 5 waits on, and story 38's
+                // first roll declared her in all three casts and dropped her
+                // from all three premises — the row held by the premise writer
+                // and the prose leaving her out. Not one name in a list.
+                if ($member->role === CastRole::FuturePartner) {
+                    $partner = $member->name;
+                } else {
+                    $absent[] = $member->name;
+                }
+            }
+        }
+
+        if ($partner !== null) {
+            $warnings[] = sprintf(
+                'The future partner, %s, is in the cast and never in the premise. The premise ends on the '
+                .'departure and the outline reads the premise and nothing else, so it is not told who the '
+                .'narrator ends up with or where they come from. Place them before the departure — in the '
+                .'room for the betrayal, or already in the narrator\'s life.',
+                $partner,
+            );
+        }
+
+        if ($absent !== []) {
+            $warnings[] = sprintf(
+                'The premise never names %s, who %s in its cast. The outline reads the premise, not '
+                .'the cast beside it, and will name that person itself.',
+                implode(', ', $absent),
+                count($absent) === 1 ? 'is' : 'are',
+            );
+        }
+
+        $proseWords = array_diff($this->distinctiveWords($prose), $this->properNouns($prose));
+
+        $carried = [
+            'betrayal_scene' => 'the betrayal scene',
+            'antagonist_justification' => 'the justification',
+            'withheld_information' => 'what the narrator withholds and must produce in person',
+            'departure' => 'the departure',
+        ];
+
+        foreach ($carried as $field => $what) {
+            $text = $candidate->fields[$field];
+
+            if ($text === '') {
+                continue;
+            }
+
+            $words = array_diff($this->distinctiveWords($text), $this->properNouns($text));
+
+            if (count(array_intersect($proseWords, $words)) < 2) {
+                $warnings[] = sprintf(
+                    'The premise does not carry %s — it shares no specific language with that answer. '
+                    .'The outline reads the premise, not the answer beside it.',
+                    $what,
+                );
+            }
+        }
+
+        $ordinals = preg_match_all('/\b(first|second|third|fourth|last)\s+time\b/iu', $prose);
+        preg_match_all('/\b(19|20)\d{2}\b/u', $prose, $years);
+        $distinctYears = array_unique($years[0]);
+
+        if ($ordinals >= 2 || count($distinctYears) >= 2) {
+            $warnings[] = sprintf(
+                'The premise enumerates history (%s). A premise that lists earlier incidents gets them '
+                .'staged as whole acts — stories 29-32 opened "The first time... The second time..." '
+                .'and story 28 spent 13:15 staging 2015 and 2017. Tell one incident, now; anything '
+                .'earlier is one clause.',
+                $ordinals >= 2 ? 'the "first time / second time" shape' : 'the years '.implode(', ', $distinctYears),
+            );
+        }
+    }
+
+    /**
+     * The people this story names, as the outline declared them.
+     *
+     * Four findings, each its own repair:
+     *
+     *  - STRUCTURE (problem): no narrator, two antagonists, a name twice. The
+     *    act writer and the extractor are handed this list, so it has to be a
+     *    list they can use. The same sentences the outline stage refuses on,
+     *    from `OutlineCast`, because an operator can break it here by editing.
+     *  - OVER THE BUDGET (warning): each named person who appears in a scene is
+     *    a reference sheet. Priced from the rate card and the candidate count,
+     *    never typed here.
+     *  - A NAME A RECENT STORY USED (warning): the outline stage refuses this,
+     *    so on a generated cast it can only come from an edit at Gate 1.
+     *  - NAMED IN NO ACT SCRIPT (warning, only once scripts exist): exact, no
+     *    heuristic — any word of the name, whole-word, in any act. The narrator
+     *    is exempt, because a first-person narrator is often never named. The
+     *    future partner's version says why it matters: it is the measurement
+     *    item 5 waits on.
+     *
+     * UNCHECKED, said so it is not read as covered: whether the spine or the
+     * scripts name somebody who is NOT in the cast. Telling a person from a
+     * place in prose needs a proper-noun heuristic, and the census that found
+     * this defect counted "Chaozhou" and "Songyuan Machinery" as names. The
+     * extractor drops anyone undeclared and says so on its job row, which is
+     * the exact version of the same question, one stage later.
+     *
+     * @param  array<int, string>  $problems
+     * @param  array<int, string>  $warnings
+     * @return array<int, array{name: string, role: string, relationship: string, reused: ?string, unnamed_in_scripts: bool}>
+     */
+    private function checkCast(Story $story, array &$problems, array &$warnings, bool $olderAgeWarned): array
+    {
+        $members = OutlineCast::members($story->outline_cast);
+
+        if ($members === []) {
+            if ($story->outlined_before_cast) {
+                // Said once, and not on top of an older age's warning, which
+                // already says a regenerated outline is the repair for all of it.
+                if (! $olderAgeWarned) {
+                    $warnings[] = 'This outline was generated before it was asked for its cast. Measured on '
+                        .'the seven stories with a cast before the question existed, 76% of the '
+                        .'characters were named in the spine, the act writer added more, and casts ran 8 '
+                        .'to 13 with a reference sheet each. Re-generating the outline asks it; typing the '
+                        .'cast in here gets the ordinary checks back.';
+                }
+
+                return [];
+            }
+
+            $problems[] = 'The cast is missing. Every person this story names is declared by the outline '
+                .'before the spine: the act writer is handed that list as the people who exist, and the '
+                .'extractor describes those people and nobody else. Without it, the cast is whatever the '
+                .'scripts happen to name.';
+
+            return [];
+        }
+
+        foreach (OutlineCast::structuralProblems($members, $story->format) as $problem) {
+            $problems[] = 'Cast: '.$problem;
+        }
+
+        if (OutlineCast::budgetCount($members) > OutlineCast::maxNamed()) {
+            $perSheet = app(ReferenceRateCard::class)->usdPerImage() * app(EstimateCharacterSheets::class)->candidates();
+
+            $warnings[] = sprintf(
+                'The cast names %d people besides the narrator against a budget of %d. Every named person who appears in a '
+                .'scene needs a reference sheet, $%s each at the current candidate count, and a face that '
+                .'has to be picked and then held across every still they are in. Delete a row here, and '
+                .'refer to that person by who they are, if the story does not need their face.',
+                OutlineCast::budgetCount($members),
+                OutlineCast::maxNamed(),
+                number_format($perSheet, 2),
+            );
+        }
+
+        $reused = [];
+
+        foreach (OutlineCast::reused($members, $story) as $hit) {
+            $reused[OutlineCast::normalise($hit['name'])] = $hit['story'];
+
+            $warnings[] = sprintf(
+                '%s was already used by %s. A viewer who hears the same full name in two videos hears the '
+                .'same person. Rename them here — and in the act scripts, if they are already written.',
+                $hit['name'],
+                $hit['story'],
+            );
+        }
+
+        $scripts = $story->acts()->pluck('script')->filter(fn (?string $s): bool => trim((string) $s) !== '')->implode("\n");
+        $rows = [];
+
+        foreach ($members as $member) {
+            $unnamed = false;
+
+            if ($scripts !== '' && $member->name !== '' && $member->role !== CastRole::Narrator) {
+                $unnamed = ! $this->anyWordAppears($member->name, $scripts);
+
+                if ($unnamed) {
+                    $warnings[] = $member->role === CastRole::FuturePartner
+                        ? sprintf(
+                            '%s, the future partner, is named in no act script. Whether a named cast row '
+                            .'alone carries them into the acts is the measurement the separate partner '
+                            .'instruction is waiting on — this story says it did not.',
+                            $member->name,
+                        )
+                        : sprintf(
+                            '%s is in the cast and named in no act script. The extractor will be told to '
+                            .'describe them and will find nothing to describe; a renamed row that no longer '
+                            .'matches the scripts looks exactly like this.',
+                            $member->name,
+                        );
+                }
+            }
+
+            $rows[] = $member->toRow() + [
+                'reused' => $reused[OutlineCast::normalise($member->name)] ?? null,
+                'unnamed_in_scripts' => $unnamed,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /** Whether any word of a name (three letters or more) appears whole-word in the text. */
+    private function anyWordAppears(string $name, string $text): bool
+    {
+        foreach (preg_split('/\s+/u', trim($name)) ?: [] as $word) {
+            if (mb_strlen($word) >= 3 && preg_match('/\b'.preg_quote($word, '/').'\b/u', $text)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -544,6 +1042,197 @@ class ValidateOutlineSpine
     }
 
     /**
+     * The accomplice has a stake, talks in an act, and falls in public.
+     *
+     * -----------------------------------------------------------------------
+     * WHAT IS CHECKED, EACH ITS OWN REPAIR
+     * -----------------------------------------------------------------------
+     *
+     * 1. THE ACT IS NOT BUILT ON ORIENTATION (problem). `AccompliceArc::
+     *    codedTerms()`, the list `GenerateOutline` refuses on, so a generated
+     *    outline never reaches here with one and an operator's edit is
+     *    reported in the same words. A problem, not a warning: it is excluded,
+     *    not weak. Gate 1 problems do not block approval, which is why the
+     *    refusal at generation is the invariant and this is the report.
+     * 2. THE ACT HAS A LINE IN IT (warning). No quoted line means the act is
+     *    described and never spoken, which is the silent accomplice again in
+     *    a different coat — the "they do not need a line" motif this field
+     *    was built to end. Quote marks, straight or curly.
+     * 3. THE FALL IS A RUN, NOT ONE HUMILIATION (warning). Three sentences,
+     *    the reversal-beats check's rule one step stricter, because the
+     *    reference's twelve losses sit in four scenes.
+     * 4. THE FALL HAPPENS IN FRONT OF PEOPLE (warning). `AUDIENCE_MARKERS`.
+     * 5. THE FALL EXPOSES THE MOTIVE (warning, and a badge naming the motive
+     *    sentence it exposes). Overlap of two distinctive words with proper
+     *    nouns removed, because two paragraphs about one man share his name.
+     * 6. THE SPINE DESCRIBES AN ACCOMPLICE THE CAST DOES NOT DECLARE
+     *    (warning). The fields reach the act writer whatever the cast says.
+     *
+     * UNCHECKED, said so it is not read as covered: that the fall starts no
+     * earlier than the departure act (the field is a paragraph with no acts
+     * in it; the routing in the act prompt is what enforces the timing), that
+     * the narrator is in the scenes he loses in, and that the narrator sees
+     * through the act. And the act scripts are not scanned for coded terms —
+     * see AccompliceArc.
+     *
+     * @param  array<int, string>  $problems
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array<string, string>>  $spine
+     */
+    private function checkAccomplice(Story $story, array &$problems, array &$warnings, array &$spine, bool $declared): void
+    {
+        $fields = [];
+
+        foreach (AccompliceArc::FIELDS as $field) {
+            $fields[$field] = trim((string) $story->{$field});
+        }
+
+        if (implode('', $fields) === '') {
+            return;
+        }
+
+        foreach (AccompliceArc::codedTerms($fields) as $field => $terms) {
+            $problems[] = sprintf(
+                '%s builds the accomplice\'s act on orientation or on a manner mocked as unmanly: "%s". That '
+                .'is excluded. The device is a harmless ROLE the narrator sees through — the old friend, '
+                .'the loyal colleague, the considerate relative — and it needs none of it. Rewrite it here; '
+                .'a generated outline carrying it is refused.',
+                $spine[$field]['label'] ?? $field,
+                implode('", "', $terms),
+            );
+            $spine[$field]['state'] = 'weak';
+        }
+
+        if (! $declared) {
+            $warnings[] = 'The spine describes an accomplice and the cast declares none. The act writer is '
+                .'handed these fields whatever the cast says, so either give the person the accomplice '
+                .'role in the cast or empty the three accomplice fields.';
+        }
+
+        if ($fields['accomplice_performance'] !== '' && ! AccompliceArc::quotesALine($fields['accomplice_performance'])) {
+            $warnings[] = 'The accomplice\'s act has no line in it — it is described and never spoken. An '
+                .'accomplice who only stands there is the first reference\'s, and he was silent because he '
+                .'had no stake; this one has one. Quote something he says to the narrator in that voice.';
+            $spine['accomplice_performance']['state'] = 'weak';
+        }
+
+        $fall = $fields['accomplice_fall'];
+
+        if ($fall === '') {
+            return;
+        }
+
+        if (preg_match_all('/[.!?](?=\s|$)/u', $fall) < 3) {
+            $warnings[] = 'The accomplice\'s fall reads as one humiliation. It is a run of losses across the '
+                .'last three acts — the reference\'s accomplice loses about twelve times in four scenes — '
+                .'each costing him more than the last. Name at least three.';
+            $spine['accomplice_fall']['state'] = 'thin';
+        }
+
+        if ($this->wholeWordHits(mb_strtolower($fall), self::AUDIENCE_MARKERS) === []) {
+            $warnings[] = 'The accomplice\'s fall names nobody watching. His losses are her side losing in '
+                .'public; in private they are a conversation. Name who is in the room when he loses.';
+            $spine['accomplice_fall']['state'] = 'weak';
+        }
+
+        $motive = $fields['accomplice_motive'];
+
+        if ($motive === '') {
+            return;
+        }
+
+        $fallWords = array_diff($this->distinctiveWords($fall), $this->properNouns($fall));
+
+        foreach ($this->departureBeats($motive) as $label => $sentence) {
+            $motiveWords = array_diff($this->distinctiveWords($sentence), $this->properNouns($sentence));
+
+            if (count(array_intersect($fallWords, $motiveWords)) >= 2) {
+                $spine['accomplice_fall']['exposes'] = (string) $label;
+
+                return;
+            }
+        }
+
+        $warnings[] = 'The accomplice\'s fall never exposes his motive — it shares no specific language with '
+            .'what he wants. What the story exposes about him is his stake, in front of her; a fall that '
+            .'is only bad luck leaves the audience never learning why he was in the room. Name the moment '
+            .'his motive comes out, in its own words.';
+        $spine['accomplice_fall']['state'] = 'weak';
+    }
+
+    /**
+     * The narrator's running thought pays off in the refusal.
+     *
+     * Overlap again, with a twist the other overlap checks do not need: only
+     * words the THOUGHT has of its own count. A running joke about "family
+     * helps family" shares those words with the grievance, and so does every
+     * refusal, so matching on them would pass a refusal that never mentions
+     * the joke. The words the thought shares with any other spine field are
+     * removed first, and the refusal has to reach two of what is left.
+     *
+     * A thought with fewer than two words of its own is reported as that: a
+     * joke made entirely of the spine's words cannot be told apart from the
+     * spine, by this check or by a viewer.
+     *
+     * The badge names the refusal SENTENCE that pays it off.
+     *
+     * UNCHECKED: that the thought is tagged as a thought in the prose, planted
+     * in chapter one, or recurs between. Those are prose, and this reads the
+     * outline.
+     *
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array<string, string>>  $spine
+     */
+    private function checkRunningThought(Story $story, array &$warnings, array &$spine): void
+    {
+        $thought = trim((string) $story->running_thought);
+        $refusal = trim((string) $story->refusal);
+
+        if ($thought === '' || $refusal === '') {
+            return;
+        }
+
+        $elsewhere = [];
+
+        foreach ([
+            'narrator_grievance', 'antagonist_justification', 'betrayal_scene', 'withheld_information',
+            'exposure_moment', 'narrator_at_exposure', 'departure', 'reversal_beats',
+            ...AccompliceArc::FIELDS,
+        ] as $field) {
+            $elsewhere = array_merge($elsewhere, $this->distinctiveWords((string) $story->{$field}));
+        }
+
+        $own = array_values(array_diff(
+            $this->distinctiveWords($thought),
+            $this->properNouns($thought),
+            $elsewhere,
+        ));
+
+        if (count($own) < 2) {
+            $warnings[] = 'The running thought has almost nothing of its own — nearly every word of it is '
+                .'already in the spine. A private joke that pays off in the refusal needs its own specifics '
+                .'(a tally, a figure, a name the narrator privately gives someone), or neither this check '
+                .'nor a viewer can tell the payoff from the grievance.';
+            $spine['running_thought']['state'] = 'thin';
+
+            return;
+        }
+
+        foreach ($this->departureBeats($refusal) as $label => $sentence) {
+            if (count(array_intersect($own, $this->distinctiveWords($sentence))) >= 2) {
+                $spine['running_thought']['pays_off'] = (string) $label;
+
+                return;
+            }
+        }
+
+        $warnings[] = 'The refusal never pays off the running thought — it shares none of the thought\'s own '
+            .'words. The joke is planted in chapter one and said aloud once, in the refusal; without that '
+            .'line it is a running joke with no last time.';
+        $spine['running_thought']['state'] = 'weak';
+    }
+
+    /**
      * The betrayal is a scene: done in front of people, with the justification
      * said aloud to the narrator's face, in chapter one.
      *
@@ -556,7 +1245,9 @@ class ValidateOutlineSpine
      * kitchen table (28-32), the justification first staged in private, its
      * first public saying at 9-11 minutes or never before the exposure. The
      * reference stages it at 1:31 of 34:46, straight after the cold open, at a
-     * dinner of nine — and the man she is with never says a word.
+     * dinner of nine. (The man she is with never says a word there, because he
+     * is a schoolmate asked to pretend and has no stake; that was one variant,
+     * not the rule — see checkAccomplice() and CLAUDE.md 3g.)
      *
      * -----------------------------------------------------------------------
      * FOUR THINGS CHECKED, EACH ITS OWN REPAIR, ALL WARNINGS
@@ -569,7 +1260,10 @@ class ValidateOutlineSpine
      *    words — the refusal and hook checks' rule — and it records WHICH
      *    sentence is said aloud, because "she says something" is worth less in
      *    front of an approve button than the sentence she says.
-     * 3. IT IS NOT A DISCOVERY. `DISCOVERY_MARKERS`, negation-windowed.
+     * 3. IT IS NOT A DISCOVERY. `discoveryHits()`: a verb alone, or a piece
+     *    of evidence with somebody coming upon it in the same sentence,
+     *    negation-windowed. It has never caught a true case on real output —
+     *    see `DISCOVERY_MARKERS` before reading its silence as clean.
      * 4. ACT 1 CARRIES IT. The act script is written from the act summary, so a
      *    betrayal scene the outline describes and act 1's summary does not
      *    stage is a scene that will land at a banquet in act 2 — which is what
@@ -635,7 +1329,7 @@ class ValidateOutlineSpine
             }
         }
 
-        $found = $this->unnegatedHits($lower, self::DISCOVERY_MARKERS);
+        $found = $this->discoveryHits($lower);
 
         if ($found !== []) {
             $warnings[] = sprintf(
@@ -1047,6 +1741,149 @@ class ValidateOutlineSpine
     }
 
     /**
+     * Her last chance is tied to something that happened, and the jump is
+     * about a year.
+     *
+     * Two checks, both warnings, each its own repair:
+     *
+     *  1. ANCHORED. The chance she threw away has to be offered on a day the
+     *     story contains — the betrayal scene, an escalation beat, the
+     *     departure, a search attempt, the exposure, the refusal — or the
+     *     reveal is an invention the refusal act has nothing to hang on. By
+     *     overlap, with proper nouns removed, because the cast's names are in
+     *     every field and would pass any pair. The badge names WHICH moment.
+     *  2. ABOUT A YEAR. The operator's decision: her face is drawn from one
+     *     reference sheet at her age in the story and ageing texture is
+     *     refused, so a jump of five, ten or twenty years cannot be drawn. A
+     *     negation window in front, so "not twenty years, one" is the good case.
+     *
+     * UNCHECKED, said so it is not read as covered: that the offer is someone
+     * in the cast, that the narrator really never learned of it, and that the
+     * chapter's prose ends on the loss. Those are the chapter's, not the field's.
+     *
+     * @param  array<int, string>  $warnings
+     * @param  array<string, array<string, string>>  $spine
+     */
+    private function checkAntagonistRegret(Story $story, array &$warnings, array &$spine): void
+    {
+        $text = trim((string) $story->antagonist_regret);
+
+        if ($text === '') {
+            return;
+        }
+
+        // Written on a story whose ending is the narrator's new life: typed in
+        // at Gate 1, or left from an outline written before the ending was
+        // changed. It will not be asked for, and saying "the cast names no
+        // antagonist" here would send the operator to the wrong repair.
+        if ($story->ending !== null && ! $story->ending->asksForRegret()) {
+            $warnings[] = sprintf(
+                'The antagonist\'s regret is written, but this story\'s ending is %s, so the antagonist\'s '
+                .'chapter will not be asked for and the regret reaches no act. The two endings are '
+                .'exclusive; this field is the other one\'s material.',
+                mb_strtolower(StoryEnding::NewLife->label()),
+            );
+            $spine['antagonist_regret']['state'] = 'weak';
+
+            return;
+        }
+
+        if (AntagonistPointOfView::nameFor($story) === null) {
+            $warnings[] = 'The antagonist\'s regret is written, but the cast names no antagonist, so the '
+                .'closing chapter has no name to announce and will not be asked for. Add the antagonist to the cast.';
+            $spine['antagonist_regret']['state'] = 'weak';
+        }
+
+        foreach (self::LONG_JUMP_MARKERS as $pattern) {
+            if (! preg_match($pattern, $text, $m, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+
+            $before = substr($text, max(0, $m[0][1] - 45), min(45, $m[0][1]));
+
+            if (collect(self::NEGATIONS)->contains(
+                // Case-insensitive: "Not twenty years" opens a sentence, and the
+                // GREEN half of this check's pair went red on exactly that.
+                fn (string $negation): bool => (bool) preg_match('/\b'.preg_quote($negation, '/').'\b/iu', $before)
+            )) {
+                continue;
+            }
+
+            $warnings[] = sprintf(
+                'The antagonist\'s chapter jumps "%s" ahead. It is set about a year after the refusal, not '
+                .'longer: the face is drawn from one reference sheet at the age in the story, and ageing '
+                .'texture is refused, so a jump of years can only be shown through objects and would read '
+                .'as the same person a week later.',
+                $m[0][0],
+            );
+            $spine['antagonist_regret']['state'] = 'weak';
+
+            break;
+        }
+
+        // No refusal, nothing for the chapter to come after and nothing the
+        // chance can be the other side of. That absence is already reported —
+        // a missing field, or the older-outline warning — and a second finding
+        // about it is not one the operator can act on. The hook check returns
+        // early on a missing departure for the same reason.
+        if (trim((string) $story->refusal) === '') {
+            return;
+        }
+
+        // Scored on the CHANCE, not the year. The field is asked for in that
+        // order — the offer first, the year after it — and the badge says
+        // "offered on". The first version scored the whole field, and the fake
+        // outline's year-on sentence ("changed her number") out-voted the
+        // offer's own words and named the departure for a chance offered at
+        // the reception. A sentence that talks about the year or "later" is
+        // the second half; if nothing else is left, the whole field is used.
+        $chance = array_values(array_filter(
+            $this->splitter->split($text),
+            fn (string $sentence): bool => ! preg_match('/\b(year|years|later|since|now)\b/iu', $sentence),
+        ));
+        $scored = $chance === [] ? $text : implode(' ', $chance);
+
+        $own = array_values(array_diff($this->distinctiveWords($scored), $this->properNouns($scored)));
+
+        $moments = $this->earlierMoments($story) + [
+            'the departure' => (string) $story->departure,
+            'the search' => (string) $story->reversal_beats,
+            'the exposure' => (string) $story->exposure_moment,
+            'the refusal' => (string) $story->refusal,
+        ];
+
+        // The BEST match, not the first one to clear two words. checkRefusal
+        // reports the first, and CLAUDE.md 3e records what that costs: story
+        // 33's refusal answers the betrayal scene and the badge said "the
+        // grievance", because the grievance describes the same banquet and is
+        // earlier in the list. This check was first written that way too and
+        // named "the departure" for a chance offered at the refusal.
+        $best = null;
+        $bestShared = 1;
+
+        foreach ($moments as $label => $moment) {
+            $shared = count(array_intersect($own, $this->distinctiveWords($moment)));
+
+            if ($shared > $bestShared) {
+                $best = (string) $label;
+                $bestShared = $shared;
+            }
+        }
+
+        if ($best !== null) {
+            $spine['antagonist_regret']['anchored_in'] = $best;
+
+            return;
+        }
+
+        $warnings[] = 'The antagonist\'s last chance is not tied to anything the story contains — it shares no specific '
+            .'language with the betrayal scene, an escalation beat, the departure, the search, the exposure '
+            .'or the refusal. The reveal lands because it is the other side of a day the viewer saw. Name '
+            .'the day it was offered, in that moment\'s own words.';
+        $spine['antagonist_regret']['state'] = 'weak';
+    }
+
+    /**
      * Every act costs somebody more than the last, and none of them resolves
      * anything before the exposure.
      *
@@ -1274,14 +2111,12 @@ class ValidateOutlineSpine
                 // An act written before chapters existed, or one whose script
                 // has not been written yet. Neither is this check's business
                 // and both are reported elsewhere.
-                $number += $chapters->count();
+                $number += $chapters->reject(fn (Chapter $c): bool => $c->isPointOfView())->count();
 
                 continue;
             }
 
             foreach ($chapters as $index => $chapter) {
-                $number++;
-
                 $from = max(0, (int) $chapter->first_sentence - 1);
                 $next = $chapters[$index + 1] ?? null;
                 $to = $next === null
@@ -1289,6 +2124,29 @@ class ValidateOutlineSpine
                     : max($from, (int) $next->first_sentence - 1);
 
                 $window = array_slice($sentences, $from, max(1, $to - $from));
+
+                // Her chapter takes no number, the way the reference's "Extra"
+                // does not, so it neither consumes one nor is judged as one.
+                // Its announcement is the only marker that the "I" changed
+                // hands, so it is checked as strictly as a number.
+                if ($chapter->isPointOfView()) {
+                    if (! ChapterAnnouncement::announcesPointOfView((string) ($window[0] ?? ''), (string) $chapter->point_of_view)) {
+                        $warnings[] = sprintf(
+                            'Act %d, chapter %d ("%s") is told by %s and does not open by saying so — "%s". One '
+                            .'voice reads the whole video, so that sentence is the only thing telling the viewer '
+                            .'the "I" is not the narrator any more.',
+                            $act->sequence,
+                            $chapter->sequence,
+                            $chapter->title,
+                            $chapter->point_of_view,
+                            ChapterAnnouncement::pointOfViewSentence((string) $chapter->point_of_view),
+                        );
+                    }
+
+                    continue;
+                }
+
+                $number++;
 
                 // The one chapter whose announcement is NOT its first
                 // sentence, by contract: act 1 chapter 1 opens on the hook —
@@ -1299,6 +2157,141 @@ class ValidateOutlineSpine
 
                 $this->judgeAnnouncement($chapter, $act, $number, $window, $openerOnly, $warnings);
             }
+        }
+    }
+
+    /**
+     * The refusal act was asked to end on her chapter and did not.
+     *
+     * A warning, not a refusal at the act call: the act's shape is fine and
+     * the writer simply did not deliver the chapter, which is content, the way
+     * a chapter that never says its number is content. Refusing would bill the
+     * act again for a judgement the operator can make here. Silent on a story
+     * with no regret, and on a refusal act not yet written.
+     *
+     * @param  array<int, string>  $warnings
+     */
+    private function checkPointOfViewChapter(Story $story, array &$warnings): void
+    {
+        $name = AntagonistPointOfView::nameFor($story);
+
+        if ($name === null) {
+            return;
+        }
+
+        foreach ($story->acts()->where('phase', ActPhase::Refusal)->get() as $act) {
+            if (trim((string) $act->script) === '' || $act->chapters()->count() === 0) {
+                continue;
+            }
+
+            if (! $act->chapters()->whereNotNull('point_of_view')->exists()) {
+                $warnings[] = sprintf(
+                    'Act %d ends without %s\'s chapter. The outline asks for it — the last chance and a year '
+                    .'on, in %s\'s own voice — and the act came back with the narrator\'s chapters only. Rewriting '
+                    .'this act asks again.',
+                    $act->sequence,
+                    $name,
+                    $name,
+                );
+            }
+        }
+    }
+
+    /**
+     * The chosen ending against the cast and the act that carries it.
+     *
+     * Two findings, both warnings, each its own repair:
+     *
+     *  1. HER ENDING, AND A PARTNER IN THE CAST. The premise or the idea
+     *     promised who the narrator ends up with ("married her best friend"),
+     *     and on this ending the narrator's life after the refusal is seen only
+     *     from outside, in one fact the antagonist knows. Legal — the operator
+     *     may want exactly that — and worth saying before any act is bought,
+     *     because the title is written from the same promise.
+     *  2. THE NEW LIFE, A PARTNER IN THE CAST, AND THE LAST CHAPTER NEVER NAMES
+     *     THEM. The ending is where the partner is on screen; a final chapter
+     *     without them is the new-life ending written as "alone and fine" on a
+     *     story whose cast says otherwise. Any part of the name, whole-word, in
+     *     the refusal act's last narrator chapter. Silent until that act has
+     *     chapters.
+     *
+     * UNCHECKED, said so it is not read as covered: that the new-life ending is
+     * one scene rather than a list of numbers, and that it carries no report on
+     * the antagonist's year. Both are asked for in the prompt and nothing here
+     * can read a scene from a list. A story with NO ending is outlined before
+     * the choice existed, and the readout under the premise says so; the outline
+     * refuses a new one, so there is nothing to report.
+     *
+     * @param  array<int, string>  $warnings
+     */
+    private function checkEnding(Story $story, array &$warnings): void
+    {
+        if ($story->ending === null || $story->format !== StoryFormat::Single) {
+            return;
+        }
+
+        $partner = null;
+
+        foreach (OutlineCast::members($story->outline_cast) as $member) {
+            if ($member->role === CastRole::FuturePartner && trim($member->name) !== '') {
+                $partner = trim($member->name);
+
+                break;
+            }
+        }
+
+        if ($partner === null) {
+            return;
+        }
+
+        if ($story->ending === StoryEnding::AntagonistVoice) {
+            $warnings[] = sprintf(
+                'The cast names a future partner, %s, and the ending is the antagonist\'s chapter. On that '
+                .'ending the narrator\'s life after the refusal is seen only from outside, in one fact the '
+                .'antagonist knows — so %s is never on screen at the end. If the premise promised them, '
+                .'that promise is unpaid, and the title is written from the same premise.',
+                $partner,
+                $partner,
+            );
+
+            return;
+        }
+
+        $refusal = $story->acts()->where('phase', ActPhase::Refusal)->first();
+
+        if ($refusal === null || trim((string) $refusal->script) === '') {
+            return;
+        }
+
+        // reorder(), not orderByDesc(): the relation already orders by sequence
+        // ascending, and an orderByDesc() appended after it is a secondary sort
+        // that changes nothing — the first version of this check read the
+        // act's FIRST chapter as its last, and the RED case named the wrong one.
+        $last = $refusal->chapters()->whereNull('point_of_view')->reorder('sequence', 'desc')->first();
+
+        if ($last === null) {
+            return;
+        }
+
+        $sentences = $this->splitter->split((string) $refusal->script);
+        $next = $refusal->chapters()->where('sequence', '>', $last->sequence)->orderBy('sequence')->first();
+        $end = $next !== null ? $next->first_sentence - 1 : count($sentences);
+        $text = mb_strtolower(implode(' ', array_slice($sentences, $last->first_sentence - 1, max(0, $end - $last->first_sentence + 1))));
+
+        $named = collect(preg_split('/\s+/u', mb_strtolower($partner)) ?: [])
+            ->filter(fn (string $token): bool => mb_strlen($token) >= 2)
+            ->contains(fn (string $token): bool => (bool) preg_match('/\b'.preg_quote($token, '/').'\b/u', $text));
+
+        if (! $named) {
+            $warnings[] = sprintf(
+                'The ending is the narrator\'s new life and the cast names a future partner, %s, but act %d\'s '
+                .'last chapter ("%s") never names them. That chapter is where they are on screen; without '
+                .'them it is the alone-and-fine ending on a story whose cast says otherwise. Rewriting '
+                .'this act asks again.',
+                $partner,
+                $refusal->sequence,
+                $last->title,
+            );
         }
     }
 
@@ -1528,6 +2521,28 @@ class ValidateOutlineSpine
     }
 
     /**
+     * The discovery markers in a betrayal scene: verbs alone, evidence only
+     * with a finder in its sentence. Both behind the negation window. See
+     * `DISCOVERY_MARKERS` for why, and for what this has never caught.
+     *
+     * @return array<int, string>
+     */
+    private function discoveryHits(string $lower): array
+    {
+        $hits = $this->unnegatedHits($lower, self::DISCOVERY_MARKERS);
+
+        foreach (preg_split('/(?<=[.!?])\s+/u', $lower) ?: [] as $sentence) {
+            if ($this->wholeWordHits($sentence, self::DISCOVERY_FINDERS) === []) {
+                continue;
+            }
+
+            array_push($hits, ...$this->unnegatedHits($sentence, self::DISCOVERY_EVIDENCE));
+        }
+
+        return array_values(array_unique($hits));
+    }
+
+    /**
      * @param  array<int, string>  $markers
      * @return array<int, string>
      */
@@ -1540,7 +2555,7 @@ class ValidateOutlineSpine
     }
 
     /**
-     * @return array<string, array{label: string, why: string, later?: bool, asked_later?: bool, betrayal_later?: bool}>
+     * @return array<string, array{label: string, why: string, later?: bool, asked_later?: bool, betrayal_later?: bool, arc_later?: bool, needs_accomplice?: bool}>
      */
     private function fields(): array
     {
@@ -1570,6 +2585,25 @@ class ValidateOutlineSpine
                 'why' => 'This is the engine of the format. The audience stays for thirty-five minutes '
                     .'because someone is being unreasonable and believes they are being fair.',
             ],
+            // The accomplice's three (3g). `needs_accomplice`: empty is right
+            // on a cast with no accomplice. `arc_later`: absent on every story
+            // outlined before the fields existed.
+            'accomplice_motive' => [
+                'label' => 'Accomplice — what he wants',
+                'needs_accomplice' => true,
+                'arc_later' => true,
+                'why' => 'His own stake, which she does not know. The first reference\'s accomplice never '
+                    .'speaks because he has none — a schoolmate asked to pretend. The Lydia reference\'s '
+                    .'wants the company shares, talks from 1:28, and is exposed for it at 23:06.',
+            ],
+            'accomplice_performance' => [
+                'label' => 'Accomplice — the act he puts on',
+                'needs_accomplice' => true,
+                'arc_later' => true,
+                'why' => 'The harmless role he plays so that she defends him, and a line he says to the '
+                    .'narrator in that voice. The narrator sees through it in their head. Built on a role, '
+                    .'never on orientation or a manner mocked as unmanly.',
+            ],
             'betrayal_scene' => [
                 'label' => 'Betrayal scene',
                 // Absent on every story outlined before the field existed —
@@ -1580,7 +2614,7 @@ class ValidateOutlineSpine
                     .'watching, the person it is done with standing there, the justification said '
                     .'aloud to the narrator\'s face, and the narrator\'s line back. Seven stories found '
                     .'their betrayal or heard it in private; the reference stages it at 1:31, at a '
-                    .'dinner of nine, and the other man never says a word.',
+                    .'dinner of nine. An accomplice with a stake of his own speaks in it, in his act.',
             ],
             'withheld_information' => [
                 'label' => 'Withheld information',
@@ -1620,12 +2654,37 @@ class ValidateOutlineSpine
                     .'humiliation beats running the other way, escalating the same. Without them the '
                     .'middle of the reversal is empty and the refusals are unearned.',
             ],
+            'accomplice_fall' => [
+                'label' => 'Accomplice — his fall',
+                'needs_accomplice' => true,
+                'arc_later' => true,
+                'why' => 'A run of public losses across the last three acts, not one humiliation, ending '
+                    .'with his motive out in front of her and him worse off than she is. The reference\'s '
+                    .'accomplice loses about twelve times in four scenes. Her side losing, not the narrator '
+                    .'winning early.',
+            ],
+            'running_thought' => [
+                'label' => 'Running thought',
+                'arc_later' => true,
+                'why' => 'The narrator\'s one private joke: planted in chapter one, recurring as a tagged '
+                    .'thought, said aloud once in the refusal. The refusal act only sees summaries of the '
+                    .'acts before it, so without this field it cannot know what act 1 planted.',
+            ],
             'refusal' => [
                 'label' => 'Refusal',
                 'later' => true,
                 'why' => 'What the narrator says when the antagonist reaches them after the exposure, '
                     .'and which earlier moment it answers. The exposure is the public payoff; this is '
                     .'the private one, and it is what viewers wait forty minutes for.',
+            ],
+            'antagonist_regret' => [
+                'label' => 'The antagonist\'s last chance, and a year on',
+                'regret_later' => true,
+                'her_ending_only' => true,
+                'why' => 'The closing chapter is told by the antagonist, about a year after the refusal: '
+                    .'the chance to put it right that somebody offered and the antagonist threw away, which '
+                    .'the narrator never saw, and what the year looks like from inside that life. The '
+                    .'reference\'s ending is hers, and it is the part the audience waited for.',
             ],
         ];
     }

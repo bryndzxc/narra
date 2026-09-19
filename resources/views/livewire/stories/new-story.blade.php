@@ -4,13 +4,33 @@
     @endif
 
     <div class="panel">
-        <label for="premise">Premise</label>
+        {{-- A premise or an idea. An idea is a draft that queues nothing; the
+             premises are written from it on Gate 1, three per roll, and picked
+             there. Single narratives only: an anthology premise is a different
+             shape nothing here has been built for. --}}
+        @if ($format !== 'anthology')
+            <label>Start from</label>
+            <div class="actions mt-1">
+                <label class="small"><input type="radio" wire:model.live="startFrom" value="premise"> A premise I have written</label>
+                <label class="small"><input type="radio" wire:model.live="startFrom" value="idea"> An idea &mdash; write three premises from it on Gate 1</label>
+            </div>
+            @error('startFrom') <div class="alert err mt-3">{{ $message }}</div> @enderror
+        @endif
+
+        <label class="mt-6" for="premise">{{ $startFrom === 'idea' && $format !== 'anthology' ? 'Idea' : 'Premise' }}</label>
         <div class="muted small" style="margin:0 0 8px">
-            The one thing this app will not write for you. A situation, and what goes wrong in it &mdash;
-            the outline is generated from these sentences and every act is written against that outline.
-            Write it for a US audience: US settings, US names, imperial units, American spelling. A
-            denylist runs on every generated act and fails the job loudly rather than passing Filipino
-            idiom through to Gate 1.
+            @if ($startFrom === 'idea' && $format !== 'anthology')
+                A line is enough: who, what they did, and where. The generator writes three premises from it
+                that follow everything this channel has learned about how the genre opens, and runs the
+                Gate 1 checks on each before you see them. If your idea is revenge-shaped, it says so and
+                says what it became &mdash; this genre does not do revenge.
+            @else
+                The one thing this app will not write for you. A situation, and what goes wrong in it &mdash;
+                the outline is generated from these sentences and every act is written against that outline.
+                Write it for a US audience: US settings, US names, imperial units, American spelling. A
+                denylist runs on every generated act and fails the job loudly rather than passing Filipino
+                idiom through to Gate 1.
+            @endif
         </div>
         <textarea id="premise" rows="6" wire:model.blur="premise"
                   placeholder="My younger brother and his wife moved into our late mother's house without asking&hellip;"></textarea>
@@ -72,38 +92,35 @@
         </div>
 
         {{--
-            THE NARRATOR, STATED WHERE THE STORY IS MADE.
+            THE NARRATOR, CHOSEN BY WHO THEY ARE, NOT BY VOICE.
 
-            Not a picker. A channel keeps one narrator across every video, which
-            is why `voice_id` is stored per story rather than read from config at
-            synthesis time — a dropdown here would invite a per-story choice on
-            the one axis meant to be constant, before there is a script to choose
-            for. `voices:list --set` is the deliberate move and it validates
-            against the account.
+            One voice per narrator gender, fixed for the channel (CLAUDE.md,
+            Voice). The question is who narrates, and the table answers which
+            voice; a voice dropdown would invite a per-story pick on the one
+            axis meant to be constant. Required with no default, because the
+            default was the trap: story 33, a woman narrating, was created on
+            the male voice and caught only by a person reading it.
 
-            It is PRINTED because the alternative has already been paid for
-            twice. `narrator-us-01`, a string the fake synthesizer invented, sat
-            on every story in the database for a phase with no screen anywhere
-            disagreeing with it. Then the default was null, and story 23 reached
-            a paid dispatch with no narrator at all — 257 identical refusals, one
-            per scene, after 256 stills were bought. A default written silently
-            is a value nobody chose and nobody can find later, whichever value
-            it is.
+            It is PRINTED because a value nobody can see is a value nobody
+            chose — `narrator-us-01` sat on every story for a phase, and a null
+            default cost story 23 257 refusals after 256 stills were bought.
+            The premise generator reads the same choice back from the voice.
         --}}
         <div class="row mt-6">
             <div>
                 <label>Narrator</label>
+                <div class="actions mt-1">
+                    @foreach (\App\Support\NarratorVoice::GENDERS as $gender)
+                        <label class="small">
+                            <input type="radio" wire:model.live="narratorGender" value="{{ $gender }}">
+                            {{ \App\Support\NarratorVoice::label($gender) }}
+                        </label>
+                    @endforeach
+                </div>
+                @error('narratorGender') <div class="alert err mt-3">{{ $message }}</div> @enderror
                 @if ($this->narrator()['voice_id'] === null)
-                    {{-- Legal, and loud. GenerateSceneNarration refuses without
-                         one and the dispatch preflight refuses before that, so
-                         nothing is silently broken — but this story will need a
-                         voice set by hand before it can be narrated, and this is
-                         the only screen that can say so in advance. --}}
-                    <div class="alert warn wide">
-                        No narrator is configured, so this story will be created without one and cannot
-                        be narrated until it has a voice. Set the channel's default in
-                        <span class="mono">providers.default_voice_id</span>, or assign one per story with
-                        <span class="mono">php artisan voices:list --set=&lt;story&gt; --voice=&lt;id&gt;</span>.
+                    <div class="muted small mt-1" style="max-width:52ch">
+                        Picks the voice: one per narrator gender, the same for every story on the channel.
                     </div>
                 @else
                     <div>
@@ -135,6 +152,13 @@
                     </div>
                 @endif
             </div>
+        </div>
+
+        <div class="row mt-6">
+            <x-ending-picker model="ending"
+                             :recent="$this->recentEndings()['rows']"
+                             :streak="$this->recentEndings()['streak']"
+                             :anthology="$format === 'anthology'" />
         </div>
 
         <div class="row mt-6">
@@ -175,6 +199,22 @@
          exactly the same. --}}
     <x-worker-health :queues="[$this->workers()]" :compact="true" />
 
+    @if ($startFrom === 'idea' && $format !== 'anthology')
+    <div class="panel money">
+        <label>What this spends</label>
+        <div class="small mt-3" style="max-width:78ch">
+            <strong>Nothing.</strong> This creates the draft and queues nothing. On Gate 1, each roll of
+            three premises is one billed call; the outline is a separate press after you pick one.
+        </div>
+        <table class="mt-3">
+            <tbody>
+            @foreach (app(\App\Support\ModelRoster::class)->lines(['generate_premises']) as $line)
+                <tr><td class="mono small muted">{{ $line }}</td></tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+    @else
     <div class="panel money">
         <label>What this spends</label>
         <table class="mt-3">
@@ -256,9 +296,17 @@
             where 150&ndash;250 stills are roughly 70% of a video's cost.
         </div>
     </div>
+    @endif
 
     <div class="actions">
-        @if (! $confirming)
+        @if ($startFrom === 'idea' && $format !== 'anthology')
+            {{-- One press: creating a draft spends nothing, so there is no bill
+                 to confirm. The spending press is on Gate 1. --}}
+            <button type="button" class="primary" wire:click="create">
+                Create the draft
+            </button>
+            <span class="muted small">Queues nothing. Premises are written from Gate 1.</span>
+        @elseif (! $confirming)
             <button type="button" class="primary" wire:click="askToCreate">
                 Write this story
             </button>

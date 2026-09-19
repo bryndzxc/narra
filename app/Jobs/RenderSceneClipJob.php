@@ -3,8 +3,10 @@
 namespace App\Jobs;
 
 use App\Actions\RenderSceneClip;
+use App\Enums\FailureKind;
 use App\Enums\RenderStage;
 use App\Exceptions\FfmpegException;
+use App\Exceptions\PipelineFailure;
 use App\Models\RenderJob;
 use App\Models\Scene;
 use App\Models\Story;
@@ -73,8 +75,9 @@ class RenderSceneClipJob extends RenderStageJob
          * is the proxy-for-the-real-thing shape this project keeps finding.
          */
         if ($expected === null) {
-            throw new RuntimeException(
-                "Scene {$scene->sequence} has no audio duration, so its frame count is unknowable."
+            throw new PipelineFailure(
+                "Scene {$scene->sequence} has no audio duration, so its frame count is unknowable.",
+                FailureKind::NarrationMissing,
             );
         }
 
@@ -236,13 +239,13 @@ class RenderSceneClipJob extends RenderStageJob
         try {
             $stream = $ffmpeg->inspect($path)['stream'] ?? [];
         } catch (FfmpegException $e) {
-            throw new RuntimeException(sprintf(
+            throw new PipelineFailure(sprintf(
                 "Scene %d's still is not a decodable image: %s
 %s",
                 $scene->sequence,
                 $scene->image_path,
                 Str::limit($e->getMessage(), 400)
-            ), 0, $e);
+            ), FailureKind::UndecodableStill, [], $e);
         }
 
         // Zero, not absent. ffprobe exits 0 on a file whose PNG signature is
@@ -250,13 +253,13 @@ class RenderSceneClipJob extends RenderStageJob
         // dimensions, not as an error code. Checking for the keys alone would
         // wave exactly the file this guard exists for straight through.
         if ((int) ($stream['width'] ?? 0) < 1 || (int) ($stream['height'] ?? 0) < 1) {
-            throw new RuntimeException(sprintf(
+            throw new PipelineFailure(sprintf(
                 "Scene %d's still probes as %sx%s, so it holds no decodable image: %s",
                 $scene->sequence,
                 $stream['width'] ?? '?',
                 $stream['height'] ?? '?',
                 $scene->image_path
-            ));
+            ), FailureKind::UndecodableStill);
         }
     }
 

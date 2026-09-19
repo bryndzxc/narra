@@ -5,6 +5,7 @@ namespace App\Services\Claude;
 use Anthropic\Client;
 use App\Enums\CostCategory;
 use App\Enums\CostUnit;
+use App\Enums\FailureKind;
 use App\Actions\RecordProviderCost;
 use App\Models\RenderJob;
 use App\Models\Story;
@@ -123,7 +124,7 @@ trait TalksToClaude
      * truncation path had no test because building a StreamedMessage meant
      * consuming a real one; see StreamedMessage::of().
      *
-     * @param  array{model: string, effort: string|null, max_tokens: int, truncation_remedy?: string}  $config
+     * @param  array{model: string, effort: string|null, max_tokens: int}  $config
      * @return array{0: string, 1: ProviderUsage}
      */
     private function settle(StreamedMessage $message, string $operation, array $config): array
@@ -136,18 +137,31 @@ trait TalksToClaude
         if ($message->stopReason === 'refusal') {
             $ledger = $this->recordFailedCallSpend($message, $operation, $config);
 
-            throw new ScriptWriterException(sprintf(
-                '%s was declined by the model (%s). Rework the premise at Gate 1. %s',
-                $operation,
-                $message->stopReasonCategory ?? 'no category given',
-                $ledger,
-            ));
+            // What to do about a decline depends on which input was declined,
+            // and only the outline has one the operator controls. That is
+            // FailureRemedy's to say at display time; it used to say "Rework
+            // the premise at Gate 1" here for every operation, including the
+            // ones built from text the gates had already approved.
+            throw new ScriptWriterException(
+                sprintf(
+                    '%s was declined by the model (%s). %s',
+                    $operation,
+                    $message->stopReasonCategory ?? 'no category given',
+                    $ledger,
+                ),
+                kind: FailureKind::ModelDeclined,
+                facts: ['operation' => $operation],
+            );
         }
 
         if ($message->stopReason === 'max_tokens') {
             $ledger = $this->recordFailedCallSpend($message, $operation, $config);
 
-            throw new ScriptWriterException($this->truncationMessage($operation, $config).' '.$ledger);
+            throw new ScriptWriterException(
+                $this->truncationMessage($operation, $config).' '.$ledger,
+                kind: FailureKind::Truncated,
+                facts: ['operation' => $operation],
+            );
         }
 
         return [$message->text, $this->priceUsage($message, $operation, $config)];
@@ -197,6 +211,46 @@ trait TalksToClaude
      * Same shape as the truncated outline calls this trait already exists to
      * fix: a call that happened and left no row. Non-negotiable #4.
      */
+    /**
+     * Refuse what a billed call returned: write its cost row, then throw.
+     *
+     * For the refusals the WRITER makes after a call that finished normally —
+     * a response that is not JSON, an outline with no acts, an act with no
+     * text, a cast of nobody, no scenes. Until 2026-09-19 each of these threw
+     * a bare exception with the usage still in a local variable, so the call
+     * was billed by the vendor and never reached `cost_entries` — the
+     * non-negotiable #4 gap this trait already closed for truncations and
+     * declines, left open for the five places that throw after `settle()`.
+     * The writer's own comments name the hazard ("throwing inside the provider
+     * loses the cost row") beside the checks it moved to the Actions; these
+     * five stayed behind because the Action never sees an empty result.
+     *
+     * The kind is the outline's for the outline and the family's for every
+     * other stage, so FailureRemedy offers the move that runs it again, with
+     * its outcome said to be unmeasured. The operation travels as a fact, so
+     * the stage can be named where no row supplies it (a terminal run).
+     *
+     * @param  array<string, scalar>  $facts  more facts for the row, such as the act
+     * @param  ProviderUsage  ...$alsoBilled  earlier attempts on the same act
+     *                                        that would otherwise die with this exception (a discarded scene draft)
+     */
+    private function refuseOutput(string $what, string $check, ProviderUsage $usage, array $facts = [], ProviderUsage ...$alsoBilled): never
+    {
+        foreach ($alsoBilled as $earlier) {
+            $this->recordSpendWithNoAction($earlier, $earlier->operation);
+        }
+
+        $ledger = $this->recordSpendWithNoAction($usage, $usage->operation);
+
+        $outline = $usage->operation === 'generate_outline';
+
+        throw new ScriptWriterException(
+            $what.' '.$ledger,
+            kind: $outline ? FailureKind::OutlineRefused : FailureKind::OutputRefused,
+            facts: ['check' => $check, 'operation' => $usage->operation] + $facts,
+        );
+    }
+
     private function recordSpendWithNoAction(ProviderUsage $usage, string $operation): string
     {
         $bill = sprintf(
@@ -268,27 +322,21 @@ trait TalksToClaude
      * An operation with no remedy configured says so plainly and stops. Inventing
      * a plausible generic one is exactly how the old message read.
      *
-     * @param  array{model: string, effort: string|null, max_tokens: int, truncation_remedy?: string}  $config
+     * @param  array{model: string, effort: string|null, max_tokens: int}  $config
      */
     private function truncationMessage(string $operation, array $config): string
     {
-        $remedy = trim((string) ($config['truncation_remedy'] ?? ''));
-
+        // Facts only: the ceiling, the model, the bill. The remedy used to be
+        // appended from config here, which froze the advice of the day into a
+        // row read long afterwards — and the advice has already been rewritten
+        // twice. FailureRemedy reads `truncation_remedy` from config when the
+        // page is read, and says "No known repair." where there is none.
         return sprintf(
             '%s hit its %s-token output ceiling on %s and was truncated mid-response. The response '
-            .'is not salvageable and the call was billed in full, at the ceiling. %s',
+            .'is not salvageable and the call was billed in full, at the ceiling.',
             $operation,
             number_format((int) $config['max_tokens']),
             $config['model'],
-            $remedy !== ''
-                ? $remedy
-                : sprintf(
-                    'No truncation_remedy is configured for this operation, so there is no advice '
-                    .'here that is known to apply to it — add one beside max_tokens in '
-                    .'config/providers.php -> anthropic.operations.%s rather than assuming another '
-                    ."stage's lever works on this one.",
-                    $operation,
-                ),
         );
     }
 
@@ -305,17 +353,15 @@ trait TalksToClaude
      * scene fallback re-runs the same request somewhere else without the
      * operation having two entries in config.
      *
-     * The remedy travels with the ceiling. It did not for a phase: this method
-     * returned model, effort and max_tokens and dropped `truncation_remedy` on
-     * the floor, so the message shipped on story 28 said "No truncation_remedy
-     * is configured for this operation" while config/providers.php carried a
-     * six-line one for it. The test that asserts every operation has a remedy
-     * reads config directly and stayed green throughout — the builder was
-     * correct and the value never reached it, which is `truncationMessage()`'s
-     * own founding defect one key over.
+     * The truncation remedy does NOT travel from here any more. For a phase it
+     * rode along with the ceiling into the thrown message (story 28's message
+     * said "No truncation_remedy is configured" because this method once
+     * dropped it). Since 2026-09-17 the message holds facts only and the page
+     * reads `truncation_remedy` from config at display time, through the
+     * exception's kind — see FailureRemedy::truncation().
      *
      * @param  array<string, mixed>|null  $override
-     * @return array{model: string, effort: string|null, max_tokens: int, truncation_remedy: string|null}
+     * @return array{model: string, effort: string|null, max_tokens: int}
      */
     private function operationConfig(string $operation, ?array $override = null): array
     {
@@ -340,7 +386,6 @@ trait TalksToClaude
             'model' => (string) ($override['model'] ?? $config['model']),
             'effort' => $override['effort'] ?? ($config['effort'] ?? null),
             'max_tokens' => (int) ($override['max_tokens'] ?? $config['max_tokens']),
-            'truncation_remedy' => $override['truncation_remedy'] ?? ($config['truncation_remedy'] ?? null),
         ];
     }
 
@@ -418,6 +463,14 @@ trait TalksToClaude
             usdCost: round($usd, 6),
             detail: [
                 'model' => $config['model'],
+                // Why the call stopped, and at what effort. Added 2026-09-19
+                // so a truncation leaves a mark that outlives its job row: a
+                // re-run resets the row, and a render purges the archive, but
+                // nothing deletes a cost row. Gate 1 reads `max_tokens` here.
+                // The effort was missing for a phase, which is why the
+                // ceiling analysis of stories 22-37 had to infer it by date.
+                'stop_reason' => $message->stopReason,
+                'effort' => $config['effort'],
                 'input_tokens' => $input,
                 'output_tokens' => $output,
                 'cache_write_tokens' => $cacheWrite,
@@ -452,7 +505,7 @@ trait TalksToClaude
      *
      * See `ModelText` for what is undone and, more importantly, what is not.
      */
-    private function decodeJson(string $content, string $what): array
+    private function decodeJson(string $content, string $what, ProviderUsage $usage): array
     {
         // Not archived here any more. The archive is written in settle(), before
         // the stop-reason checks, because archiving at the decode step meant
@@ -462,11 +515,15 @@ trait TalksToClaude
         $decoded = json_decode($content, true);
 
         if (! is_array($decoded)) {
-            throw new ScriptWriterException(sprintf(
-                'The %s response was not the JSON its schema required: %s',
-                $what,
-                Str::limit($content, 300)
-            ));
+            $this->refuseOutput(
+                sprintf(
+                    'The %s response was not the JSON its schema required: %s',
+                    $what,
+                    Str::limit($content, 300)
+                ),
+                'malformed_response',
+                $usage,
+            );
         }
 
         [$decoded, $undoubled] = ModelText::undouble($decoded);

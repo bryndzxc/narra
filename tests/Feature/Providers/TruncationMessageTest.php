@@ -40,6 +40,8 @@ use Tests\TestCase;
  */
 class TruncationMessageTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\RefreshDatabase;
+
     /**
      * The ANTHROPIC_* env vars config/providers.php actually reads, taken from
      * the file rather than retyped here.
@@ -64,32 +66,41 @@ class TruncationMessageTest extends TestCase
         return array_values(array_unique($matches[1]));
     }
 
-    /** Every operation has a remedy, so none falls back to the generic text. */
-    public function test_every_operation_carries_its_own_remedy(): void
+    /**
+     * Every operation DECLARES its remedy, and a declared null means none is
+     * known.
+     *
+     * The key must exist so that "nobody wrote one" and "nothing is known" are
+     * different states in config. Only a measured remedy is a string; the page
+     * renders "No known repair." for null.
+     */
+    public function test_every_operation_declares_its_remedy_or_declares_none_is_known(): void
     {
         foreach ($this->operations() as $operation => $config) {
             $this->assertArrayHasKey(
                 'truncation_remedy',
                 $config,
-                "Operation '{$operation}' has a ceiling and no advice about hitting it. Add a "
-                .'truncation_remedy beside its max_tokens.',
+                "Operation '{$operation}' has a ceiling and says nothing about hitting it. Add a "
+                .'truncation_remedy beside its max_tokens: the measured repair, or null for none known.',
             );
-            $this->assertNotSame('', trim((string) $config['truncation_remedy']));
+
+            $remedy = $config['truncation_remedy'];
+            $this->assertTrue(
+                $remedy === null || (is_string($remedy) && trim($remedy) !== ''),
+                "'{$operation}': a remedy is a measured sentence or null, never an empty string.",
+            );
         }
     }
 
     /**
-     * RED, as the shipped string.
-     *
-     * The exact sentence that fired on story 23, asserted against the whole
-     * roster: no operation may name a variable this app does not read.
+     * RED, as the shipped string: no remedy names a variable this app does not
+     * read. RemediesNameRealKnobsTest checks every string in the app for the
+     * same thing; this one is kept beside the defect it was written for.
      */
     public function test_no_remedy_names_an_env_var_that_does_not_exist(): void
     {
         foreach ($this->operations() as $operation => $config) {
-            $message = $this->message($operation, $config);
-
-            preg_match_all('/\bANTHROPIC_[A-Z_]+\b/', $message, $matches);
+            preg_match_all('/\bANTHROPIC_[A-Z_]+\b/', (string) ($config['truncation_remedy'] ?? ''), $matches);
 
             foreach ($matches[0] as $named) {
                 $this->assertContains(
@@ -103,86 +114,67 @@ class TruncationMessageTest extends TestCase
         }
     }
 
-    /** And each names its OWN, not a neighbour's. */
-    public function test_each_remedy_names_the_variable_that_controls_it(): void
+    /**
+     * The two measured remedies are the two that exist, and each names its OWN
+     * stage's variables.
+     *
+     * This used to require every operation to name its ceiling variable, which
+     * pushed seven remedies toward "raise ANTHROPIC_MAX_TOKENS_*" — advice
+     * CLAUDE.md records as backwards. A remedy is only written where a
+     * truncation was traced to a cause.
+     */
+    public function test_only_the_measured_remedies_exist_and_each_names_its_own_levers(): void
     {
-        $expected = [
-            'generate_outline' => 'ANTHROPIC_MAX_TOKENS_OUTLINE',
-            'generate_act_script' => 'ANTHROPIC_MAX_TOKENS_ACT_SCRIPT',
-            'extract_characters' => 'ANTHROPIC_MAX_TOKENS_CHARACTERS',
-            'draft_scenes' => 'ANTHROPIC_MAX_TOKENS_SCENES',
-            'generate_titles' => 'ANTHROPIC_MAX_TOKENS_TITLES',
-            'generate_copy' => 'ANTHROPIC_MAX_TOKENS_METADATA_COPY',
-            'generate_tags' => 'ANTHROPIC_MAX_TOKENS_TAGS',
+        $measured = [
+            'generate_outline' => 'ANTHROPIC_EFFORT_OUTLINE',
+            'draft_scenes' => 'ANTHROPIC_EFFORT_SCENES_FALLBACK',
         ];
 
-        foreach ($expected as $operation => $var) {
-            $this->assertStringContainsString(
-                $var,
-                $this->message($operation, $this->operations()[$operation]),
-                "'{$operation}' does not name the ceiling variable that controls it.",
-            );
+        foreach ($this->operations() as $operation => $config) {
+            if (isset($measured[$operation])) {
+                $this->assertStringContainsString($measured[$operation], (string) $config['truncation_remedy']);
+            } else {
+                $this->assertNull(
+                    $config['truncation_remedy'],
+                    "'{$operation}' carries a remedy nothing has measured. If a truncation on this stage "
+                    .'has been traced to a cause, write that; otherwise it stays null and the page says '
+                    .'"No known repair."',
+                );
+            }
         }
     }
 
     /**
      * The outline is not offered the act script's lever.
      *
-     * This is the shipped defect stated as an assertion. The phrase is the one
-     * the old message used, and only the stage that HAS a per-act word target
-     * is allowed to name it as its own.
+     * The shipped defect stated as an assertion, on the remedy the page shows.
      */
     public function test_the_outline_is_not_told_to_lower_a_word_target_it_does_not_have(): void
     {
-        $message = $this->message('generate_outline', $this->operations()['generate_outline']);
+        $remedy = (string) $this->operations()['generate_outline']['truncation_remedy'];
 
         $this->assertStringContainsString(
             'no per-act word target',
-            $message,
+            $remedy,
             'The outline stage must say plainly that this lever is not its own — it was sent '
             .'looking for one for a whole phase.',
         );
-
-        foreach (['extract_characters', 'draft_scenes', 'generate_titles', 'generate_copy', 'generate_tags'] as $operation) {
-            $this->assertStringNotContainsString(
-                'lower the per-act word target',
-                $this->message($operation, $this->operations()[$operation]),
-                "'{$operation}' is offered the act-script stage's lever.",
-            );
-        }
     }
 
     /**
-     * GREEN, and as close to RED as it can be made: the act script IS entitled
-     * to the word target, and must still say so.
-     *
-     * A rule that simply banned the phrase everywhere would satisfy the case
-     * above while deleting the one correct use of it.
-     */
-    public function test_the_act_script_still_names_the_word_target(): void
-    {
-        $message = $this->message('generate_act_script', $this->operations()['generate_act_script']);
-
-        $this->assertStringContainsString('per-act word target', $message);
-        $this->assertStringContainsString('targetWordsPerAct', $message);
-    }
-
-    /**
-     * An operation with no remedy says so rather than inventing one.
-     *
-     * The failure mode being avoided is precisely the old message: plausible,
-     * confident, and about a different stage.
+     * An operation with no remedy says so, on the page, rather than inventing
+     * one — the failure mode being avoided is precisely the old message.
      */
     public function test_an_operation_with_no_remedy_admits_it(): void
     {
-        $message = $this->message('some_new_operation', [
-            'model' => 'claude-opus-5',
-            'effort' => null,
-            'max_tokens' => 4000,
-        ]);
+        $story = \App\Models\Story::factory()->create();
 
-        $this->assertStringContainsString('No truncation_remedy is configured', $message);
-        $this->assertStringNotContainsString('word target', $message);
+        foreach (['generate_act_script', 'extract_characters', 'generate_titles', 'some_new_operation'] as $operation) {
+            $remedy = \App\Support\FailureRemedy::for(\App\Enums\FailureKind::Truncated, ['operation' => $operation], $story);
+
+            $this->assertFalse($remedy->known, $operation);
+            $this->assertNull($remedy->text, $operation);
+        }
     }
 
     /** Every message states the ceiling, the model, and that it was billed. */

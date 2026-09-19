@@ -2,8 +2,10 @@
 
 namespace App\Actions;
 
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Models\Story;
+use App\Support\NarratorVoice;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -44,6 +46,18 @@ class CreateStory
         ?int $targetMax = null,
         ?string $castAgeProfile = null,
         ?string $localeProfile = null,
+        // 'male' or 'female'. Resolves the voice from the channel's table
+        // (NarratorVoice): one voice per narrator gender, chosen by who the
+        // narrator is rather than by voice. Null keeps the default voice, for
+        // callers that name no narrator; the form and story:write --premise
+        // both require one.
+        ?string $narrator = null,
+        // Which ending the last chapter is. Chosen here, before the outline,
+        // because the outline writes the fields it needs; the form and
+        // story:write --premise require it on a single narrative. Null for an
+        // anthology, and for callers that name none — whose outline is then
+        // refused until one is chosen. See App\Enums\StoryEnding.
+        ?StoryEnding $ending = null,
     ): Story {
         $premise = trim($premise);
 
@@ -89,6 +103,7 @@ class CreateStory
             // one would be the app making a casting decision.
             'cast_age_profile' => trim((string) $castAgeProfile) ?: null,
             'format' => $format,
+            'ending' => $format === StoryFormat::Anthology ? null : $ending,
             // The setting, chosen once. Everything after this is generated
             // against it — the outline this method's caller dispatches
             // immediately, then the acts, then the cast — so there is no
@@ -97,7 +112,9 @@ class CreateStory
             // than failing, because a caller that does not care should get
             // the house setting.
             'locale_profile' => $this->localeProfile($localeProfile),
-            'voice_id' => config('providers.default_voice_id'),
+            'voice_id' => $narrator === null || trim($narrator) === ''
+                ? config('providers.default_voice_id')
+                : NarratorVoice::voiceFor(trim($narrator)),
         ] + $band);
 
         return $story->refresh();

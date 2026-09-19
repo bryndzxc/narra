@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FailureKind;
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Support\WorkerRegistry;
@@ -51,6 +52,8 @@ class RenderJob extends Model
         'output_path',
         'log',
         'error',
+        'failure_kind',
+        'failure_facts',
     ];
 
     /**
@@ -63,6 +66,8 @@ class RenderJob extends Model
             'status' => RenderJobStatus::class,
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'failure_kind' => FailureKind::class,
+            'failure_facts' => 'array',
         ];
     }
 
@@ -96,6 +101,8 @@ class RenderJob extends Model
                 'started_at' => Carbon::now(),
                 'finished_at' => null,
                 'error' => null,
+                'failure_kind' => null,
+                'failure_facts' => null,
                 'log' => null,
             ]
         );
@@ -258,6 +265,8 @@ class RenderJob extends Model
                 'finished_at' => null,
                 'output_path' => null,
                 'error' => null,
+                'failure_kind' => null,
+                'failure_facts' => null,
                 'log' => null,
             ]);
     }
@@ -288,9 +297,16 @@ class RenderJob extends Model
             ? $e->getTraceAsString()
             : $progress."\n\n--- trace ---\n".$e->getTraceAsString();
 
+        // What kind of failure, and the facts its repair needs. Never the
+        // repair itself: FailureRemedy builds that when the page is read, so
+        // this row cannot go on repeating advice the code has since dropped.
+        [$kind, $facts] = FailureKind::of($e);
+
         $this->forceFill([
             'status' => RenderJobStatus::Failed,
             'finished_at' => Carbon::now(),
+            'failure_kind' => $kind,
+            'failure_facts' => $facts === [] ? null : $facts,
             // Message first, because that is what the progress page shows next
             // to the scene number. The trace is below it for when that is not
             // enough, and both are on the row rather than only in a log file

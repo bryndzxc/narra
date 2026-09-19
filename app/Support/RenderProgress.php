@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Actions\CancelRenderBatch;
+use App\Enums\FailureKind;
 use App\Models\RenderJob;
 use App\Models\Story;
 use Illuminate\Support\Carbon;
@@ -53,7 +54,7 @@ class RenderProgress
             'stages' => $stages,
             'overall' => self::overall($stages),
             'batches' => self::batches($story->id, (string) $story->slug),
-            'failures' => self::failures($story->id),
+            'failures' => self::failures($story),
             'stale' => self::staleJobs($story->id),
             'scene_grid' => self::sceneGrid($story->id),
             'workers' => $workers,
@@ -401,11 +402,11 @@ class RenderProgress
      *
      * @return array<int, array<string, mixed>>
      */
-    private static function failures(int $storyId, int $limit = 50): array
+    private static function failures(Story $story, int $limit = 50): array
     {
         $failed = RenderJob::query()
             ->with('scene:id,sequence')
-            ->where('story_id', $storyId)
+            ->where('story_id', $story->id)
             ->where('status', RenderJobStatus::Failed)
             ->orderBy('scene_id')
             ->limit($limit)
@@ -417,6 +418,20 @@ class RenderProgress
             // One line on the page, the rest on the row. A 200-scene batch that
             // failed the same way 40 times should not need 40 screens.
             'error' => str($job->error ?? 'no message recorded')->limit(300)->toString(),
+            // The row records WHAT KIND of failure and the facts; the repair is
+            // built here, against the code and the story status as they are
+            // now. A row written before kinds existed is Unclassified, and the
+            // page says "No known repair." rather than guessing from its text.
+            // The stage is the row's own, so no exception has to repeat it.
+            'kind' => $job->failure_kind ?? FailureKind::Unclassified,
+            'remedy' => FailureRemedy::for(
+                $job->failure_kind ?? FailureKind::Unclassified,
+                ($job->failure_facts ?? []) + [
+                    'stage' => $job->stage->value,
+                    'scene' => $job->scene?->sequence,
+                ],
+                $story,
+            ),
             'failed_at' => $job->finished_at ?? $job->updated_at,
         ])->all();
     }

@@ -8,12 +8,15 @@ use App\Actions\GenerateActScripts;
 use App\Actions\GenerateOutline;
 use App\Enums\CostCategory;
 use App\Enums\OperatorAction;
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Exceptions\LocaleViolationException;
 use App\Models\Act;
 use App\Models\Story;
+use App\Support\FailureRemedy;
 use App\Support\ModelRoster;
 use App\Support\NarrationPace;
+use App\Support\NarratorVoice;
 use App\Support\Providers\ActScriptDraft;
 use App\Support\ScriptSizing;
 use Illuminate\Console\Command;
@@ -37,6 +40,8 @@ class StoryWrite extends Command
     protected $signature = 'story:write
         {story? : Story slug or id. Omit to create a new one from --premise.}
         {--premise= : Premise for a new story.}
+        {--narrator= : male or female — who narrates a new story, which picks the voice. Required with --premise.}
+        {--ending= : new_life or antagonist_voice — how a new single-narrative story ends. Required with --premise.}
         {--title= : Working title for a new story.}
         {--format=single : single or anthology. Single is the default: this genre needs one continuous narrative to escalate.}
         {--acts= : Number of acts. Defaults to 5 for anthology, 6 for single.}
@@ -118,12 +123,14 @@ class StoryWrite extends Command
             // cost rows are already written, so the report below still runs.
             $this->line('');
             $this->error($e->getMessage());
+            $this->printRemedy($e, $story);
             $this->report($story->refresh(), $startedAt);
 
             return self::FAILURE;
         } catch (Throwable $e) {
             $this->line('');
             $this->error($e->getMessage());
+            $this->printRemedy($e, $story);
             $this->report($story->refresh(), $startedAt);
 
             return self::FAILURE;
@@ -173,6 +180,20 @@ class StoryWrite extends Command
         });
 
         $this->line('');
+
+        // Kept, not refused, since 2026-09-17: printed first and as errors,
+        // because at Gate 1 they are the louder of the two.
+        foreach ($scripts->localeDenied($story) as $hit) {
+            $this->error(sprintf(
+                '  locale DENIED term kept for Gate 1, %s %s: "%s" — ...%s...%s',
+                $hit['act'] === null ? 'outline' : 'act '.$hit['act'],
+                $hit['where'],
+                $hit['term'],
+                $hit['context'],
+                // Not a judgement in a script: scene drafting refuses it.
+                $hit['editable'] ? '' : ' Scene drafting refuses this; it has to come out of the script first.',
+            ));
+        }
 
         foreach ($scripts->localeWarnings($story) as $warning) {
             $this->warn(sprintf(
@@ -328,15 +349,45 @@ class StoryWrite extends Command
             );
         }
 
+        // Required, and deliberately without a default: a default here would be
+        // the per-story narrator pick in disguise, and it is the trap that left
+        // a woman's story on the male voice until somebody noticed (story 33).
+        $narrator = trim((string) $this->option('narrator'));
+
+        if (! in_array($narrator, NarratorVoice::GENDERS, true)) {
+            throw new \RuntimeException(
+                'Give --narrator=male or --narrator=female with --premise. It picks the voice from the '
+                .'channel\'s one-voice-per-narrator-gender table, and it has no default.'
+            );
+        }
+
+        // Required on a single narrative and without a default, for the
+        // narrator's reason. See App\Enums\StoryEnding.
+        $format = StoryFormat::from((string) $this->option('format'));
+        $ending = StoryEnding::tryFrom(trim((string) $this->option('ending')));
+
+        if ($format === StoryFormat::Single && $ending === null) {
+            throw new \RuntimeException(sprintf(
+                'Give --ending with --premise: %s. The outline writes what the chosen ending needs, and '
+                .'it has no default.',
+                implode(' or ', array_map(
+                    static fn (StoryEnding $e): string => '--ending='.$e->value.' ('.$e->label().')',
+                    StoryEnding::cases(),
+                )),
+            ));
+        }
+
         // One implementation, two front doors. This was the only copy of story
         // creation in the app for the whole of Phase 2, which is why the tool
         // built so an operator would not need a terminal required one to begin.
         return app(CreateStory::class)->handle(
             premise: $premise,
             title: (string) $this->option('title'),
-            format: StoryFormat::from((string) $this->option('format')),
+            format: $format,
             targetMin: (int) $this->option('min'),
             targetMax: (int) $this->option('max'),
+            narrator: $narrator,
+            ending: $ending,
         );
     }
 
@@ -374,5 +425,17 @@ class StoryWrite extends Command
         $this->info(sprintf('Queued on the "%s" queue. Watch it at /renders/%s.', $result['queue'], $story->slug));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The repair for a failure caught here, from the same builder the progress
+     * page uses. The exception message holds facts only since 2026-09-17, so
+     * without this the terminal would have lost the advice it used to carry.
+     */
+    private function printRemedy(Throwable $e, Story $story): void
+    {
+        foreach (FailureRemedy::consoleLines($e, $story->refresh()) as $line) {
+            $this->line($line);
+        }
     }
 }

@@ -87,6 +87,7 @@ class ModelRoster
     public function lines(?array $operations = null): array
     {
         $labels = [
+            'generate_premises' => 'premises',
             'generate_outline' => 'outline',
             'generate_act_script' => 'act scripts',
             'extract_characters' => 'cast',

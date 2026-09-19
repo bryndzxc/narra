@@ -13,6 +13,14 @@ namespace App\Enums;
  */
 enum RenderStage: string
 {
+    /*
+     * Three premise candidates from an operator's idea, while the story is a
+     * draft. A stage of its own so a failed or refused call shows on the
+     * progress page rather than as a story that simply has no candidates —
+     * the extract_cast lesson below, applied before the first failure.
+     */
+    case Premises = 'premises';
+
     // Free — text only, before Gate 2.
     case Outline = 'outline';
     case ActScripts = 'act_scripts';

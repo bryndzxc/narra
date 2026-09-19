@@ -340,7 +340,7 @@ class CharacterTextGuard
             .'character who "walks with a limp" is mid-stride in the ones where they are sitting '
             .'down; and a "deeply lined" face is drawn with the lines on it in all of them, '
             .'because this text reaches the generator ahead of the art style and beats it. '
-            .'description is fixed physical fact, and age belongs in hairline, hair colour, face '
+            .'description is fixed physical fact, and age belongs in hairline, hair color, face '
             .'shape and build rather than in skin. style_notes is clothing. Props, poses and '
             .'expressions belong to the frame that needs them.',
             ucfirst($stage),
@@ -380,7 +380,7 @@ class CharacterTextGuard
             'handheld object "%s"' => self::HANDHELD,
             'posture or movement "%s" — that belongs to the frame' => self::POSTURE,
             'expression or mood "%s" — that belongs to the frame' => self::EXPRESSION,
-            'ageing texture "%s" — put age in hairline, hair colour, face shape and build instead' => self::AGEING_TEXTURE,
+            'ageing texture "%s" — put age in hairline, hair color, face shape and build instead' => self::AGEING_TEXTURE,
         ]);
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Enums\FailureKind;
 use App\Models\Character;
 use App\Models\Scene;
 use RuntimeException;
@@ -21,8 +22,26 @@ use RuntimeException;
  * only becomes visible as a face that changes across the video, after every
  * still has been paid for.
  */
-class MissingCharacterReferenceException extends RuntimeException
+class MissingCharacterReferenceException extends RuntimeException implements ClassifiedFailure
 {
+    /**
+     * MissingCharacterReference when a picked reference is what is missing.
+     * `tooManyForProvider()` builds this class too, and has no known repair:
+     * splitting a frame or cutting its cast is a judgement about the scene,
+     * and nothing measures which is right.
+     */
+    private FailureKind $kind = FailureKind::MissingCharacterReference;
+
+    public function failureKind(): FailureKind
+    {
+        return $this->kind;
+    }
+
+    public function failureFacts(): array
+    {
+        return [];
+    }
+
     /**
      * @param  array<int, Character>  $missing
      */
@@ -43,8 +62,7 @@ class MissingCharacterReferenceException extends RuntimeException
             'Scene %d features %s with no usable reference image, so it will not be generated. '
             .'This is refused rather than generated from the description alone: a face drawn from '
             .'text looks correct on its own and drifts across the video, which is not visible '
-            .'until every still has been paid for. Generate and pick the character sheet at Gate 2 '
-            .'first.',
+            .'until every still has been paid for.',
             $scene->sequence,
             $names,
         ));
@@ -55,15 +73,18 @@ class MissingCharacterReferenceException extends RuntimeException
      */
     public static function tooManyForProvider(Scene $scene, array $cast, int $ceiling): self
     {
-        return new self(sprintf(
+        $e = new self(sprintf(
             'Scene %d has %d named characters (%s) and the configured image model accepts %d '
             .'reference image%s per call. Generating it would silently draw the surplus characters '
-            .'from text. Split the frame into two scenes, or cut its cast.',
+            .'from text.',
             $scene->sequence,
             count($cast),
             implode(', ', array_map(fn (Character $c): string => $c->name, $cast)),
             $ceiling,
             $ceiling === 1 ? '' : 's',
         ));
+        $e->kind = FailureKind::Unclassified;
+
+        return $e;
     }
 }

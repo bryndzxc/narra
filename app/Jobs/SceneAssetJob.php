@@ -10,7 +10,6 @@ use App\Models\Scene;
 use App\Models\Story;
 use App\Support\RenderWorkspace;
 use App\Support\RunFingerprint;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -118,15 +117,15 @@ abstract class SceneAssetJob extends RenderStageJob
             return;
         }
 
-        throw new RuntimeException(sprintf(
+        // Facts only; the restart is named at display time, from the queue.
+        throw new StaleWorkerException(sprintf(
             'This job was queued against provider "%s" but this worker resolves "%s". Almost '
             .'certainly a queue worker started before the provider was changed — a worker holds the '
             .'code and container it booted with, so a .env edit or a deploy does not reach it. '
-            .'Nothing was generated and nothing was billed. Run `php artisan queue:restart`, confirm '
-            .'the worker has actually exited, start it again, and re-press Generate assets.',
+            .'Nothing was generated and nothing was billed.',
             $this->expectedProvider,
             $actual,
-        ));
+        ), $this->queueName());
     }
 
     /**
@@ -162,7 +161,7 @@ abstract class SceneAssetJob extends RenderStageJob
             return;
         }
 
-        throw new StaleWorkerException(RunFingerprint::explain($diff));
+        throw new StaleWorkerException(RunFingerprint::explain($diff), $this->queueName());
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CostCategory;
 use App\Enums\Gate;
+use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
 use App\Exceptions\GateViolationException;
@@ -45,6 +46,11 @@ class Story extends Model
         // STATED where it varies — per story — rather than compensated for by
         // the one art-style line that every story shares. See the migration.
         'cast_age_profile',
+        // Every person this story names, as the outline declared them: name,
+        // role, relationship. Written by the outline before the spine, edited
+        // at Gate 1, read by the act writer and the extractor. See
+        // App\Support\OutlineCast and the migration.
+        'outline_cast',
         // The first thirty seconds. Five beats, the last of which promises the
         // DEPARTURE rather than revenge or exposure — checked at Gate 1 by
         // overlap, the way `refusal` is. Added last and for a measured reason:
@@ -58,6 +64,27 @@ class Story extends Model
         // See the migration that added them for why each one is load-bearing.
         'narrator_grievance',
         'antagonist_justification',
+        // The accomplice as a person with a stake: what he wants for himself,
+        // the harmless act he puts on for her, and where he loses across the
+        // last three acts. Three columns because they go to different acts.
+        // All empty when the cast declares no accomplice. See the migration,
+        // App\Support\AccompliceArc and CLAUDE.md 3g.
+        'accomplice_motive',
+        'accomplice_performance',
+        'accomplice_fall',
+        // The narrator's one private joke: planted in chapter one, recurring
+        // as a tagged thought, said aloud once in the refusal. A column because
+        // the refusal act never sees act 1's prose. CLAUDE.md 3g.
+        'running_thought',
+        // The last chance the antagonist was offered and threw away, and what
+        // about a year after the refusal looks like — told in her own chapter
+        // at the end of the refusal act. A column so the refusal act is handed
+        // a planned reveal rather than inventing one. See the migration.
+        'antagonist_regret',
+        // Which of the two endings the last chapter is. The operator's choice,
+        // made before the outline and read by the outline, the refusal act,
+        // Gate 1 and the metadata brief. See App\Enums\StoryEnding.
+        'ending',
         // The betrayal as a scene: where the justification is first SAID,
         // aloud, to the narrator's face, in front of witnesses, with the person
         // it was done with in the room. Seven stories found their betrayal or
@@ -119,7 +146,11 @@ class Story extends Model
             'status' => StoryStatus::class,
             'reopened_from' => StoryStatus::class,
             'format' => StoryFormat::class,
+            'ending' => StoryEnding::class,
             'target_publish_at' => 'datetime',
+            // The latest premise roll. Not fillable: only GeneratePremises
+            // writes it, through forceFill, so no form can post one.
+            'premise_candidates' => 'array',
             'is_fixture' => 'boolean',
             'total_cost_usd' => 'decimal:4',
             'target_duration_min' => 'integer',
@@ -130,6 +161,15 @@ class Story extends Model
             // about when the outline was written, frozen by the migration that
             // added `betrayal_scene` and cleared only by `GenerateOutline`.
             'outlined_before_betrayal_scene' => 'boolean',
+            'outline_cast' => 'array',
+            // The same kind of fact for the cast, frozen by the migration that
+            // added `outline_cast` and cleared only by `GenerateOutline`.
+            'outlined_before_cast' => 'boolean',
+            // And for the accomplice arc and the running thought, which arrived
+            // in one outline revision and share one age. CLAUDE.md 3g.
+            'outlined_before_accomplice_and_thought' => 'boolean',
+            // And for the antagonist's regret and her point-of-view chapter.
+            'outlined_before_antagonist_regret' => 'boolean',
         ];
     }
 

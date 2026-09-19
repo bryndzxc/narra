@@ -165,6 +165,15 @@ return [
     |
     | Turn it back on to reproduce the contamination.
     |
+    | READING, 2026-09-19, AND IT REFUTES THE NOTE AS THE SOURCE. Story 38, note
+    | OFF: attempt 1 clean of texture words ("expression" twice), attempt 2
+    | "a broad weathered-shaped square face" -- the same mangled construction
+    | story 32 produced WITH the note. So the note is not needed for it. The
+    | system prompt carries the phrase on every attempt: its texture rule
+    | quotes "weathered square jaw" as the banned example, and the model built
+    | the violation out of it. A ban written by quoting the banned construction
+    | supplies the construction. Nothing here is changed on one reading.
+    |
     */
 
     'repair_with_notes' => (bool) env('CHARACTER_REPAIR_WITH_NOTES', false),
