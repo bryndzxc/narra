@@ -11,6 +11,7 @@ use App\Enums\ActTimeframe;
 use App\Enums\CastRole;
 use App\Enums\Gate;
 use App\Enums\OperatorAction;
+use App\Enums\PartnerEndState;
 use App\Enums\RenderJobStatus;
 use App\Enums\RenderStage;
 use App\Enums\StoryEnding;
@@ -27,11 +28,13 @@ use App\Support\LocaleGuard;
 use App\Support\ModelRoster;
 use App\Support\NarrationPace;
 use App\Support\OutlineCast;
+use App\Support\PartnerEnding;
 use App\Support\PremiseIdea;
 use App\Support\Providers\PremiseCandidate;
 use App\Support\RecentEndings;
 use App\Support\RefusedFields;
 use App\Support\ScriptSizing;
+use App\Support\SpineQuestions;
 use App\Support\WorkerHealth;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Computed;
@@ -131,6 +134,20 @@ class OutlineGate extends Component
     /** Whether the operator has seen the bill for the writing and pressed once. */
     public bool $confirmingWrite = false;
 
+    /** The same, for the press that throws this outline away and buys another. */
+    public bool $confirmingReOutline = false;
+
+    /**
+     * Whether the re-outline holds the cast already on the story.
+     *
+     * Defaults ON, which is the correction story 39 paid for: a re-outline
+     * used to release the cast silently, because the predicate that pins it
+     * went inert the moment a story had acts. Turning it OFF is the repair
+     * path that scope was written for, now said out loud by the person who
+     * wants it. See OutlineCast::chosenBeforeOutline().
+     */
+    public bool $keepCast = true;
+
     /**
      * The idea premises are written from. Seeded from the last roll's idea,
      * else from the premise field, which is where the new-story form puts an
@@ -151,10 +168,19 @@ class OutlineGate extends Component
      */
     public string $ending = '';
 
+    /**
+     * What the narrator and the future partner are to each other by the end, a
+     * PartnerEndState value. Its own property rather than a second meaning for
+     * `ending`: they are chosen together and they are different questions, and
+     * this one stays editable a stage longer. See PartnerEnding.
+     */
+    public string $partnerEndState = '';
+
     public function mount(Story $story): void
     {
         $this->story = $story;
         $this->ending = (string) $story->ending?->value;
+        $this->partnerEndState = (string) $story->partner_end_state?->value;
         $this->premise = (string) $story->premise;
         $this->idea = (string) ($story->premise_candidates['idea'] ?? $story->premise);
         $this->castAgeProfile = (string) $story->cast_age_profile;
@@ -357,6 +383,29 @@ class OutlineGate extends Component
     public function localeDeniedInScripts(): array
     {
         return array_values(array_filter($this->localeDenied(), fn (array $hit): bool => ! $hit['editable']));
+    }
+
+    /**
+     * Sentences where the narrator borrows somebody else's possessive.
+     *
+     * Story 36 shipped one: at 10:19 of a published video the narration calls
+     * the narrator's own parents "my husband's parents", because the sentence
+     * is reporting what his mother-in-law said and the possessive changed
+     * seats halfway through. Nothing in the app had an opinion about who "I"
+     * is until NarratorPointOfView, and a listener has no scrollback.
+     *
+     * A WARNING and not a refusal, for the reason the locale terms are: it is
+     * a two-word match on prose, the repair is to rewrite that act, and an
+     * act refused at generation costs the call. Nothing downstream refuses it
+     * either, so Gate 1 is the whole of it — which is the pair question from
+     * the locale entry, asked and answered this time.
+     *
+     * @return array<int, array{where: string, act: ?int, term: string, context: string}>
+     */
+    #[Computed]
+    public function pointOfViewSlips(): array
+    {
+        return app(GenerateActScripts::class)->pointOfViewSlips($this->story);
     }
 
     /**
@@ -627,6 +676,164 @@ class OutlineGate extends Component
     }
 
     /**
+     * Whether this outline can be thrown away and written again.
+     *
+     * Three things, and only the first is a position. There must BE an outline
+     * to replace, and no act may carry a script — `outlined` is both the state
+     * this press is for and the state a fully written story waits in, so the
+     * status alone would offer a press that deletes the scripts underneath it.
+     * The Action refuses that too (GenerateOutline::WRITTEN_ACTS); this is the
+     * same question asked where the button is drawn, so a press that cannot
+     * succeed is never offered.
+     */
+    #[Computed]
+    public function canReOutline(): bool
+    {
+        return OperatorAction::ReOutline->permittedAt($this->story->status)
+            && $this->story->acts()->exists()
+            && ! $this->story->hasWrittenActs();
+    }
+
+    /**
+     * Why not, when not — and never swallowed.
+     *
+     * The written-acts case is not a refusal the capability can phrase, so it
+     * is phrased from the constant the Action throws rather than a second copy
+     * of the sentence.
+     */
+    #[Computed]
+    public function reOutlineRefusal(): ?string
+    {
+        if (! $this->story->acts()->exists()) {
+            return null;
+        }
+
+        if ($this->story->hasWrittenActs()
+            && OperatorAction::ReOutline->permittedAt($this->story->status)) {
+            return GenerateOutline::WRITTEN_ACTS;
+        }
+
+        return OperatorAction::ReOutline->refusalReason($this->story->status);
+    }
+
+    /**
+     * What a re-outline destroys, counted, so the confirm can name it.
+     *
+     * A spend confirm elsewhere in this app names what it BUYS. This one has
+     * to name what it throws away as well: the acts and their summaries, the
+     * cast, and every spine field the outline writes. That is the whole
+     * difference between this press and the one above it, and a bill alone
+     * would hide it.
+     *
+     * @return array{acts: int, cast: int, partner: ?string, spine: int}
+     */
+    #[Computed]
+    public function reOutlineCost(): array
+    {
+        $spine = array_filter(
+            SpineQuestions::outlineOrderFor($this->story->ending),
+            fn (string $field): bool => trim((string) $this->story->{$field}) !== '',
+        );
+
+        return [
+            'acts' => $this->story->acts()->count(),
+            'cast' => count(OutlineCast::members($this->story->outline_cast)),
+            'partner' => OutlineCast::futurePartner($this->story->outline_cast)?->name,
+            'spine' => count($spine),
+        ];
+    }
+
+    public function askToReOutline(): void
+    {
+        $this->problem = null;
+
+        if (! $this->canReOutline()) {
+            $this->problem = $this->reOutlineRefusal();
+
+            return;
+        }
+
+        // The same two questions the first outline is refused for, asked
+        // before the bill rather than after the press. A re-outline WILL write
+        // the outline, so both apply to it exactly as they apply to a first
+        // run — which is the thing the act-count reading of "is this the first
+        // press" got wrong one layer down, in DispatchTextStage.
+        if ($this->story->format === StoryFormat::Single && $this->story->ending === null) {
+            $this->problem = GenerateOutline::NO_ENDING;
+
+            return;
+        }
+
+        if (PartnerEnding::blocksWriting($this->story)) {
+            $this->problem = GenerateOutline::NO_PARTNER_END_STATE;
+
+            return;
+        }
+
+        $this->confirmingReOutline = true;
+    }
+
+    public function cancelReOutline(): void
+    {
+        $this->confirmingReOutline = false;
+    }
+
+    /**
+     * Queue one outline call that replaces this one.
+     *
+     * Through the same dispatcher and the same Action as every other press, so
+     * the capability and the worker check are one implementation. The acts are
+     * deleted by GenerateOutline inside its own transaction — not here — so a
+     * call that fails leaves the outline it was going to replace standing.
+     */
+    public function reOutline(): void
+    {
+        abort_unless(
+            $this->canReOutline(),
+            403,
+            (string) (OperatorAction::ReOutline->refusal($this->story->status) ?? GenerateOutline::WRITTEN_ACTS),
+        );
+
+        $this->confirmingReOutline = false;
+        $this->problem = null;
+
+        $keepCast = $this->keepCast;
+
+        try {
+            $result = app(DispatchTextStage::class)->writeScript(
+                story: $this->story,
+                // The outline and nothing else, exactly as a first run stops
+                // after it: the new cast and spine are read here before an act
+                // is paid for against them.
+                outlineOnly: true,
+                reOutline: true,
+                keepCast: $keepCast,
+            );
+        } catch (DispatchRefusedException|GateViolationException $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        } catch (Throwable $e) {
+            $this->problem = $e->getMessage();
+
+            return;
+        }
+
+        $this->resetComputed();
+
+        $this->saved = sprintf(
+            'Queued on the "%s" queue: one outline call, replacing the current one. %s Read the new cast '
+            .'and spine here when it lands; the acts are a second press.',
+            $result['queue'],
+            $keepCast
+                ? 'The cast on this story is held — the outline may add people and rewrite a '
+                    .'relationship line, and is refused if it drops anyone or changes a role.'
+                : 'The cast is RELEASED: the outline will write its own, and whoever is on this story '
+                    .'now may not come back.',
+        );
+    }
+
+    /**
      * Acts with no script yet.
      *
      * This is what makes the button a resume rather than a rewrite. Act scripts
@@ -818,6 +1025,12 @@ class OutlineGate extends Component
             return;
         }
 
+        if (PartnerEnding::blocksWriting($this->story)) {
+            $this->problem = GenerateOutline::NO_PARTNER_END_STATE;
+
+            return;
+        }
+
         $this->confirmingWrite = true;
     }
 
@@ -903,6 +1116,9 @@ class OutlineGate extends Component
             $this->localeDenied,
             $this->localeDeniedInScripts,
             $this->localeWarnings,
+            // Same reason: an operator who edits the hook or the grievance
+            // clears its alert in the same request.
+            $this->pointOfViewSlips,
             $this->canReopen,
             $this->reopenRefusal,
             $this->workers,
@@ -1145,10 +1361,33 @@ class OutlineGate extends Component
     }
 
     /**
-     * Use a candidate as the premise. Writes the premise column and nothing
-     * else: `save()` moves a draft to "outlined", which would end the premise
-     * panel before the outline exists. The text is the record — the stored
-     * decision is the artifact the outline reads.
+     * Use a candidate as the premise: its prose AND its cast, narrator first.
+     * Not `save()`, which moves a draft to "outlined" and would end the
+     * premise panel before the outline exists.
+     *
+     * The cast is kept because the prose cannot carry it. Story 38's roll
+     * declared Chloe Rong the future partner in all three candidates; this
+     * method kept only the prose, which calls her the friend who did not
+     * laugh, and the outline made her a friend and invented a stranger for the
+     * row. The narrator's name went the same way. The outline is now handed
+     * this cast as chosen and refused if it drops or re-roles anyone in it.
+     * A candidate with no cast (a roll from before the cast existed) clears
+     * the column, so a previous pick's cast cannot outlive its prose.
+     *
+     * AND ITS SEVEN SPINE ANSWERS, since 2026-09-20 — the third thing that died
+     * here. Gate 1 ran fourteen checks over them, the operator picked on what
+     * those checks said, and the outline re-answered all seven from the prose
+     * because `stories.premise` is all it was handed. Story 39's candidate
+     * withheld "the only signer on the license renewal for the warehouse
+     * lease"; the outline wrote an 8.4 million yuan Hamburg account. Four of
+     * the seven are at least tied to the prose by a two-word overlap check;
+     * accomplice_motive, accomplice_performance and narrator_at_exposure are
+     * tied to nothing and could only ever have survived by luck. See the
+     * migration that added `premise_spine`.
+     *
+     * Everything here is written from the CANDIDATE, so a pick always replaces
+     * the previous pick whole: a candidate with no answers clears the column
+     * for the reason an empty cast clears its own.
      */
     public function usePremise(int $index): void
     {
@@ -1157,16 +1396,31 @@ class OutlineGate extends Component
         $row = $this->story->premise_candidates['candidates'][$index] ?? null;
         abort_if(! is_array($row), 404);
 
-        $premise = PremiseCandidate::fromRow($row)->premise;
+        $candidate = PremiseCandidate::fromRow($row);
+        $premise = $candidate->premise;
+        $cast = OutlineCast::rows($candidate->cast);
+        $spine = array_filter($candidate->fields, static fn (string $v): bool => trim($v) !== '');
 
-        $this->story->update(['premise' => $premise]);
+        // forceFill, not update(): `premise_spine` is out of $fillable for the
+        // reason `premise_candidates` is — only this method writes it, so no
+        // form can post one.
+        $this->story->forceFill([
+            'premise' => $premise,
+            'outline_cast' => $cast ?: null,
+            'premise_spine' => $spine ?: null,
+        ])->save();
+
         $this->premise = $premise;
+        $this->cast = $cast;
         $this->story->refresh();
         unset($this->premiseRoll);
 
         $this->saved = sprintf(
-            'Premise %d is now this story\'s premise. Edit it below if you want; "Write the outline" is the next press.',
+            'Premise %d is now this story\'s premise, with its cast and the %d answer(s) it was checked on — '
+            .'the outline is written from those rather than re-answering them from the prose. Edit it below '
+            .'if you want; "Write the outline" is the next press.',
             $index + 1,
+            count($spine),
         );
     }
 
@@ -1213,6 +1467,80 @@ class OutlineGate extends Component
         $this->story->refresh();
 
         $this->saved = sprintf('Ending set: %s. Nothing was billed.', $ending->label());
+    }
+
+    /**
+     * Whether the end state can still be chosen.
+     *
+     * NOT `canChooseEnding()`, deliberately. The ending is fixed once acts
+     * exist because the outline SCHEMA branches on it; this is read by the act
+     * writer too, and `GenerateActScripts` replaces each act's summary with the
+     * one the act writer returns — so a state chosen after the outline still
+     * reaches the summary Gate 1 reads it back from. Fixed once an act carries
+     * a script: by then the words are in the prose and a radio cannot move
+     * them. Shown only on the new life, where the partner is on screen at all.
+     */
+    #[Computed]
+    public function canChoosePartnerEndState(): bool
+    {
+        return PartnerEnding::stillChoosable($this->story)
+            && $this->story->ending === StoryEnding::NewLife;
+    }
+
+    /**
+     * The last few videos that chose an end state. See RecentEndings.
+     *
+     * @return array<int, array{title: string, state: PartnerEndState}>
+     */
+    #[Computed]
+    public function recentPartnerEndStates(): array
+    {
+        return RecentEndings::lastPartnerEndStates(RecentEndings::SHOWN, $this->story->id);
+    }
+
+    /** Whether the outline is refused until an end state is chosen. */
+    #[Computed]
+    public function partnerEndStateRequired(): bool
+    {
+        return PartnerEnding::blocksWriting($this->story);
+    }
+
+    /**
+     * The future partner's name when the story HAS one, so the picker names
+     * the person rather than asking about a hypothetical. Reads the cast the
+     * story carries, whether it was chosen with the premise or written by the
+     * outline; null is an honest "nobody yet".
+     */
+    #[Computed]
+    public function chosenPartnerName(): ?string
+    {
+        return OutlineCast::futurePartner($this->story->outline_cast)?->name ?: null;
+    }
+
+    /** Livewire's hook for `wire:model.live="partnerEndState"`: saved as it is picked. */
+    public function updatedPartnerEndState(string $value): void
+    {
+        abort_unless(
+            $this->canChoosePartnerEndState(),
+            403,
+            'What the two of them are to each other by the end is fixed once an act carries a script: '
+            .'the words are in the prose by then.',
+        );
+
+        $state = PartnerEndState::tryFrom($value);
+        abort_if($state === null, 422);
+
+        $this->story->update(['partner_end_state' => $state]);
+        $this->story->refresh();
+
+        $this->saved = sprintf(
+            'By the end they are %s. Nothing was billed.%s',
+            mb_strtolower($state->label()),
+            $this->story->acts()->exists()
+                ? ' The outline is already written, so its act summaries say what they said; the act '
+                    .'writer is told this, and it replaces each summary with its own.'
+                : '',
+        );
     }
 
     #[Computed]

@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\PartnerEndState;
 use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Models\Story;
@@ -58,6 +59,12 @@ class CreateStory
         // anthology, and for callers that name none — whose outline is then
         // refused until one is chosen. See App\Enums\StoryEnding.
         ?StoryEnding $ending = null,
+        // What the narrator and the future partner are to each other by the
+        // end. Optional everywhere and read only where it has a subject: a
+        // story whose cast names a future partner and whose ending is the
+        // narrator's new life. Null is "not chosen", never a default — see
+        // App\Enums\PartnerEndState and App\Support\PartnerEnding.
+        ?PartnerEndState $partnerEndState = null,
     ): Story {
         $premise = trim($premise);
 
@@ -104,6 +111,7 @@ class CreateStory
             'cast_age_profile' => trim((string) $castAgeProfile) ?: null,
             'format' => $format,
             'ending' => $format === StoryFormat::Anthology ? null : $ending,
+            'partner_end_state' => $format === StoryFormat::Anthology ? null : $partnerEndState,
             // The setting, chosen once. Everything after this is generated
             // against it — the outline this method's caller dispatches
             // immediately, then the acts, then the cast — so there is no

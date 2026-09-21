@@ -281,9 +281,12 @@ class FakeScriptWriter implements ScriptWriter
         );
     }
 
-    public function outline(Story $story, int $actCount): OutlineDraft
+    public function outline(Story $story, int $actCount, bool $keepCast = true): OutlineDraft
     {
-        $this->calls[] = ['method' => 'outline', 'story_id' => $story->id, 'act_count' => $actCount];
+        // keep_cast is recorded for the reason the phase and the beat are: a
+        // flag the Action holds as an invariant and the prompt never receives
+        // is a request that does not arrive, and nothing would fail.
+        $this->calls[] = ['method' => 'outline', 'story_id' => $story->id, 'act_count' => $actCount, 'keep_cast' => $keepCast];
 
         // The same arithmetic the real writer uses, so a test that asserts the
         // act structure is asserting the structure production gets.
@@ -411,7 +414,10 @@ class FakeScriptWriter implements ScriptWriter
                 .'her she was welcome to say it again, to anyone she liked. Then I told her the family '
                 .'helps family fund had closed at four hundred and twelve dollars, and I went back inside.',
             requestedActCount: $actCount,
-            cast: $this->castOverride ?? $this->castFor($story),
+            // A cast chosen before the outline comes back as it was chosen,
+            // which is what the real writer is told to do and GenerateOutline
+            // refuses it for not doing. castOverride breaks it on purpose.
+            cast: $this->castOverride ?? (OutlineCast::chosenBeforeOutline($story, $keepCast) ?: $this->castFor($story)),
             // The accomplice, with a stake, an act that quotes a line to the
             // narrator, and a fall of several public losses that reuses the
             // motive's own words (commission, house, power of attorney). Built
@@ -825,6 +831,15 @@ class FakeScriptWriter implements ScriptWriter
             // accomplice's fall, so he is drawn in the room when he loses.
             'accomplice_fall' => in_array($act->phase?->value, ['departure', 'search', 'refusal'], true)
                 ? $story->accomplice_fall
+                : null,
+            // The partner, on the two acts the real prompt names her to: the
+            // SEARCH act, where one frame is the moment, and the REFUSAL act,
+            // where the last chapter draws them as what they are. Recorded
+            // because the search half was missing for a phase and nothing
+            // could see it missing — story 38 drew four work frames in the act
+            // that was supposed to contain the moment.
+            'partner' => in_array($act->phase?->value, ['search', 'refusal'], true)
+                ? OutlineCast::futurePartner($story->outline_cast)?->name
                 : null,
             // The chapter boundaries this call could see, recorded in the
             // change that added them. A scene straddling one puts the last

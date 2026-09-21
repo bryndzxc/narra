@@ -144,6 +144,7 @@ enum FailureKind: string
         'act_text_bounds' => 'an act title, summary or beat over its bound',
         'cast_structure' => 'a cast that cannot be used',
         'reused_name' => 'a name a recent story already used',
+        'chosen_cast' => 'a cast that dropped or re-roled someone picked with the premise',
         'coded_terms' => 'an accomplice built on orientation-coded material',
         'malformed_response' => 'a response that was not the JSON its schema required',
     ];

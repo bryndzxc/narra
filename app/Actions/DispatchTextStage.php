@@ -10,6 +10,7 @@ use App\Jobs\DraftSceneListJob;
 use App\Jobs\GeneratePremisesJob;
 use App\Jobs\WriteStoryJob;
 use App\Models\Story;
+use App\Support\PartnerEnding;
 
 /**
  * Puts a free-of-gates, not-free-of-money text stage on the `text` queue.
@@ -54,19 +55,42 @@ class DispatchTextStage
         array $actsOnly = [],
         bool $outlineOnly = false,
         bool $checkWorkers = true,
+        bool $reOutline = false,
+        bool $keepCast = true,
     ): array {
-        $notes = $this->preflight($story, OperatorAction::WriteScript, $checkWorkers);
+        $notes = $this->preflight(
+            $story,
+            $reOutline ? OperatorAction::ReOutline : OperatorAction::WriteScript,
+            $checkWorkers,
+        );
 
         // The outline refuses a single narrative with no ending, before its
         // call. Asked here as well so the refusal is a sentence beside the
         // button rather than a failed job a minute later. Only when this press
         // would write the outline: acts already written were outlined against
         // whatever ending the story had.
-        if ($story->format === StoryFormat::Single && $story->ending === null && ! $story->acts()->exists()) {
+        //
+        // "Would write the outline" was read off the ACT COUNT, which was the
+        // same answer as "is this the first press" right up until a press
+        // existed that rewrites an outline on a story that has acts. Both
+        // readers of that question moved together — this one and WriteStoryJob
+        // — because a re-outline that skipped the ending check would bill a
+        // call for an outline that has to be written again.
+        if ($story->format === StoryFormat::Single && $story->ending === null
+            && ($reOutline || ! $story->acts()->exists())) {
             throw new DispatchRefusedException(GenerateOutline::NO_ENDING);
         }
 
-        WriteStoryJob::dispatch($story->id, $actCount, $actsOnly, $outlineOnly);
+        // And the end state — for the ACTS press as well as the outline,
+        // because the act summaries and the last chapter are where the words
+        // land. `blocksWriting()` stops asking once an act carries a script,
+        // so the resume after a run that died on act 4 is never refused for a
+        // choice that can no longer be made.
+        if (PartnerEnding::blocksWriting($story)) {
+            throw new DispatchRefusedException(GenerateOutline::NO_PARTNER_END_STATE);
+        }
+
+        WriteStoryJob::dispatch($story->id, $actCount, $actsOnly, $outlineOnly, $reOutline, $keepCast);
 
         return ['queue' => $this->queue(), 'notes' => $notes];
     }

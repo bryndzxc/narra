@@ -105,6 +105,10 @@ class StoryFork extends Command
                 // the outline must keep what it was written to; one that
                 // re-outlines can change it at Gate 1 while it is a draft.
                 'ending' => $source->ending,
+                // And what the partner is by the END. The same argument: a
+                // fork that keeps the outline must keep what it was written
+                // to, and a fork that re-outlines can change it at Gate 1.
+                'partner_end_state' => $source->partner_end_state,
 
                 'format' => $source->format,
                 'locale_profile' => $source->locale_profile,
@@ -112,6 +116,14 @@ class StoryFork extends Command
                 'target_duration_min' => $source->target_duration_min,
                 'target_duration_max' => $source->target_duration_max,
             ]);
+
+            // Out of $fillable, so it cannot ride in the array above — and a
+            // key `create()` silently drops is a copy that reads as made. The
+            // picked premise's own spine answers travel with the outline for
+            // the reason the spine columns do: a fork that re-outlines is
+            // written from the same answers the source was, which is what this
+            // command exists for. See the migration that added it.
+            $fork->forceFill(['premise_spine' => $source->premise_spine])->save();
 
             foreach ($acts as $act) {
                 Act::create([

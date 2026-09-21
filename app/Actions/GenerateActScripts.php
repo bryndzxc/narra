@@ -11,6 +11,7 @@ use App\Models\RenderJob;
 use App\Models\Story;
 use App\Support\AntagonistPointOfView;
 use App\Support\LocaleGuard;
+use App\Support\NarratorPointOfView;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
 use App\Support\Providers\ChapterDraft;
@@ -466,6 +467,46 @@ class GenerateActScripts
                 (string) $act->script,
                 ...$act->chapters->pluck('title')->all(),
             ]));
+        }
+
+        return $found;
+    }
+
+    /**
+     * Sentences where the narrator uses somebody else's possessive.
+     *
+     * Recomputed from the STORED text on every render, the way `localeDenied()`
+     * is and for the same reason: an operator who rewrites the act clears its
+     * alert by fixing it, and nothing can go stale. See NarratorPointOfView
+     * for the instance — story 36 at 10:19, in a published video.
+     *
+     * Scanned: the hook and the grievance, which are written in the narrator's
+     * first person, and every act script, which becomes narration verbatim.
+     * Not the rest of the spine, which answers questions ABOUT the story
+     * rather than in its voice.
+     *
+     * @return array<int, array{where: string, act: ?int, term: string, context: string}>
+     */
+    public function pointOfViewSlips(Story $story): array
+    {
+        $borrowed = NarratorPointOfView::borrowedTermFor($story);
+
+        if ($borrowed === null) {
+            return [];
+        }
+
+        $found = [];
+
+        foreach ([['hook', $story->hook], ['grievance', $story->narrator_grievance]] as [$where, $text]) {
+            foreach (NarratorPointOfView::slips($text, $borrowed) as $hit) {
+                $found[] = ['where' => $where, 'act' => null, ...$hit];
+            }
+        }
+
+        foreach ($story->acts()->orderBy('sequence')->get() as $act) {
+            foreach (NarratorPointOfView::slips($act->script, $borrowed) as $hit) {
+                $found[] = ['where' => 'script', 'act' => $act->sequence, ...$hit];
+            }
         }
 
         return $found;

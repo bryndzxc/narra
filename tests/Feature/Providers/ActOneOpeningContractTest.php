@@ -158,7 +158,59 @@ class ActOneOpeningContractTest extends TestCase
             'THEN, AND ONLY THEN, THE VIDEO STARTS: "'.ChapterAnnouncement::sentenceFor(1).'"',
             $prompt,
         );
-        $this->assertStringContainsString('every other rule in this prompt is back in force', $prompt);
+        $this->assertStringContainsString('EVERY RULE SUSPENDED ABOVE IS BACK IN FORCE', $prompt);
+
+        // The exception is ONE CHAPTER long, not one act long, and both ends
+        // of the block say so. Stories 36 and 37 announced "Chapter one." and
+        // then "Chapter four." — act 1's chapters 2 and 3 stored, titled, cut
+        // and silent — and both were written after the chapter block gained
+        // "Every later chapter in this act opens with its number as normal".
+        // The delegation pointed here and this block answered for chapter one
+        // only.
+        $this->assertStringContainsString('NOT THIS CHAPTER, AND ONLY THIS CHAPTER', $prompt);
+        $this->assertStringContainsString('EVERY LATER CHAPTER IN THIS ACT SPEAKS ITS NUMBER NORMALLY', $prompt);
+        $this->assertStringContainsString('"Chapter two.", its third opens "Chapter three."', $prompt);
+    }
+
+    /**
+     * THE SUSPENSION LIST AND THE RESTORATION LIST NAME THE SAME RULES.
+     *
+     * This is the assertion the file did not have, and its absence is why
+     * stories 36 and 37 shipped silent chapters. The block suspends four
+     * rules for the length of the five beats; the sentence that gave them
+     * back named ONE of the four ("the answer-back included"), and the
+     * chapter bullet said "NOT THIS ONE", where "one" reads as the chapter or
+     * as the act depending on the reader. Two of four stories read it as the
+     * act.
+     *
+     * Every other case in this file asserts that a single instruction is
+     * PRESENT. None of them could see a list that was complete on one side
+     * and short on the other — which is the act-1 finding one level in: the
+     * collision was fixed, and the sentence undoing the fix was not checked.
+     */
+    public function test_every_suspended_rule_is_named_where_it_is_given_back(): void
+    {
+        $prompt = $this->actOnePrompt();
+
+        $suspension = mb_strpos($prompt, 'THE OPENING. THIS ACT OPENS THE VIDEO');
+        $restoration = mb_strpos($prompt, 'FROM THAT SENTENCE ONWARD');
+
+        $this->assertIsInt($suspension);
+        $this->assertIsInt($restoration);
+        $this->assertGreaterThan($suspension, $restoration);
+
+        $restored = mb_substr($prompt, $restoration);
+
+        // Each of the four things the block holds back, named in the sentence
+        // that hands it back. A fifth suspended rule added without a fifth
+        // entry here is the shape this test exists to refuse.
+        foreach (['answer-back', 'accomplice', 'running thought', 'SPOKEN CHAPTER NUMBER'] as $rule) {
+            $this->assertStringContainsString(
+                $rule,
+                $restored,
+                sprintf('The opening block suspends "%s" and the restoration sentence does not name it.', $rule),
+            );
+        }
     }
 
     /**

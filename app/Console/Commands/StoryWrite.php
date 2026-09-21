@@ -8,6 +8,7 @@ use App\Actions\GenerateActScripts;
 use App\Actions\GenerateOutline;
 use App\Enums\CostCategory;
 use App\Enums\OperatorAction;
+use App\Enums\PartnerEndState;
 use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Exceptions\LocaleViolationException;
@@ -42,12 +43,15 @@ class StoryWrite extends Command
         {--premise= : Premise for a new story.}
         {--narrator= : male or female — who narrates a new story, which picks the voice. Required with --premise.}
         {--ending= : new_life or antagonist_voice — how a new single-narrative story ends. Required with --premise.}
+        {--partner-end-state= : married, engaged, living_together or together — what the narrator and the future partner are to each other by the end. Optional: read only if the cast names one.}
         {--title= : Working title for a new story.}
         {--format=single : single or anthology. Single is the default: this genre needs one continuous narrative to escalate.}
         {--acts= : Number of acts. Defaults to 5 for anthology, 6 for single.}
         {--min=30 : Target minimum runtime, minutes.}
         {--max=40 : Target maximum runtime, minutes.}
         {--outline-only : Stop after the outline, before any act is written.}
+        {--re-outline : Replace an outline that already exists. Refused once any act carries a script.}
+        {--release-cast : With --re-outline, let the outline write its own cast instead of keeping the one on the story. Use when the cast is what is wrong.}
         {--acts-only= : Comma-separated act sequences to rewrite. Implies the outline exists.}
         {--queue : Dispatch to the text queue instead of writing here. What the Gate 1 button does.}
         {--yes : Skip the spend confirmation.}';
@@ -83,7 +87,12 @@ class StoryWrite extends Command
         // past `outlined`, the acts stage refuses separately, and neither of
         // them is the sentence the page shows. `assets:generate` and its button
         // disagreed this way for a whole phase.
-        $refusal = OperatorAction::WriteScript->refusal($story->status);
+        // The capability this press actually IS. A re-outline at `outlined`
+        // and a resume at `outlined` are permitted by different cases, and one
+        // enum answering for both is how a button and a command come to
+        // disagree about what they may do.
+        $refusal = ($this->option('re-outline') ? OperatorAction::ReOutline : OperatorAction::WriteScript)
+            ->refusal($story->status);
 
         if ($refusal !== null && $this->parseActsOnly() === []) {
             $this->error($refusal);
@@ -103,10 +112,11 @@ class StoryWrite extends Command
         $actsOnly = $this->parseActsOnly();
 
         try {
-            if ($actsOnly === [] && $story->acts()->count() === 0) {
+            if ($actsOnly === [] && ($this->option('re-outline') || $story->acts()->count() === 0)) {
                 $this->outlineStage($story, $outline);
             } elseif ($actsOnly === []) {
-                $this->line('Outline already exists — keeping it. Use a fresh story to regenerate.');
+                $this->line('Outline already exists — keeping it. Pass --re-outline to replace it, '
+                    .'or use a fresh story.');
             }
 
             if ($this->option('outline-only')) {
@@ -146,7 +156,17 @@ class StoryWrite extends Command
         $this->line('Outline...');
 
         $actCount = $this->option('acts') !== null ? (int) $this->option('acts') : null;
-        $draft = $outline->handle($story, $actCount);
+        $keepCast = ! $this->option('release-cast');
+
+        if ($this->option('re-outline')) {
+            $this->line($keepCast
+                ? '  Replacing the outline. The cast on this story is held; the call is refused if it '
+                    .'drops a person or changes a role.'
+                : '  Replacing the outline, cast RELEASED — the outline writes its own and whoever is on '
+                    .'this story now may not come back.');
+        }
+
+        $draft = $outline->handle($story, $actCount, $keepCast);
 
         $this->line('');
         $this->info("  \"{$draft->title}\"");
@@ -377,6 +397,21 @@ class StoryWrite extends Command
             ));
         }
 
+        // NOT required, unlike --ending, and for PartnerEndState's own reason:
+        // it is read only where the cast names someone the narrator ends up
+        // with, which a command creating a story cannot know. An unknown value
+        // is refused rather than silently dropped — a flag that reads as
+        // applied and does nothing is this file's own truncation-remedy shape.
+        $partnerEndState = trim((string) $this->option('partner-end-state'));
+
+        if ($partnerEndState !== '' && PartnerEndState::tryFrom($partnerEndState) === null) {
+            throw new \RuntimeException(sprintf(
+                'Unknown --partner-end-state "%s". The four are: %s.',
+                $partnerEndState,
+                implode(', ', array_column(PartnerEndState::cases(), 'value')),
+            ));
+        }
+
         // One implementation, two front doors. This was the only copy of story
         // creation in the app for the whole of Phase 2, which is why the tool
         // built so an operator would not need a terminal required one to begin.
@@ -388,6 +423,7 @@ class StoryWrite extends Command
             targetMax: (int) $this->option('max'),
             narrator: $narrator,
             ending: $ending,
+            partnerEndState: PartnerEndState::tryFrom($partnerEndState),
         );
     }
 
@@ -408,6 +444,8 @@ class StoryWrite extends Command
                 actCount: $this->option('acts') !== null ? (int) $this->option('acts') : null,
                 actsOnly: $this->parseActsOnly(),
                 outlineOnly: (bool) $this->option('outline-only'),
+                reOutline: (bool) $this->option('re-outline'),
+                keepCast: ! $this->option('release-cast'),
             );
         } catch (Throwable $e) {
             $this->error($e->getMessage());

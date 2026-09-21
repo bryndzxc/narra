@@ -19,6 +19,7 @@ use App\Support\ChapterAnnouncement;
 use App\Support\CharacterTextGuard;
 use App\Support\LocaleGuard;
 use App\Support\OutlineCast;
+use App\Support\PartnerEnding;
 use App\Support\Providers\ActOutline;
 use App\Support\Providers\ActScriptDraft;
 use App\Support\Providers\CastMember;
@@ -79,7 +80,7 @@ class ClaudeScriptWriter implements ScriptWriter
         private readonly CharacterTextGuard $text,
     ) {}
 
-    public function outline(Story $story, int $actCount): OutlineDraft
+    public function outline(Story $story, int $actCount, bool $keepCast = true): OutlineDraft
     {
         if ($actCount < 3) {
             throw new RuntimeException(
@@ -90,7 +91,7 @@ class ClaudeScriptWriter implements ScriptWriter
 
         [$content, $usage] = $this->call(
             system: $this->outlineSystemPrompt($story),
-            userMessage: $this->outlinePrompt($story, $actCount),
+            userMessage: $this->outlinePrompt($story, $actCount, $keepCast),
             operation: 'generate_outline',
             schema: $this->outlineSchema($story->format, $story->ending),
         );
@@ -873,9 +874,11 @@ class ClaudeScriptWriter implements ScriptWriter
           situation and at themselves as often as at the antagonist. They
           still do not rant: a wisecrack is one sentence, not a paragraph.
         - THE HEAD IS FUNNY; THE MOUTH IS CONTROLLED. What the narrator THINKS
-          is where most of the jokes live: petty, specific, deadpan, often
-          priced — a running tally, a bill they are mentally sending, a name
-          they privately give somebody. What the narrator SAYS out loud is
+          is where most of the jokes live: petty, specific, deadpan, and about
+          whatever is in front of them at that moment. A PICTURE, NOT A
+          CONCEPT — a joke a viewer has to hold an idea in their head before
+          it is funny lands late or not at all, and a joke they could have
+          made themselves lands on contact. What the narrator SAYS out loud is
           short, cool and exact. Keep the two apart, because the gap between
           them is what makes a narrator fun to be inside without making them
           a ranter. And a thought costs nothing: it can win every exchange
@@ -892,8 +895,13 @@ class ClaudeScriptWriter implements ScriptWriter
           with no profanity at all — its narrator says "You're absolutely
           right, sir" and thinks, in the same breath, that the man's stock is
           down 40% and his hourly rate just doubled for looking at that tie.
-          The joke is precision, not swearing. Never put the thought in the
-          narrator's mouth, and never let the spoken line go crude.
+          ITS OTHER THOUGHTS ARE THE SHAPE TO COPY: "You bought me a corpse
+          suit." "My spine feels like rusted scaffolding." "I'm going to die
+          in a silk bathrobe." "I am going to pour it directly into the
+          nearest potted plant." One clause each, nothing explained first, and
+          every one of them a thing you can see in the room they are standing
+          in. The joke is precision, not swearing. Never put the thought in
+          the narrator's mouth, and never let the spoken line go crude.
         - EVERY THOUGHT IS TAGGED AS A THOUGHT. One voice reads this whole
           script aloud, so a thought with no tag is heard as something the
           narrator said to the room. Mark every one where it happens — "I
@@ -902,11 +910,22 @@ class ClaudeScriptWriter implements ScriptWriter
           thoughts. A thought is about what is happening, never
           about how to read the story: the narrating ban below covers
           thoughts too.
-        - THE RUNNING THOUGHT. The spine gives the narrator one private joke.
-          It is planted in chapter one — after the five beats of the opening,
-          never inside them — comes back in their head in later acts, and
-          pays off in the refusal, where it is said out loud once. A thought
-          that returns is worth more than ten that do not.
+        - THOUGHTS DO TWO DIFFERENT JOBS AND ONE DOES NOT ANSWER THE OTHER.
+          THE TEXTURE, which is where the narrator is actually funny: AT LEAST
+          THREE ONE-OFF THOUGHTS IN EVERY ACT. A new joke each time, about
+          what is in that scene, thought in the moment and never mentioned
+          again — the corpse suit, the rusted scaffolding, the potted plant.
+          They are thrown away on purpose. The reference runs about fifteen an
+          act at our act length and repeats none of them.
+          THE RUNNING THOUGHT, which is one line of an act and not its supply
+          of jokes: the spine gives the narrator ONE private joke that
+          travels. It is planted in chapter one — after the five beats of the
+          opening, never inside them — comes back in their head in later acts,
+          and pays off in the refusal, where it is said out loud once.
+          REPEATING IT DOES NOT COUNT TOWARD THE THREE. An act whose only
+          thoughts are that joke again has done the second job four times and
+          the first job not at all, which is how a whole video ends up with
+          one joke in it.
         - MILD LANGUAGE ONLY, and none in the first thirty seconds. "My ass",
           "hell", "damn" are fine. No f-word, no s-word, nothing stronger:
           strong or frequent profanity limits the ads on a format that exists
@@ -993,7 +1012,24 @@ class ClaudeScriptWriter implements ScriptWriter
            Every act after it costs the narrator more than the last: money,
            standing, a relationship, dignity, in front of more people each
            time. Nothing is recovered: no cost comes back, no apology sticks,
-           no ally fixes anything. BUT THE NARRATOR ANSWERS IN THE ROOM. In
+           no ally fixes anything.
+           THE NARRATOR TRIES, IN EVERY ONE OF THOSE ACTS, AND IS OVERRULED.
+           This is the difference between a man things happen to and a man
+           losing a fight, and it is the single most common way this format
+           goes wrong. Each escalation act carries one specific, reasonable
+           move the narrator makes to stop what is happening — they ask for
+           the loan schedule, correct the figure in front of the room, call
+           the office, put the receipt on the table, refuse to sign the letter
+           — and it FAILS, on screen, because the room, the family or the
+           institution sides with the antagonist. Not because the narrator
+           thought better of it, not off the page, and not in their head. The
+           attempt is what makes the cost a defeat instead of a donation: a
+           narrator who never reaches for anything reads as a doormat however
+           good his lines are, and three viewers said exactly that about
+           stories whose lines were good. Losing a round is not winning it —
+           the ledger still runs against the narrator until the departure, and
+           an attempt that succeeds is the thing to avoid, not an attempt.
+           BUT THE NARRATOR ANSWERS IN THE ROOM. In
            every scene where the antagonist is present, the narrator says
            something — one short, exact, funny line — and it lands. It changes
            nothing about the cost; the ledger still runs against the narrator
@@ -1004,8 +1040,16 @@ class ClaudeScriptWriter implements ScriptWriter
            she still turns her own best friend's anger back onto him. A
            narrator who says "all right" and "Yes, Mother" for twenty minutes
            was measured against that and lost the audience inside three. The
-           narrator holds information the antagonist does not have, established
-           early and not used.
+           narrator holds information the antagonist does not have. THE
+           AUDIENCE IS TOLD WHAT IT IS AND WHAT IT CAN DO, IN ACT 1, IN PLAIN
+           WORDS; THE ANTAGONIST IS NOT TOLD UNTIL THE FINAL ACT. Those are
+           different rules and only the second is about secrecy. Withholding
+           it from the viewer as well makes the middle unreadable — they are
+           watching a man absorb things while holding an envelope nobody has
+           explained — and it spends the one advantage this genre has over a
+           mystery, which is that the audience knows the score and the
+           antagonist does not. Establish it early, price it, and do not use
+           it.
            THE ESCALATION ACTS ARE SET IN THE STORY'S PRESENT. A prior incident
            — the first time this happened, the year the house was bought, what
            was said at a banquet years ago — is CITED in one sentence, with its
@@ -1141,7 +1185,22 @@ class ClaudeScriptWriter implements ScriptWriter
             - No headings, no scene labels, no stage directions, no bracketed notes.
             - No "Act One" or "Chapter" markers in the prose itself, except the
               spoken chapter number the chapter instruction below asks for.
-            - Dialogue is quoted plainly. "she said" and nothing fancier.
+            - Dialogue is quoted plainly. "she said" and nothing fancier. EVERY
+              line anybody speaks in this act goes inside quotation marks, every
+              time. Direct speech written without them — He said, take these
+              back, we are not people who keep things — is read aloud as
+              narration, because one voice reads both and nothing tells it where
+              the speech starts.
+            - THE BIGGEST THING THAT HAPPENS IN THIS ACT IS A SCENE, NOT A
+              REPORT. Whatever the act's worst moment is — the demotion, the
+              vote, the refusal to sign, the announcement in front of the family
+              — it happens on the page: the room, who is in it, and the words
+              they actually said, quoted. "He said the company was growing, and
+              that from November the manager line would carry another name" is
+              the biggest beat of an act delivered as a summary of itself, and a
+              viewer hears it as the narrator talking ABOUT a scene instead of
+              watching one. Reported speech is for what happened off screen and
+              for years gone by. What happens in this act is quoted.
             - Concrete detail over interiority. Name the amounts, the dates, the rooms,
               the exact words people used — of what is happening NOW. What happened
               years ago gets one sentence and its date, never a scene. Specifics are
@@ -1200,7 +1259,7 @@ class ClaudeScriptWriter implements ScriptWriter
         );
     }
 
-    private function outlinePrompt(Story $story, int $actCount): string
+    private function outlinePrompt(Story $story, int $actCount, bool $keepCast = true): string
     {
         // The act count is enumerated rather than stated. "Produce exactly 5
         // acts" was asked twice and came back with 4 both times: a bare count is
@@ -1252,11 +1311,19 @@ class ClaudeScriptWriter implements ScriptWriter
             .'- summary: 3-5 sentences, at most '.number_format(Act::SUMMARY_MAX_CHARS).' characters. '
             .'What actually happens, concretely. The act script is '
             ."written from this and nothing else, so anything vague here gets invented later.\n"
-            .'- escalation_beat: one sentence naming what this act COSTS, and to whom. In the '
-            .'escalation and departure phases that is the narrator, each act costing more than '
-            .'the one before it, and nothing resolving — no round won, no apology that sticks. '
-            .'In the search and refusal phases it is the ANTAGONIST, escalating the same way. '
-            ."The cost changes direction at the departure and never changes back.\n"
+            .'- escalation_beat: in the ESCALATION and DEPARTURE phases, WHAT THE NARRATOR TRIED '
+            .'AND WHAT IT COST THEM THAT IT FAILED. Both halves, in one or two sentences. The '
+            .'attempt is a specific, reasonable move a person in that position would actually '
+            .'make — ask for the schedule, correct the figure in the meeting, call the bureau, '
+            .'put the receipt on the table, say no to the letter — and it FAILS, because the '
+            .'room, the family or the institution overrides it, not because the narrator gave up '
+            .'on it. Each act costs more than the one before it and nothing resolves: no round '
+            .'won, no apology that sticks. A beat that names only a loss ("the narrator loses his '
+            .'office and his standing") is the one to avoid — it describes a man things happen '
+            .'to, and it is what fifty-three beats in this database did. In the SEARCH and '
+            .'REFUSAL phases the same field names what the ANTAGONIST attempted and what it cost '
+            .'HER, escalating the same way. The direction changes at the departure and never '
+            ."changes back.\n"
             .'- timeframe: "present" or "prior". Every act is PRESENT: it takes place in the '
             .'story\'s now, and anything that happened years earlier is cited inside it in one '
             .'sentence with its date. An act whose summary is a year-old banquet, the first '
@@ -1268,7 +1335,7 @@ class ClaudeScriptWriter implements ScriptWriter
             .'is the hook. Front-load the grievance, then name what happens. Something in '
             .'the shape of "My Sister Took X - So At Her Y, I Showed Everyone Z".',
             trim((string) $story->premise),
-            $this->castInstruction($story),
+            $this->castInstruction($story, keepCast: $keepCast),
             SpineQuestions::bullets(SpineQuestions::outlineOrderFor($story->ending), $story),
             $actCount,
             $actCount,
@@ -1303,7 +1370,7 @@ class ClaudeScriptWriter implements ScriptWriter
      * some — and allowed a cast of max_named (8) against a premise target of
      * premise_named (6). For a premise the cast IS the people the prose names.
      */
-    private function castInstruction(Story $story, bool $forPremise = false): string
+    private function castInstruction(Story $story, bool $forPremise = false, bool $keepCast = true): string
     {
         $roles = implode("\n", array_map(
             static fn (CastRole $role): string => sprintf('    %s — %s.', $role->value, $role->guidance()),
@@ -1319,6 +1386,189 @@ class ClaudeScriptWriter implements ScriptWriter
         // with everyone else and was refused. The schema property is the
         // mechanism; this is the wording that asks for it, and says why a
         // person nobody names still needs a name.
+        return $this->castQuestion($story, $forPremise, $roles, $taken)
+            .($forPremise
+                ? ''
+                : $this->partnerOutlineInstruction($story)
+                    .$this->chosenCastInstruction($story, $keepCast)
+                    .$this->chosenSpineInstruction($story));
+    }
+
+    /**
+     * The spine answers the picked premise was built on, handed over.
+     *
+     * THE THIRD THING THAT DIED AT "USE THIS PREMISE". The chosen cast and the
+     * narrator's name were the first two (3f, story 38); the seven answers
+     * beside the prose were the third. Gate 1 ran fourteen checks over them,
+     * the operator picked on what those checks said, and the outline — which
+     * is handed `stories.premise` and nothing else — answered all seven again
+     * from the prose. Story 39's candidate withheld "the only signer on the
+     * license renewal for the warehouse lease"; the outline wrote an 8.4
+     * million yuan Hamburg account.
+     *
+     * NOT AN INVARIANT, unlike the chosen cast, and the difference is why
+     * `GenerateOutline` refuses a dropped cast member and refuses nothing here.
+     * A name is checkable for identity. A spine answer is prose that has to be
+     * EXPANDED — the betrayal scene into a chapter, the departure into an act,
+     * the withheld information into an exposure the outline also has to invent
+     * — so "the outline changed it" is not by itself a defect, and a refusal
+     * would turn an ordinary rewrite into a billed failure. It is handed over
+     * as the answers to build on; the operator reads the result at Gate 1.
+     *
+     * Scoped like the chosen cast (`OutlineCast::chosenBeforeOutline`), and it
+     * moved with it: while no act carries a SCRIPT. It used to stop at the
+     * first outline, on the reasoning that the outline has now answered and a
+     * re-outline must be free to answer differently — which reads well and is
+     * the wrong default, for the reason recorded on that method. These are the
+     * answers Gate 1 checked and the operator picked the premise ON. A
+     * re-outline that re-answers them from the prose discards a decision
+     * somebody made, silently, and story 39 is the measurement: the candidate
+     * withheld a warehouse licence only the narrator could sign, and the
+     * re-outline that never saw the answers invented an 8.4M yuan Hamburg
+     * account instead. Handed over, the same three specifics came back.
+     *
+     * NOT tied to the confirm's keep-the-cast checkbox, deliberately. That
+     * checkbox says the CAST is what is wrong; an operator repairing a cast has
+     * not said anything about the withheld information. Two questions, and
+     * folding them into one flag would answer the second without asking it.
+     */
+    private function chosenSpineInstruction(Story $story): string
+    {
+        $spine = $story->premise_spine;
+
+        if (! is_array($spine) || $story->hasWrittenActs()) {
+            return '';
+        }
+
+        $lines = [];
+
+        foreach (PremiseCandidate::FIELDS as $field) {
+            $value = trim((string) ($spine[$field] ?? ''));
+
+            if ($value !== '') {
+                $lines[] = '- '.$field.': '.$value;
+            }
+        }
+
+        if ($lines === []) {
+            return '';
+        }
+
+        return "\n\nTHE PREMISE CAME WITH THESE ANSWERS, AND THE OPERATOR PICKED IT ON THEM. They were "
+            .'written for this premise and checked against it before it was chosen, so the specifics in '
+            .'them — the occasion, the document, the debt, the thing only the narrator can produce — are '
+            .'the operator\'s choice and not a first guess. Build the fields below on these rather than '
+            .'answering from the premise prose alone: keep the specifics, and expand them into the '
+            ."scene, the act and the exposure the rest of the outline needs.\n"
+            .implode("\n", $lines);
+    }
+
+    /**
+     * What the future partner is to the narrator BY THE END, asked of the
+     * outline and never of the premise.
+     *
+     * Story 38 (CLAUDE.md 3f, second reading): every instruction about the
+     * partner was about the ARRIVAL, the act writer got a name and a
+     * relationship line, and the last chapter asked for "something they are
+     * doing together". It came back as a boss at a staff dinner. Nothing asked
+     * for a couple, so nothing produced one. The premise keeps "what happens
+     * between them later is the video's": the operator's decision, 2026-09-19,
+     * and the reason this lives downstream of it.
+     *
+     * The act SUMMARIES carry it because the act writer is written from them;
+     * a relationship that is only in the cast line reaches the act writer as a
+     * job title. Not checked as prose, deliberately: whether two people are
+     * written as a couple is a reading, and the operator reads it at Gate 1.
+     *
+     * THE END STATE IS NAMED, AND THAT IS THE HALF STORY 39 DID NOT HAVE. The
+     * whole vocabulary this method offered was "a couple, together, a year on",
+     * so "Nancy introduces me to a room as her partner" obeyed it exactly while
+     * the operator's idea said "married her older sister". When the operator
+     * chose a state it is stated here in its own words; when nobody chose one,
+     * the four are NAMED as a list with the weak ones marked as the default a
+     * writer falls into — the words widen either way, and only the column
+     * decides. See App\Enums\PartnerEndState.
+     */
+    private function partnerOutlineInstruction(Story $story): string
+    {
+        if ($story->format === StoryFormat::Anthology) {
+            return '';
+        }
+
+        // The cast does not exist yet — this outline is what writes it — so
+        // the column is read directly rather than through PartnerEnding, which
+        // needs a cast to have a subject. The ending half of that scope IS
+        // applied: on the antagonist's chapter the narrator's year is not shown
+        // at all, so naming an end state there would contradict the ending's
+        // own `doesNotCarry()` two blocks down.
+        $state = $story->ending === StoryEnding::NewLife ? $story->partner_end_state : null;
+
+        $byTheEnd = $state !== null
+            ? sprintf(
+                'what they are to the narrator by the end, WHICH IS CHOSEN FOR THIS STORY AND IS NOT '
+                .'YOURS TO SOFTEN: %s',
+                $state->instruction(),
+            )
+            : 'what they are to the narrator by the end, SAID IN THE WORD THAT IS TRUE — married, '
+                .'engaged, living together, or together and nothing further. "A couple", "together" and '
+                .'"my partner" are true of all four and say the least of any of them, and they are what '
+                .'a writer reaches for with nothing else to go on. Pick the one the story earns and use '
+                .'its own words.';
+
+        return "\n\nIF YOUR CAST HAS A FUTURE PARTNER, their relationship line says who they arrive "
+            .'through AND '.$byTheEnd.' The '
+            .'acts get there in order, and the act summaries have to say so, because the act writer is '
+            .'written from them and learns nothing else about the two of them. Before the narrator '
+            .'leaves, the partner is only what they arrive as — a colleague, a friend, a friend\'s '
+            .'sister — and those summaries carry nothing romantic. THREE MOMENTS GET THEM THERE AND THEY '
+            .'ESCALATE BY WHO CAN SEE THEM: two in the search act, one in the refusal act, each a scene '
+            .'rather than a line about the year. The first is private or nearly so. The second is in '
+            .'front of people and the antagonist is one of them — that is the escalation, and it is what '
+            .'costs her something. The third, in the refusal act, NOBODY SEES: after the room has '
+            .'emptied, with nothing to prove to anyone. The search act\'s summary names both of its moments '
+            .'and who was watching. The last act\'s summary '
+            .'says '.($state !== null ? 'they are '.$state->label().', in those words, in the same sentence as the partner\'s name.' : 'which of the four they are, in its own words, in the same sentence as the partner\'s name.');
+    }
+
+    /**
+     * The cast chosen before the outline, handed over as fixed.
+     *
+     * Empty when nothing was chosen — a typed premise, or a re-outline of a
+     * story that already has acts — and that prompt is byte-identical to what
+     * it was. The chosen cast is the one "Use this premise" kept (story 38
+     * lost its partner at exactly that click); OutlineCast::chosenBeforeOutline()
+     * says which, for this prompt and for GenerateOutline, which refuses an
+     * outline that drops one of these people or gives them another role.
+     */
+    private function chosenCastInstruction(Story $story, bool $keepCast = true): string
+    {
+        $members = OutlineCast::chosenBeforeOutline($story, $keepCast);
+
+        if ($members === []) {
+            return '';
+        }
+
+        return "\n\nTHE CAST IS ALREADY CHOSEN. It came with the premise, and the operator picked it. "
+            .'Use every person below, with the name exactly as written and the role exactly as given; '
+            .'the narrator is the one marked Narrator, and that is the name in your narrator field. '
+            .'You may write a fuller relationship line for anyone. Add another person only under the '
+            ."rule above.\n"
+            .implode("\n", array_map(
+                static fn (CastMember $m): string => sprintf(
+                    '- %s (%s)%s',
+                    $m->name,
+                    $m->role?->label() ?? 'no role',
+                    $m->relationship === '' ? '' : ': '.$m->relationship,
+                ),
+                $members,
+            ));
+    }
+
+    /**
+     * @param  array<int, string>  $taken
+     */
+    private function castQuestion(Story $story, bool $forPremise, string $roles, array $taken): string
+    {
         return sprintf(
             'FIRST, THE NARRATOR: the first person telling this story. The premise is written in their '
             .'voice and almost never says their name, because nobody says their own name while telling a '
@@ -1397,6 +1647,73 @@ class ClaudeScriptWriter implements ScriptWriter
             .'in exactly the form written here.';
     }
 
+    /**
+     * What the future partner is to the narrator in THIS act, by phase.
+     *
+     * The act writer was handed the partner's name, the label and a
+     * relationship line, and nothing else — on purpose, so item 5 could
+     * measure whether the row alone carries them (CLAUDE.md 3f). Story 38
+     * answered: it carries a person and not a relationship. So each phase says
+     * what they are to each other there, and the last says it plainly.
+     *
+     * No romance before the narrator leaves: the partner arrives as a
+     * colleague or a friend's sister, and that is right (the operator,
+     * 2026-09-19). Empty with no partner in the cast, and on an anthology,
+     * whose acts have no phase.
+     */
+    private function partnerArcFor(Story $story, ActOutline $act): string
+    {
+        $partner = OutlineCast::futurePartner($story->outline_cast);
+
+        if ($partner === null || $act->phase === null) {
+            return '';
+        }
+
+        $state = PartnerEnding::stateFor($story);
+
+        return sprintf('THE PERSON THE NARRATOR ENDS UP WITH: %s. ', $partner->name).match ($act->phase) {
+            ActPhase::Escalation, ActPhase::Departure => sprintf(
+                'In this act %s is only what they arrive as — %s — if they are in it at all. Nothing '
+                .'romantic between them here: no attraction narrated, no look held, no hint of what comes.',
+                $partner->name,
+                $partner->relationship !== '' ? $partner->relationship : 'someone already in the narrator\'s life',
+            ),
+            ActPhase::Search => sprintf(
+                'In this act it becomes more than %s, in TWO MOMENTS — each one a scene, told as it '
+                .'happens, where the narrator and %s do or say something only two people becoming a '
+                .'couple would. THEY ESCALATE BY WHO CAN SEE THEM: the first is private or nearly so; '
+                .'the second is in front of people and the antagonist is one of them. Two moments — not '
+                .'a paragraph about the year, and not a mood over the act; in every other scene she is '
+                .'in, she is what she arrived as. The narrator stages neither of them for her. '
+                .'SENTENCE FOUR OF YOUR SUMMARY NAMES BOTH AND SAYS WHO WAS WATCHING: the next act is '
+                .'written from this summary and learns nothing else about the two of them.',
+                $partner->relationship !== '' ? 'what they arrived as' : 'friends',
+                $partner->name,
+            ),
+            // THE ACT AND THE LAST CHAPTER ARE A YEAR APART, and only the
+            // second one carries the end state: the refusal happens now and
+            // the new life is a year on, so "married by this act" would be
+            // asking the wrong scene for it. Sentence four of the summary is
+            // where Gate 1 reads it back, because the act writer REPLACES the
+            // outline's summary with its own — which is also why choosing the
+            // state after the outline still reaches the artifact.
+            ActPhase::Refusal => sprintf(
+                'By this act the narrator and %s are together, and wherever the act touches the '
+                .'narrator\'s own life it says so plainly. ONE MORE MOMENT BETWEEN THEM HAPPENS IN '
+                .'THIS ACT, AND NOBODY SEES THIS ONE: after the room has emptied, with nothing to prove '
+                .'to anyone and no one left to see it. It is the third of the three and the only one '
+                .'that is not for an audience. In the last chapter, a year on, %s '
+                .'Sentence four of the summary says so, in those words, in the same sentence as %s\'s name.',
+                $partner->name,
+                $state !== null
+                    ? 'they are '.$state->label().': '.$state->instruction()
+                    : 'say which of the four they are — married, engaged, living together, or together '
+                        .'and nothing further — in its own words.',
+                $partner->name,
+            ),
+        };
+    }
+
     private function witnessInstruction(Story $story): string
     {
         return $story->outline_cast === null || $story->outline_cast === []
@@ -1418,7 +1735,13 @@ class ClaudeScriptWriter implements ScriptWriter
     ): string {
         $outlineBlock = implode("\n", array_map(
             fn (ActOutline $entry): string => sprintf(
-                "%d. [%s%s] %s\n   %s\n   COSTS: %s%s",
+                // "COSTS:" was right while the beat was only a cost. Since
+                // 2026-09-20 an escalation beat carries the narrator's failed
+                // attempt as well, so the label names the field rather than
+                // half of it — a context block that says COSTS in front of
+                // "he asked for the schedule and never got it" teaches the
+                // writer that the attempt is not part of the answer.
+                "%d. [%s%s] %s\n   %s\n   BEAT: %s%s",
                 $entry->sequence,
                 // The phase is in the context block, not only on the act being
                 // written. An act 6 that cannot see act 5 was the departure
@@ -1517,6 +1840,7 @@ class ClaudeScriptWriter implements ScriptWriter
             sprintf('%s: %s', $act->phase?->beatLabel() ?? 'What this act must cost the narrator', $act->escalationBeat),
             $this->timeframeInstruction($act),
             $ending,
+            $this->partnerArcFor($story, $act),
             $this->chapterInstruction($story, $act),
             // THE OPENING INSTRUCTION GOES LAST, on every act and not only on
             // act 1. Story 30 lost two of act 1's five beats and both of its
@@ -1834,10 +2158,39 @@ class ClaudeScriptWriter implements ScriptWriter
         $hook = trim((string) $story->hook);
         $words = ScriptSizing::hookBetrayalWords($story);
 
+        // ------------------------------------------------------------------
+        // THE SUSPENSION LIST AND THE RESTORATION LIST HAVE TO NAME THE SAME
+        // RULES, AND FOR A PHASE THEY DID NOT
+        // ------------------------------------------------------------------
+        //
+        // This block suspends four rules for the length of the five beats and
+        // then restores them. The restoring sentence used to read "every other
+        // rule in this prompt is back in force, THE ANSWER-BACK INCLUDED" — it
+        // named one of the four. The chapter bullet said "NOT THIS ONE", where
+        // "one" can be read as the chapter or as the act.
+        //
+        // Measured on the four stories written since that clause went in
+        // (2026-09-14): stories 36 and 37 announce "Chapter one." and then
+        // "Chapter four.", with act 1's chapters 2 and 3 stored, titled, cut
+        // and silent; stories 33 and 38 announce all sixteen. Two of four, on
+        // a coin-flip reading of one word, in published video.
+        //
+        // `chapterInstruction()` already delegated act 1's opening order here
+        // — "the OPENING block below sets its order" — so the delegation was
+        // pointing at a block that answered for chapter one and nothing after
+        // it. Both lists name every rule now, and the chapter bullet says the
+        // exception is one chapter long rather than one act long.
+        //
+        // This is the third defect the act-1 collision has produced and the
+        // first in the RESTORATION half; the other two were in the suspension
+        // half. The standing question stays the one already written down for
+        // "every" and "always" — and gains a second half: when a block
+        // suspends a rule, the sentence that gives it back names it.
         $beats = sprintf(
             'THE OPENING. THIS ACT OPENS THE VIDEO, and its opening is the highest-leverage text '
             .'in the whole script. Other instructions in this prompt touch it and THIS BLOCK '
-            ."OUTRANKS ALL OF THEM for as long as the five beats last:\n\n"
+            .'OUTRANKS ALL OF THEM for as long as the five beats last — and for exactly that '
+            ."long, after which each of them is back:\n\n"
             .'- The accomplice talks in his act, and the narrator\'s running thought is planted. NOT '
             .'HERE, where the spine has either. Both start in chapter one, after the chapter number.'
             ."\n"
@@ -1845,9 +2198,11 @@ class ClaudeScriptWriter implements ScriptWriter
             .'the narrator\'s move in the opening and it is a cold action, not a line — the '
             .'answer-back begins at the first scene AFTER the beats.'
             ."\n"
-            .'- Every chapter opens by speaking its number. NOT THIS ONE. The hook is the cold '
-            .'open and comes first; "Chapter one." is spoken after beat 5, where the story proper '
-            .'begins.'
+            .'- Every chapter opens by speaking its number. NOT THIS CHAPTER, AND ONLY THIS '
+            .'CHAPTER. The hook is the cold open and comes first; "Chapter one." is spoken after '
+            .'beat 5, where the story proper begins. EVERY LATER CHAPTER IN THIS ACT SPEAKS ITS '
+            .'NUMBER NORMALLY, at its own opening — chapter two, chapter three, and any after '
+            .'them. The exception is one chapter long, not one act long.'
             ."\n"
             .'- Every chapter opens with a re-hook. The five beats ARE this chapter\'s opening; its '
             ."re-hook line is the first sentence after the chapter number.\n\n"
@@ -1875,8 +2230,10 @@ class ClaudeScriptWriter implements ScriptWriter
             .'chronological beginning of events. The beginning in time is almost never the '
             ."beginning of the video.\n\n"
             .'THEN, AND ONLY THEN, THE VIDEO STARTS: %s as its own sentence, then this chapter\'s '
-            .'re-hook line, then the act. From that sentence onward every other rule in this '
-            .'prompt is back in force, the answer-back included.',
+            .'re-hook line, then the act. FROM THAT SENTENCE ONWARD EVERY RULE SUSPENDED ABOVE IS '
+            .'BACK IN FORCE, ALL OF THEM: the answer-back, the accomplice\'s act, the running '
+            .'thought, AND THE SPOKEN CHAPTER NUMBER — so this act\'s second chapter opens '
+            .'"Chapter two.", its third opens "Chapter three.", and so on to the end of the act.',
             number_format($words),
             ChapterAnnouncement::enabled()
                 ? '"'.ChapterAnnouncement::sentenceFor(1).'"'
@@ -1965,10 +2322,18 @@ class ClaudeScriptWriter implements ScriptWriter
     private function endingFor(Story $story, ActOutline $act, bool $isLast): string
     {
         return match ($act->phase) {
-            ActPhase::Escalation => 'This act is in the ESCALATION phase. The withheld information '
-                .'does not come out here and the narrator does not leave here. Nothing is recovered: '
-                .'no cost comes back, no real apology arrives, no ally fixes anything, and the act '
-                .'ends worse off for the narrator than it started. AND THE NARRATOR ANSWERS BACK. In '
+            ActPhase::Escalation => 'This act is in the ESCALATION phase. '
+                .$this->withheldInformationHere()
+                .' The narrator does not leave here. '
+                .'THE NARRATOR TRIES SOMETHING IN THIS ACT AND IT FAILS: the beat above says what. '
+                .'Stage the attempt — they ask for the document, correct the number in front of '
+                .'the room, make the call, put the receipt on the table, decline the thing they '
+                .'are being told to sign — and then stage it failing, because the room, the family '
+                .'or the institution overrides it. NOT because they thought better of it and not '
+                .'off the page: an attempt the audience does not watch fail is a narrator who did '
+                .'nothing. Nothing is recovered: no cost comes back, no real apology arrives, no '
+                .'ally fixes anything, and the act ends worse off for the narrator than it started '
+                .'— worse off BECAUSE the attempt failed. AND THE NARRATOR ANSWERS BACK. In '
                 .'every scene the antagonist is in, the narrator says one short, exact, funny line '
                 .'that lands — not a speech, not "all right", not "Yes, Mother". The line changes '
                 .'nothing about what the act costs; that is the point. The exchange is won and the '
@@ -1995,11 +2360,13 @@ class ClaudeScriptWriter implements ScriptWriter
             ActPhase::Departure => "THIS IS THE DEPARTURE ACT. The narrator goes:\n\n"
                 .$story->departure."\n\n"
                 .'It is still an escalation act until they leave — this is the worst it gets, and it '
-                .'is what makes staying impossible. Then they go. THEY DO NOT ANNOUNCE IT: no '
-                .'ultimatum, no farewell speech, no note, no final phone call. They are simply not '
-                .'there any more, and the antagonist has not worked that out yet when the act ends. '
-                .'The withheld information does not come out here. Do not explain where they went — '
-                .'the audience may know, the antagonist must not.'
+                .'is what makes staying impossible — and it is the LAST attempt, the one that had '
+                .'the best chance and fails worst. Stage it failing. Then they go. THEY DO NOT '
+                .'ANNOUNCE IT: no ultimatum, no farewell speech, no note, no final phone call. They '
+                .'are simply not there any more, and the antagonist has not worked that out yet '
+                .'when the act ends. '
+                .$this->withheldInformationHere()
+                .' Do not explain where they went — the audience may know, the antagonist must not.'
                 .$this->accompliceWinsHere($story)
                 .$this->accompliceFallFor($story, ActPhase::Departure),
 
@@ -2008,22 +2375,34 @@ class ClaudeScriptWriter implements ScriptWriter
                 .$story->reversal_beats."\n\n"
                 .'The direction of the escalation has reversed. Everything in this act costs the '
                 .'ANTAGONIST — money, standing, the people who found her excuse reasonable — and it '
-                .'costs her more than the last attempt did. PUT THEM IN THE SAME SCENE AT LEAST ONCE '
-                .'IN THIS ACT: she runs into them, follows them, sits down across from them, turns up '
-                .'where they are — on her initiative or by chance, in front of people — and the '
-                .'meeting costs her, in public. The narrator answers in one short, exact, funny line '
+                .'costs her more than the last attempt did. PUT THEM IN THE SAME SCENE TWICE IN THIS '
+                .'ACT — TWO SEPARATE MEETINGS, BOTH STAGED: she runs into them, follows them, sits '
+                .'down across from them, turns up where they are — on her initiative or by chance, in '
+                .'front of people — and the second costs her more than the first. Each one is a scene '
+                .'as it happens, in a room, with what they said to each other in quotation marks. '
+                .'Not "she found me at the fair and I told her to go home": that is the meeting '
+                .'reported instead of played, and it is the whole act\'s worth of drama spent in one '
+                .'sentence. The narrator answers in one short, exact, funny line '
                 .'and leaves. They do not go back, do not explain, do not search for her, do not send '
                 .'a message. The narrator\'s own life is ON SCREEN in this act, not a paragraph: what '
-                .'they are doing, who they are with, what the days look like — because a narrator the '
+                .'they are doing, who they are with, what the days look like, WITH SOMEBODY ELSE IN '
+                .'THE ROOM SAYING SOMETHING — because a narrator the '
                 .'audience cannot see is a narrator the antagonist is not losing to. She may learn '
                 .'where they are; if she does, the finding costs her and the scene is still the '
-                .'narrator\'s. End the act with her worse off than she started it.'
+                .'narrator\'s. End the act with her worse off than she started it. '
+                .$this->withheldInformationHere()
                 .$this->accompliceFallFor($story, ActPhase::Search),
 
             ActPhase::Refusal => 'THIS IS THE FINAL ACT. Both payoffs land here, in this '
                 ."order.\n\nFIRST, the exposure — the public one:\n\n"
                 .$story->exposure_moment."\n\n"
-                .'The withheld information comes out here and nowhere earlier. '
+                .'THE WITHHELD INFORMATION COMES OUT TO THE ANTAGONIST AND THE ROOM HERE, AND '
+                .'NOWHERE EARLIER. It is not news to the audience and must not be written as if it '
+                .'were: they have known what it is and what it can do since act 1, which is the '
+                .'only reason they have spent forty minutes waiting for this. What lands here is '
+                .'HER face when she learns it, not the fact. Do not stage a revelation to the '
+                .'viewer, do not have the narrator explain the rule for the first time, and do not '
+                .'let a character summarise what the audience already knows for their benefit. '
                 .$this->witnessInstruction($story).' The antagonist repeats their justification in front of '
                 ."people who now know it is false.\n\n"
                 .'THE NARRATOR IS IN THE ROOM FOR IT, by their own choice, and the audience is there '
@@ -2118,15 +2497,8 @@ class ClaudeScriptWriter implements ScriptWriter
      */
     private function newLifeEnding(Story $story): string
     {
-        $partner = null;
-
-        foreach (OutlineCast::members($story->outline_cast) as $member) {
-            if ($member->role === CastRole::FuturePartner && trim($member->name) !== '') {
-                $partner = $member;
-
-                break;
-            }
-        }
+        $partner = OutlineCast::futurePartner($story->outline_cast);
+        $state = PartnerEnding::stateFor($story);
 
         return 'THEN THE ENDING: THE NARRATOR\'S NEW LIFE. It is the last chapter of this act and of the '
             .'video — a chapter of its own, numbered and announced like the others — about a year after '
@@ -2138,13 +2510,37 @@ class ClaudeScriptWriter implements ScriptWriter
             .'before was that list, and it made every video end the same way. No moral, no account of '
             .'what anyone learned, and no "I still think about it sometimes". '
             .($partner !== null
+                // "A COUPLE NOW" is the sentence story 38 did not have. It was
+                // told the partner was in the scene and asked for "something
+                // they are doing together", and wrote a boss sliding a folder
+                // under an employee's elbow at a staff dinner. Nothing asked
+                // what they are to each other, so nothing said it. Not checked:
+                // the operator reads this chapter at Gate 1 (CLAUDE.md 3f).
+                //
+                // AND IT WAS STILL THE WEAKEST THING THIS SCENE COULD SAY.
+                // Story 39's idea asked for a marriage and this sentence could
+                // only ask for a couple, so a couple is what came back. The
+                // chosen state is named here in its own words; with none
+                // chosen the four are named, so the writer at least knows the
+                // choice exists. See App\Enums\PartnerEndState.
                 ? sprintf(
-                    '%s IS IN THE SCENE, ON SCREEN — %s. The scene is theirs as much as the narrator\'s: '
-                    .'something they are doing together, and one exchange between them in their own words. '
-                    .'If the story has not yet shown how they came into the narrator\'s life, one sentence '
-                    .'here may say it, and no more. ',
+                    '%s IS IN THE SCENE, ON SCREEN, AND THIS IS WHAT THE TWO OF THEM ARE TO EACH OTHER NOW: '
+                    .'%s %s arrived as %s; '
+                    .'a year on the scene makes that plain — once in the narration, '
+                    .'said the way a person says it about their own life, and in what they do: something the '
+                    .'two of them are doing together, and one exchange between them in their own words that '
+                    .'only two people who are together would have. Never a manager and an employee, never '
+                    .'colleagues at a work event, never a friend who helps: if the scene could be read as '
+                    .'work, it is the wrong scene. If the story has not yet shown how they came into the '
+                    .'narrator\'s life, one sentence here may say it, and no more. ',
                     $partner->name,
-                    $partner->relationship !== '' ? $partner->relationship : 'the person the narrator ends up with',
+                    $state !== null
+                        ? $state->instruction()
+                        : 'MARRIED, ENGAGED, LIVING TOGETHER, OR TOGETHER AND NOTHING FURTHER — say which, in '
+                            .'its own words. "A couple", "together" and "my partner" are true of all four and '
+                            .'say the least of any of them; do not settle for one because it is safe.',
+                    $partner->name,
+                    $partner->relationship !== '' ? $partner->relationship : 'someone already in the narrator\'s life',
                 )
                 : 'THERE IS NO PARTNER IN THIS STORY, AND THE NARRATOR IS ALONE AND FINE: not lonely and '
                     .'not waiting for anyone. The scene has the narrator\'s own people in it — friends, family, '
@@ -2195,6 +2591,63 @@ class ClaudeScriptWriter implements ScriptWriter
                 $name,
                 (int) config('chapters.min_words', 150),
             );
+    }
+
+    /**
+     * What "the withheld information does not come out here" means, and to
+     * WHOM it does not come out.
+     *
+     * -----------------------------------------------------------------------
+     * THE SPLIT THIS CONTRACT ALREADY DRAWS TWICE AND NEVER DREW HERE
+     * -----------------------------------------------------------------------
+     *
+     * `endingFor(Departure)` says, of where the narrator went: "the audience
+     * may know, the antagonist must not". Hook beat 4 says the cold action is
+     * "something quiet and exact that the audience understands and the
+     * antagonist does not". Both are the same distinction, drawn correctly,
+     * one paragraph from the place it matters most — and for the withheld
+     * information three phases said only "does not come out here" and the
+     * refusal said "comes out here and nowhere earlier". "Comes out" reads as
+     * "is revealed", and a writer told a fact is revealed in the last act
+     * keeps it from the viewer for the whole video.
+     *
+     * Measured on the four published stories, in rendered time: the card's
+     * CONTENT — what it is and what it can do — reaches the viewer at 14:42 of
+     * 40:18 on story 33 (36%), 19:46 of 38:30 on story 37 (51%), 29:26 of
+     * 39:15 on story 36 (75%) and 29:37 of 39:13 on story 38 (75%). Story 36
+     * shows the same pink envelope five times across twenty-two minutes and
+     * never says what it can do; story 38's narrator holds a veto for
+     * thirty-three minutes and the reason he is not using it arrives as a
+     * line of dialogue at the exposure.
+     *
+     * That is half of "kept giving for no reason": a viewer cannot price a
+     * concession against a card they cannot read. It is also, on the same
+     * evidence, half of "too confusing".
+     *
+     * The rule is unchanged in the only direction it was ever about — the
+     * ANTAGONIST learns nothing before the final act. What is new is that the
+     * AUDIENCE is told, early, in plain words, and the last act is written as
+     * her finding out rather than as the viewer finding out.
+     *
+     * NOT WIRED INTO THE PHASELESS BRANCH, deliberately: that branch is an
+     * anthology act or an outline written before the reversal existed, and it
+     * is kept as the shape its outline was built to. No story in the pipeline
+     * is phaseless.
+     */
+    private function withheldInformationHere(): string
+    {
+        return 'THE WITHHELD INFORMATION DOES NOT COME OUT TO THE ANTAGONIST HERE — AND THE '
+            .'AUDIENCE ALREADY HAS IT. Those are two different rules and only the first one is '
+            .'about secrecy. By the end of act 1 the viewer knows exactly what the narrator holds, '
+            .'what it can do, and why they are not using it yet; from then on every scene is the '
+            .'viewer watching a man with a card in his pocket decide not to play it, which is the '
+            .'tension this format runs on. A viewer who does not know what the card is cannot '
+            .'price anything the narrator gives up, and reads him as a man giving things away for '
+            .'no reason. So: name the thing plainly, in the narrator\'s own words, the first time '
+            .'it is on screen — not "I checked one line" or "a document I kept", but what the line '
+            .'says, what it lets the narrator do that nobody else can, and what the narrator would '
+            .'lose by saying it now. Then the antagonist goes on not knowing, and nobody in the '
+            .'story says it aloud until the final act.';
     }
 
     /**
@@ -2706,6 +3159,68 @@ class ClaudeScriptWriter implements ScriptWriter
             if (trim((string) $value) !== '') {
                 $lines[] = $label.': '.trim((string) $value);
             }
+        }
+
+        // The partner. This call decides who is IN a frame and how they stand,
+        // and story 38's last chapter was a boss at a staff dinner in pictures
+        // as well as in prose.
+        //
+        // TWO ACTS, BECAUSE THE ACT PROMPT ASKS FOR TWO THINGS. `partnerArcFor`
+        // asks the SEARCH act for two moments where they are plainly becoming
+        // more than what they arrived as, and the REFUSAL act for a third
+        // and for the last chapter a year on. Only the second one used to reach this stage, so
+        // the moment had no reinforcement where the pictures are decided —
+        // measured on story 38, whose search act gave her four scenes and drew
+        // all four as work (operations director, a rebate schedule, a line
+        // review). Nothing here could have known one of them was the moment,
+        // because nothing here had been told she existed.
+        $partner = OutlineCast::futurePartner($story->outline_cast);
+
+        // Deliberately NOT gated on the ending, unlike the refusal line below.
+        // `partnerArcFor(Search)` asks for the moment whatever the ending is,
+        // and the whole point of this block is that the two stages agree; an
+        // extra condition here would put the prompt and the pictures back into
+        // disagreement on the one story shape that already gets a Gate 1
+        // warning for it.
+        if ($partner !== null && $act->phase === ActPhase::Search) {
+            $lines[] = sprintf(
+                'THE NARRATOR\'S PARTNER: %s. This act has TWO MOMENTS where the two of them are '
+                .'plainly becoming more than %s, and they differ by WHO IS WATCHING: the first is private '
+                .'or nearly so, the second is in front of people. When the narration reaches one of them, '
+                .'that frame is not a work frame — the two of them are close, turned toward each other, '
+                .'and what is happening between them is what the picture is of; on the second, the people '
+                .'who can see it are in the frame too. EVERY OTHER FRAME SHE IS IN THIS ACT IS NOT ONE OF '
+                .'THOSE: there she is what she arrived as, drawn as she would be on any ordinary day, and '
+                .'nothing in the frame says more. Two moments, two frames — not a mood over the act.',
+                $partner->name,
+                // 'what they arrived as', never the relationship LINE, and
+                // the act prompt already does it this way. A relationship
+                // line is written for the outline and routinely carries the
+                // ending in it — story 39's reads "...and who by the end of
+                // this story is my wife" — so interpolating it here would
+                // hand the ending to a frame instruction about BECOMING,
+                // in the one act whose whole point is that it has not
+                // happened yet. Found by rendering the prompt, not by a test.
+                'what they arrived as',
+            );
+        }
+
+        if ($partner !== null && $act->phase === ActPhase::Refusal && $story->ending === StoryEnding::NewLife) {
+            $lines[] = sprintf(
+                'THE NARRATOR\'S PARTNER: %s. In the last chapter, a year on, the two of them are %s: '
+                .'where they share a frame there, draw them as one — together, at ease, side by side — never '
+                .'across a desk or as a boss and an employee.',
+                $partner->name,
+                // The word, not a staging instruction. This call decides who is
+                // in a frame and how they stand, and "married" changes the
+                // second of those about as much as "a couple" does — but the
+                // narration in that chapter now says the chosen word, and a
+                // frame told something weaker is a picture arguing with its own
+                // narration. See App\Support\PartnerEnding.
+                ($state = PartnerEnding::stateFor($story)) !== null
+                    ? mb_strtolower($state->label())
+                    : 'a couple',
+            );
         }
 
         // Her chapter, when the act actually came back with one. Read off the

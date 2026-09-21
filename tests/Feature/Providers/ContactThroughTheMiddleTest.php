@@ -63,15 +63,74 @@ class ContactThroughTheMiddleTest extends TestCase
         $this->assertStringNotContainsString('no round is won', $ending);
     }
 
-    public function test_the_search_ending_puts_them_in_the_same_scene(): void
+    /**
+     * TWO, AND THE NUMBER IS STATED BECAUSE A COUNT IS SATISFIABLE EXACTLY.
+     *
+     * "At least once" was obeyed at once. Measured across five rendered
+     * stories, the search act has the lowest quoted share of speech of any
+     * act — 26-38% against 57-82% in the refusal act — and every story's
+     * longest stretch with no staged line contains the departure or the
+     * search act. One required scene in a 1,400-word act leaves six minutes
+     * unclaimed, and unclaimed act text defaults to narration.
+     *
+     * Two rather than three: `reversal_beats` already asks the outline for
+     * "at least two of these", so the act and the spine now agree instead of
+     * disagreeing by one — which is the act-1 collision shape, and the more
+     * specific instruction wins it. The search act also already carries the
+     * accomplice's fall, the partner's two moments and the narrator's own
+     * life, and a third required meeting is what would start pushing on the
+     * summary bound.
+     */
+    public function test_the_search_ending_asks_for_two_staged_meetings(): void
     {
         $ending = $this->endingFor(ActPhase::Search);
 
-        $this->assertStringContainsString('PUT THEM IN THE SAME SCENE AT LEAST ONCE IN THIS ACT', $ending);
+        $this->assertStringContainsString('PUT THEM IN THE SAME SCENE TWICE IN THIS ACT', $ending);
+        $this->assertStringContainsString('TWO SEPARATE MEETINGS, BOTH STAGED', $ending);
+        $this->assertStringContainsString('with what they said to each other in quotation marks', $ending);
+        $this->assertStringContainsString('the meeting reported instead of played', $ending);
         $this->assertStringContainsString('own life is ON SCREEN in this act, not a paragraph', $ending);
+        $this->assertStringContainsString('WITH SOMEBODY ELSE IN THE ROOM SAYING SOMETHING', $ending);
         $this->assertStringContainsString('She may learn where they are', $ending);
+
+        // The count that was obeyed exactly, at one.
+        $this->assertStringNotContainsString('AT LEAST ONCE', $ending);
         $this->assertStringNotContainsString('She does not find them in this act', $ending);
         $this->assertStringNotContainsString('should be quiet', $ending);
+    }
+
+    /** The act and the spine agree on the number now, rather than differing by one. */
+    public function test_the_act_and_the_spine_ask_for_the_same_number_of_meetings(): void
+    {
+        $story = Story::factory()->single()->create();
+
+        $this->assertStringContainsString(
+            'IN THE SAME SCENE in at least two of these',
+            $this->invoke($this->writer(), 'outlinePrompt', $story, 5),
+        );
+        $this->assertStringContainsString('SAME SCENE TWICE IN THIS ACT', $this->endingFor(ActPhase::Search));
+        $this->assertStringContainsString('same scene TWICE in this act', ActPhase::Search->guidance());
+    }
+
+    /**
+     * STORY 39's DEMOTION IN FRONT OF FORTY PEOPLE ARRIVED AS INDIRECT
+     * SPEECH, and it is in the DEPARTURE act — so this rule is in the act
+     * system prompt, where every act reads it, and not in the search ending.
+     */
+    public function test_every_act_is_told_its_biggest_beat_is_a_scene_not_a_report(): void
+    {
+        $system = $this->flat($this->invoke($this->writer(), 'actSystemPrompt', Story::factory()->single()->create()));
+
+        $this->assertStringContainsString('THE BIGGEST THING THAT HAPPENS IN THIS ACT IS A SCENE, NOT A REPORT', $system);
+        $this->assertStringContainsString('the words they actually said, quoted', $system);
+        $this->assertStringContainsString('delivered as a summary of itself', $system);
+        $this->assertStringContainsString('Reported speech is for what happened off screen', $system);
+
+        // Story 37 published twelve minutes of dialogue with no quotation
+        // marks. The request half of that fix lives here; the invariant is
+        // the Gate 1 check.
+        $this->assertStringContainsString('EVERY line anybody speaks in this act goes inside quotation marks', $system);
+        $this->assertStringContainsString('is read aloud as narration', $system);
     }
 
     public function test_the_refusal_ending_allows_a_found_narrator_and_keeps_the_scene_theirs(): void
@@ -120,6 +179,12 @@ class ContactThroughTheMiddleTest extends TestCase
         $act = new ActOutline(sequence: 3, title: 'T', summary: 'S', phase: $phase);
 
         return $this->invoke($this->writer(), 'endingFor', $story, $act, false);
+    }
+
+    /** Whitespace collapsed: the system prompt is a wrapped heredoc and a needle must not straddle a line. */
+    private function flat(string $text): string
+    {
+        return (string) preg_replace('/\s+/u', ' ', $text);
     }
 
     private function writer(): ClaudeScriptWriter

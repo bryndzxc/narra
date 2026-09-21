@@ -20,6 +20,7 @@ use App\Models\Story;
 use App\Support\ChapterAnnouncement;
 use App\Support\GateVoice;
 use App\Support\ImagePromptBuilder;
+use App\Support\NarratorPointOfView;
 use App\Support\SlotContent;
 use Faker\Generator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -568,6 +569,114 @@ class GuardsGoRedTest extends TestCase
                 'timeframe' => ActTimeframe::Present,
             ]);
         }
+
+        return $story->refresh();
+    }
+
+    // -- The narrator's own possessive ---------------------------------------
+    //
+    // Story 36 shipped one at 10:19 of a published video: the narration calls
+    // the narrator's own parents "my husband's parents", because the sentence
+    // reports what his mother-in-law said and the possessive changed seats
+    // half way through. Nothing in the app had an opinion about who "I" is.
+    //
+    // Three pairs. The third is the one that decides whether this guard is
+    // usable at all, because every character in these stories has a spouse and
+    // says so out loud.
+
+    public function test_the_point_of_view_guard_goes_red(): void
+    {
+        $story = $this->storyWhoseNarratorHasAWife(
+            'Nie Guifang stood up at table one and said to the whole room that the apartment '
+            .'money my husband\'s parents put in back in 2019 was always for the household.'
+        );
+
+        $slips = app(GenerateActScripts::class)->pointOfViewSlips($story);
+
+        $this->assertCount(1, $slips);
+        $this->assertSame('my husband\'s', $slips[0]['term']);
+        $this->assertSame(1, $slips[0]['act']);
+    }
+
+    /** GREEN: the same sentence with the possessive back in the narrator's seat. */
+    public function test_the_point_of_view_guard_passes_the_corrected_sentence(): void
+    {
+        $story = $this->storyWhoseNarratorHasAWife(
+            'Nie Guifang stood up at table one and said to the whole room that the apartment '
+            .'money my parents put in back in 2019 was always for the household.'
+        );
+
+        $this->assertSame([], app(GenerateActScripts::class)->pointOfViewSlips($story));
+    }
+
+    /**
+     * GREEN, and the reason a two-word match is safe: quoted speech is not
+     * the narrator's voice.
+     *
+     * Every banquet in this genre has an aunt in it saying "my husband". A
+     * guard that fired on them would be switched off inside a week, which is
+     * this file's own standing argument about an over-report.
+     */
+    public function test_the_point_of_view_guard_ignores_a_character_saying_it_aloud(): void
+    {
+        $story = $this->storyWhoseNarratorHasAWife(
+            'Her mother put her cup down and said, "My husband put four hundred thousand into '
+            .'that apartment and I will not be told otherwise." Nobody at the table moved.'
+        );
+
+        $this->assertSame([], app(GenerateActScripts::class)->pointOfViewSlips($story));
+    }
+
+    /**
+     * The fixture can express both halves, asserted rather than assumed.
+     *
+     * Two ways this pair could have gone vacuously green, and both were live
+     * in the first version:
+     *
+     *   - A story whose cast does not say what the narrator calls the
+     *     antagonist answers nothing and the guard is silent, so BOTH halves
+     *     pass. That is the shared-page-fixture lesson, which has now voided a
+     *     contract three times.
+     *   - The first version fell back to the narrator's VOICE when the cast
+     *     was quiet. Measured across every story in the database that produced
+     *     13 false fires against 1 true one — stories 30, 31 and 32 are
+     *     narrated by a daughter-in-law and carry Brian, because they predate
+     *     the form asking who narrates. `genderOf()` answers which gender a
+     *     voice is the channel's narrator FOR, not what gender this story's
+     *     narrator is, and the two disagree on four stories.
+     */
+    public function test_the_point_of_view_fixture_can_express_the_slip(): void
+    {
+        $story = $this->storyWhoseNarratorHasAWife('Nothing happens in this act.');
+
+        $this->assertSame('wife', NarratorPointOfView::ownTermFor($story));
+        $this->assertSame('husband', NarratorPointOfView::borrowedTermFor($story));
+
+        // And it is the CAST that answers, not the voice: clear the cast and
+        // the guard goes silent rather than guessing from `voice_id`.
+        $story->update(['outline_cast' => null]);
+
+        $this->assertNull(NarratorPointOfView::ownTermFor($story->refresh()));
+    }
+
+    /** A story whose cast says the antagonist is the narrator's wife, with one act. */
+    private function storyWhoseNarratorHasAWife(string $script): Story
+    {
+        $story = Story::factory()->status(StoryStatus::Outlined)->single()->create([
+            'slug' => 'point-of-view-pair',
+            'voice_id' => 'nPczCjzI2devNBz1zQrb',
+            'hook' => 'My wife toasted another man at her own promotion dinner and handed me her phone.',
+            'narrator_grievance' => 'My wife spent six years turning me into the person who carries things.',
+            'outline_cast' => [
+                ['name' => 'Aaron Cui', 'role' => 'narrator', 'relationship' => 'the husband, a road-safety engineer'],
+                ['name' => 'Amy Nie', 'role' => 'antagonist', 'relationship' => 'his wife of six years'],
+            ],
+        ]);
+
+        Act::factory()->for($story)->atSequence(1)->inPhase(ActPhase::Escalation)->create([
+            'script' => $script,
+            'timeframe' => ActTimeframe::Present,
+        ]);
 
         return $story->refresh();
     }
@@ -1241,6 +1350,139 @@ class GuardsGoRedTest extends TestCase
      * of them — the fake resets the flag after each act, the way it resets
      * the re-hook one.
      */
+    // -- Dialogue punctuated as narration --------------------------------------
+
+    /**
+     * RED, and the text is story 37's own act 3, verbatim. It is published
+     * with twelve minutes of this in it and nothing looked.
+     */
+    public function test_the_unquoted_dialogue_check_goes_red(): void
+    {
+        $story = $this->storyWithActScript(
+            'He put the box on the table. He said, take these back, we are not people who keep things. '
+            .'Then he said, and the apartment paperwork will be finished by Friday. '
+            .'Eric leaned forward with that face on. He said, Uncle, don\'t trouble Brother Owen with '
+            .'the running around. I told him, we\'re over, once, at normal volume.'
+        );
+
+        $found = $this->unquotedWarnings(app(ValidateOutlineSpine::class)->handle($story));
+
+        $this->assertNotEmpty($found, 'An act whose dialogue carries no quotation marks was not reported.');
+        $this->assertStringContainsString('writes its dialogue without quotation marks', implode(' ', $found));
+
+        // It names the line, because "somewhere in this act" is not a repair.
+        $this->assertStringContainsString('take these back', implode(' ', $found));
+    }
+
+    /** GREEN: the same speech, same length, with the marks on it. */
+    public function test_the_unquoted_dialogue_check_passes_the_same_lines_quoted(): void
+    {
+        $story = $this->storyWithActScript(
+            'He put the box on the table. He said, "Take these back. We are not people who keep things." '
+            .'Then he said, "The apartment paperwork will be finished by Friday." '
+            .'Eric leaned forward with that face on. He said, "Uncle, don\'t trouble Brother Owen with '
+            .'the running around." I told him, "We\'re over," once, at normal volume.'
+        );
+
+        $this->assertSame([], $this->unquotedWarnings(app(ValidateOutlineSpine::class)->handle($story)));
+    }
+
+    /**
+     * GREEN, and the case this check is most likely to be got wrong on:
+     * REPORTED speech is legal prose and is somebody else's rule. Every one
+     * of these is lifted from a shipped act.
+     */
+    public function test_the_unquoted_dialogue_check_passes_reported_speech(): void
+    {
+        $story = $this->storyWithActScript(
+            'She said, quietly, that my parents had given it freely and had never asked for anything. '
+            .'He said, loud enough to carry, that the girl had a lucky face. '
+            .'She asked, in the meeting, whether I should send the Binjiang drawings at all. '
+            .'He said, not quietly, that a man who takes good photographs is worth keeping around.'
+        );
+
+        $this->assertSame([], $this->unquotedWarnings(app(ValidateOutlineSpine::class)->handle($story)));
+    }
+
+    /**
+     * GREEN: three slips inside an act that is otherwise quoted is three
+     * slips, not an act written in the wrong register — and a check that
+     * fired here would fire on four of the five rendered stories.
+     */
+    public function test_the_unquoted_dialogue_check_passes_slips_in_a_quoted_act(): void
+    {
+        $quoted = '';
+
+        for ($i = 0; $i < 8; $i++) {
+            $quoted .= sprintf('She said, "That is the %dth time this month." He nodded. ', $i + 1);
+        }
+
+        $story = $this->storyWithActScript(
+            $quoted
+            .'He said, take these back. Then he said, and the paperwork is done. He told her, go home.'
+        );
+
+        $this->assertSame([], $this->unquotedWarnings(app(ValidateOutlineSpine::class)->handle($story)));
+    }
+
+    /**
+     * GREEN, and the case that was covered by nothing: ONE construction in an
+     * act with no other dialogue is a slip, and this check's subject is
+     * punctuation rather than how much anybody talks.
+     *
+     * Added because a drill that dropped the floor of three stayed GREEN — no
+     * case here could reach that half of the condition, so the number was
+     * doing nothing a test could see. The slips case beside it holds the
+     * ratio; this one holds the floor.
+     */
+    public function test_the_unquoted_dialogue_check_passes_a_single_slip_in_a_quiet_act(): void
+    {
+        $story = $this->storyWithActScript(
+            'The warehouse was cold and the shutter stayed down until nine. I counted the pallets twice '
+            .'and wrote the number on the back of my hand. He said, go home. I went home, and the rain '
+            .'started somewhere past the second roundabout, and I did not think about any of it again '
+            .'until the Tuesday after.'
+        );
+
+        $this->assertSame([], $this->unquotedWarnings(app(ValidateOutlineSpine::class)->handle($story)));
+    }
+
+    /** The fixture has to be able to express both states, or both halves are vacuous. */
+    public function test_the_unquoted_dialogue_fixture_can_express_both_states(): void
+    {
+        $red = $this->storyWithActScript('He said, take these back, we are not people. '
+            .'She said, go home now. I told him, it is finished.');
+        $green = $this->storyWithActScript('He said, "Take these back." She said, "Go home now." '
+            .'I told him, "It is finished."');
+
+        $this->assertTrue(\App\Support\SpokenLines::readsAsNarration((string) $red->acts()->where('sequence', 1)->value('script')));
+        $this->assertFalse(\App\Support\SpokenLines::readsAsNarration((string) $green->acts()->where('sequence', 1)->value('script')));
+    }
+
+    /** A story whose act 1 carries exactly the script given, and whose other acts are clean. */
+    private function storyWithActScript(string $script): Story
+    {
+        $story = Story::factory()->status(StoryStatus::Draft)->single()->create();
+
+        app(GenerateOutline::class)->handle($story);
+        $story->refresh();
+
+        $story->acts()->where('sequence', 1)->update(['script' => $script]);
+
+        // Every other act is left unwritten, which this check skips — its
+        // business is an act that HAS a script and punctuates it wrongly.
+        return $story->refresh();
+    }
+
+    /** @param  array{warnings: array<int, string>}  $review */
+    private function unquotedWarnings(array $review): array
+    {
+        return array_values(array_filter(
+            $review['warnings'],
+            static fn (string $w): bool => str_contains($w, 'without quotation marks'),
+        ));
+    }
+
     private function storyWrittenAsChapters(int $silentAct = 0): Story
     {
         $story = Story::factory()->status(StoryStatus::Draft)->single()->create();

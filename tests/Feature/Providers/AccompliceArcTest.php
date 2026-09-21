@@ -116,7 +116,14 @@ class AccompliceArcTest extends TestCase
             'accomplice_fall' => '',
         ];
 
-        app(GenerateOutline::class)->handle($story->refresh());
+        // keepCast: false — the RELEASE, and this case is what it is for. The
+        // cast losing its accomplice IS the change being tested, so a
+        // re-outline held to the cast would be refused for dropping him. This
+        // test going red on the first version of the chosen-cast scope is what
+        // made that scope "no acts" in 2026-09-19, which is what left story 39
+        // unprotected a day later. The repair path is now asked for out loud
+        // instead of being a side effect of having acts.
+        app(GenerateOutline::class)->handle($story->refresh(), keepCast: false);
 
         $story->refresh();
         $this->assertNull($story->accomplice_motive);
@@ -205,6 +212,80 @@ class AccompliceArcTest extends TestCase
         $this->assertStringContainsString('not the narrator winning early', $prompt);
         $this->assertStringContainsString('running_thought: THE NARRATOR\'S ONE PRIVATE JOKE', $prompt);
         $this->assertStringContainsString('ONE REFUSAL PAYS OFF THE running_thought', $prompt);
+    }
+
+    /**
+     * FOUR OF FOUR STORIES RETURNED AN ITEMIZED INVOICE, because two of this
+     * question's three examples were accounting metaphors and a model reads
+     * an example list as a list to draw from — 3f's example-name defect, one
+     * field over and at 100%.
+     *
+     * The survivor is the third example, which produced the only line of
+     * story 39 shaped the way this genre's jokes are shaped. The reason is
+     * mechanical and is asserted here: the field is SAID ALOUD in the
+     * refusal, and a concept has to be re-explained where it pays off.
+     */
+    public function test_the_running_thought_asks_for_a_picture_and_offers_no_accounting_shape(): void
+    {
+        $prompt = $this->flat($this->invoke($this->claude(), 'outlinePrompt', Story::factory()->single()->create(), 5));
+
+        $this->assertStringContainsString('MAKE IT A PICTURE, NOT A CONCEPT', $prompt);
+        $this->assertStringContainsString('A name they privately give someone works best', $prompt);
+        $this->assertStringContainsString('the volunteer fireman', $prompt);
+
+        // The shapes that produced the four invoices are now named as the
+        // shape to avoid rather than offered.
+        $this->assertStringContainsString('anything itemized — is the shape to avoid', $prompt);
+
+        foreach (['a running tally, a bill they are mentally sending', 'a bill they are mentally sending somebody'] as $gone) {
+            $this->assertStringNotContainsString($gone, $prompt, 'The accounting example is back in the spine question.');
+        }
+    }
+
+    /**
+     * THE TEXTURE AND THE MOTIF ARE TWO JOBS, AND ONE FIELD WAS DOING BOTH.
+     *
+     * Measured on the four rendered stories: 21-22 tagged thoughts each, of
+     * which roughly fifteen are the same two motifs repeated and five are the
+     * tag with no joke attached ("I did not say it."). About one original
+     * joke in thirty-nine minutes. The reference runs 23 thoughts of which
+     * ONE returns.
+     *
+     * The count is stated because a count is satisfiable exactly and a bare
+     * "be funny" steers at +0.30 — the same finding the chapter count moved
+     * on. THREE rather than the reference's ~15 an act: that video is a
+     * comedy with a fantasy premise, this is melodrama, and story 39 already
+     * produces about four tagged thoughts an act, so three ONE-OFFS is a
+     * substitution rather than a runtime increase.
+     */
+    public function test_the_genre_contract_asks_for_three_one_off_thoughts_in_every_act(): void
+    {
+        $contract = $this->flat($this->invoke($this->claude(), 'genreGuidance', $this->outlinedStory()));
+
+        $this->assertStringContainsString('AT LEAST THREE ONE-OFF THOUGHTS IN EVERY ACT', $contract);
+        $this->assertStringContainsString('A new joke each time', $contract);
+        $this->assertStringContainsString('never mentioned again', $contract);
+
+        // Without this the writer satisfies the three with three more lines
+        // of the same invoice, which is what it already did.
+        $this->assertStringContainsString('REPEATING IT DOES NOT COUNT TOWARD THE THREE', $contract);
+
+        // The sentence that bought one joke in thirty-nine minutes.
+        $this->assertStringNotContainsString('worth more than ten that do not', $contract);
+
+        // The concrete shape, quoted from the reference rather than described.
+        $this->assertStringContainsString('A PICTURE, NOT A CONCEPT', $contract);
+        $this->assertStringContainsString('You bought me a corpse suit', $contract);
+    }
+
+    /** The contract reaches the act writer, which is the stage that writes thoughts. */
+    public function test_every_act_is_told_how_many_one_off_thoughts_it_owes(): void
+    {
+        $story = $this->outlinedStory();
+        $system = $this->flat($this->invoke($this->claude(), 'actSystemPrompt', $story));
+
+        $this->assertStringContainsString('AT LEAST THREE ONE-OFF THOUGHTS IN EVERY ACT', $system);
+        $this->assertStringContainsString('EVERY THOUGHT IS TAGGED AS A THOUGHT', $system);
     }
 
     /**

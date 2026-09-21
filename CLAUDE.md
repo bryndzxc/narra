@@ -1448,6 +1448,124 @@ fails on a fourth.
    stage before the outline, by the writer holding her row. Cause and repair
    are in 3i. The act-level question this item was built for is still unread.
 
+   **SECOND READING, 2026-09-19, story 38 rendered: THE PARTNER WAS SWAPPED
+   FOR A STRANGER AT THE PREMISE-TO-OUTLINE HANDOFF, AND EVERYTHING AFTER IT
+   CARRIED THE STRANGER FAITHFULLY.** The report as it first reached this
+   file was "the premise names her, the ending was chosen, and she still is
+   not in the last act". Measured, two of those three are not what happened:
+
+   | step | who is the partner | evidence |
+   |---|---|---|
+   | premise roll | Chloe Rong, `future_partner`, in all three candidates | `stories.premise_candidates` |
+   | stored premise | nobody | "Use this premise" (`OutlineGate::usePremise()`) writes the prose and nothing else. The prose names Chloe as "Nicole's friend since their first year of university, the only one at that table who didn't laugh", and never as anyone the narrator ends up with. The narrator's name (Jason Kong) was dropped at the same step |
+   | outline cast | **Vera Qin**, `future_partner`, named in no premise; Chloe `narrator_side`, "Nicole's university roommate" | `stories.outline_cast` |
+   | acts | Vera: act 4 (the Suzhou workshop, 5 sentences), act 5 (the last chapter); Chloe: a witness in acts 1, 3, 4 and 5 who stands up for him at the December dinner | act scripts |
+   | scenes, of 162 | Vera 7 (106, 109, 116, 117, 158, 159, 161); Chloe 7 (24, 96, 97, 104, 122, 132, 147) | `character_scene` |
+   | last chapter | "Spring Dinner In Suzhou", a year on, ONE SCENE, Vera beside him | act 5, sentence 124 on |
+
+   **So the ending column carried, and so did the row.** The new life was
+   written as asked: one scene told as it happens, with an exchange, and the
+   `future_partner` row on screen. One figure is in it, a callback to the
+   1.2-million rebate, and no headcount, floor area or salary list. What was
+   lost is WHO: the idea's partner never reached the outline, because the one
+   place she was declared is a candidate row that is discarded when the
+   premise is picked, and the prose that survives does not say it. The outline
+   role guidance says a partner only "if the premise names one"; this premise
+   names Chloe and does not name her as that, and the outline invented a
+   partner anyway instead of leaving the row empty.
+
+   **And the invented partner is never written as a partner.** Vera's row reads
+   "the operations director ... who hired me"; neither act nor the last chapter
+   gives the two of them anything romantic, and nothing says they married,
+   which is what the idea asked for. The final scene reads as a boss at a
+   staff dinner. The checks all passed: Gate 1's premise check finds Chloe's
+   name in the prose, and Gate 1's new-life check finds the `future_partner`
+   in the last chapter. Neither can tell which person holds the row, or what
+   the row says about them.
+
+   The act-level question item 5 was built for is answered for the row (the
+   act writer carries it to the final chapter) and unanswered for the idea's
+   partner, who was lost before the first act was written.
+
+   **THE DROP, FIXED THE SAME DAY, on the operator's word.** `usePremise()`
+   stores the candidate's cast in `outline_cast`, narrator first, beside the
+   prose (a candidate with no cast clears it). The outline prompt hands that
+   cast over as "THE CAST IS ALREADY CHOSEN" (`chosenCastInstruction()`), and
+   `GenerateOutline` refuses, after the cost row, an outline that drops a
+   chosen person or gives them another role (`OutlineRefused`, check
+   `chosen_cast`, via `OutlineCast::chosenCastChanges()`). It may add people
+   and rewrite a relationship line. **Chosen meant on the story while it has
+   no acts** (`OutlineCast::chosenBeforeOutline()`, read by the prompt, the
+   Action and the fake), because a cast on a story with acts came from an
+   earlier outline or a fork and holding it fixed would stop a re-outline from
+   repairing it. That scope came from `AccompliceArcTest`'s re-outline case
+   going red on the first version.
+
+   **CORRECTED 2026-09-20: it means while no act carries a SCRIPT, and the
+   repair is a flag on the press rather than a side effect of having acts.**
+   The old scope did two jobs with one condition — it let a re-outline repair a
+   bad cast, and it let a re-outline destroy a good one — and story 39 paid
+   $0.2566 for the second. See "A repair path and a protection path were given
+   the same condition" under "Where bugs actually live", and 3l for the press. `ChosenCastTest`, eight cases, story 38's
+   swap replayed as the RED half; six drills red. Story 38 itself is rendered
+   and is not repaired by this.
+
+   **WHAT THE FIX DOES NOT TOUCH: NOTHING ASKS WHAT THE PARTNER IS TO THE
+   NARRATOR BY THE END.** Every instruction about the partner's relationship
+   is about the ARRIVAL: the premise asks for "a clause that says who they
+   are to the narrator and to her" and says "what happens between them later
+   is the video's"; the role guidance says "their relationship says who they
+   arrive through"; the act writer gets the row's name, the label "Future
+   partner" and the relationship line, and nothing else, which was deliberate
+   (item 5 was to measure whether the row alone carries her); the last
+   chapter asks for "something they are doing together, and one exchange
+   between them", which story 38 did exactly with a folder and the fish. The
+   idea's own words ("married her best friend") reach the premise writer and
+   nobody after it. The only prompt sentences naming romance or marriage are
+   the ones forbidding it when there is NO partner. So the row names a person
+   and nothing requests a relationship: that measurement has now read, and
+   the answer is that the row alone does not carry one.
+
+   **BUILT, 2026-09-19, on the operator's word: what the partner is to the
+   narrator, asked at every stage AFTER the premise.** The premise is
+   untouched ("what happens between them later is the video's" stays, the
+   operator's decision), and `PartnerRelationshipTest` asserts it gains
+   nothing. Per stage:
+
+   | stage | what it is told | where |
+   |---|---|---|
+   | outline | the partner's relationship line says who they arrive as AND what they are by the end; the act summaries carry it (nothing romantic before the departure, THREE MOMENTS after it that escalate by who can see them, together in the last act), because the act writer learns nothing else about them | `partnerOutlineInstruction()` |
+   | escalation, departure acts | only what they arrive as; nothing romantic, no look held | `partnerArcFor()` |
+   | search act | TWO MOMENTS in scenes: the first private, the second in front of people with the antagonist among them. Sentence four of ITS OWN summary names both, because the refusal act is written from that summary | `partnerArcFor()` |
+   | refusal act, before the last chapter | a THIRD moment that NOBODY sees — the only one not for an audience | `partnerArcFor()` |
+   | refusal act | together; summary sentence four says so | `partnerArcFor()` |
+   | last chapter | "A COUPLE NOW", said once in the narration and in an exchange only two people together would have; "if the scene could be read as work, it is the wrong scene" | `newLifeEnding()` |
+   | scene call, search act | one frame is the moment and every other frame she is in that act is not (added 2026-09-20; it had been refusal-only, and story 38's four work frames are why) | `sceneContext()`, drilled |
+   | scene call, refusal act, new-life ending only | where they share a frame in the last chapter, draw them as a couple, never across a desk | `sceneContext()` |
+   | metadata | with a partner, the title promises what the LAST ACT'S SUMMARY says and nothing more: a couple only if it says they are together, a wedding or marriage only if it says one happened | `ClaudeMetadataWriter::endingLines()` |
+
+   The metadata rule reads the summary rather than the new instructions, so
+   it is true of story 38 (whose summary says Vera "poured for him") as well
+   as of stories written after this. The old rule forbade a wedding promise
+   only with NO partner, and `EndingChoiceTest` had pinned that gap as a GREEN
+   assertion that the partnered brief carried no limit; it asserts the limit
+   now. `OutlineCast::futurePartner()` replaced three copies of the same loop.
+   **No check was added, deliberately**, for the reason in the next paragraph;
+   the operator reads the last chapter at Gate 1. Seven drills red, one
+   leaking the outline instruction into the premise. Nothing run against the
+   real model: the next story with a partner is the measurement, and story 38
+   stands as the one before it.
+
+   **Not checkable here, said so it is not read as covered.** Whether two
+   people are written as a couple is a reading of prose. A word list
+   ("kissed", "married", "held her hand") is the sense-blind class this file
+   records four times over: story 38's antagonist holds the ACCOMPLICE'S hand
+   in the betrayal scene, and "married" is used of the antagonist. A check on
+   the relationship LINE would be the field-instead-of-prose mistake of 3i
+   finding 2. Both current partner checks test a NAME's presence and pass on
+   a partner written as a boss. The operator reads the last chapter at Gate 1,
+   where the acts are written before approval.
+
    **The role was gendered and is not any more.** It read "the woman the
    narrator ends up with", written for a man narrating; story 33 is a woman
    narrating a partner betrayal. It reads "the person the narrator ends up
@@ -2140,6 +2258,523 @@ fails on a fourth.
    refusal act are the measurement, including whether "one scene, no numbers"
    is obeyed.
 
+3k. **WHAT THE NARRATOR AND THE PARTNER ARE TO EACH OTHER BY THE END IS THE
+   OPERATOR'S CHOICE TOO, AND THE WRITER THAT GOT IT WRONG WAS OBEYING ITS
+   INSTRUCTIONS EXACTLY.** Built 2026-09-20. `stories.partner_end_state`,
+   `App\Enums\PartnerEndState`, four values: married, engaged, living
+   together, together.
+
+   **The instance.** Story 39's idea said *"i am married to her older
+   sister"*. The premise writer read it, the operator picked a candidate, and
+   the outline's act-5 summary came back *"Nancy introduces me to a room as
+   her partner"*. The natural reading is a writer ignoring the idea. Measured
+   across every sentence in this app that says what the two of them become,
+   the entire vocabulary on offer was **"a couple", "together" and "a year
+   on"**:
+
+   | where | what it could ask for |
+   |---|---|
+   | `partnerOutlineInstruction()` | "a couple, together, a year on … The last act's summary says they are together." |
+   | `partnerArcFor(Refusal)` | "the narrator and X are together" |
+   | `newLifeEnding()` | "THE TWO OF THEM ARE A COUPLE NOW" |
+   | `sceneContext()` | "the two of them are a couple" |
+
+   "Her partner" is a faithful rendering of every one of those. **Nothing
+   could have produced a marriage, because nothing asked for one** — the
+   `antagonist_justification` finding again, and the hook's, and the
+   expression field's: nothing asked, so nothing came. The one place that had
+   the word is the operator's idea, which reaches the premise writer and no
+   stage after it.
+
+   **TWO HALVES, AND THEY ARE NOT ALTERNATIVES — the operator's own words:
+   "it fixes the words, B fixes the authority."** Widening the vocabulary
+   alone would leave the choice with the writer, and a writer offered four end
+   states with no instruction picks the weakest one it can defend, which is
+   what "partner" already is. So both: the four are named wherever nobody
+   chose, and the column decides wherever somebody did. `StoryEnding`'s
+   argument transfers unchanged — a model left to choose converges, and it
+   sees one story where the channel sees a run of them — which is why the last
+   few videos' choices print under the picker (`RecentEndings::
+   lastPartnerEndStates`).
+
+   **THE SCOPE IS NARROWER THAN THE COLUMN**, and `App\Support\PartnerEnding`
+   is the one owner of it: read only on a single narrative, only on the
+   narrator's new life (on the antagonist's chapter the narrator's year is not
+   shown at all, so there is no end state to state), and only when the cast
+   names a future partner. NULL is "not chosen" and never a default.
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline prompt | the chosen state as "NOT YOURS TO SOFTEN", else the four named with the weak ones marked as the default | `PartnerEndStateTest` |
+   | `GenerateOutline` | refuses before the call; `NO_PARTNER_END_STATE` | red/green, drilled |
+   | dispatch + Gate 1 button | the same sentence, for the ACTS press too | red/green, drilled |
+   | escalation, departure, search acts | nothing: the state is a year after the refusal | drilled |
+   | refusal act | "in the last chapter, a year on, they are X"; sentence four of the summary says so | reflection + act prompt |
+   | last chapter (`newLifeEnding`) | the state in its own words, in place of "A COUPLE NOW" | drilled |
+   | scene call | "the two of them are married", so the picture does not argue with its narration; and on the SEARCH act, which frame is the moment | drilled |
+   | metadata brief | the state named, and the LAST ACT'S SUMMARY still the bound | drilled |
+   | Gate 1 | a picker, a readout at every status, and the positive check below | Livewire |
+   | `story:fork`, `CreateStory`, `story:write --partner-end-state` | copied, taken, optional | drilled |
+
+   **IT STAYS CHOOSABLE ONE STAGE LONGER THAN THE ENDING, and that is not a
+   slip.** The ending is fixed once acts exist because the outline SCHEMA
+   branches on it. This is read by the act writer too, and
+   `GenerateActScripts` REPLACES each act's summary with the one the act
+   writer returns — so a state chosen after the outline still reaches the
+   artifact. The line is drawn at the first act SCRIPT, where the words are in
+   the prose. Without that, a story whose partner the outline invented could
+   never have an end state at all: acts exist from the moment the outline
+   lands, and a re-outline produces more of them.
+
+   **THE REFUSAL COVERS THE ACTS PRESS, AND IS NARROWER THAN THE
+   REQUIREMENT.** The acts are where the words land — every summary and the
+   last chapter — so six act calls bought against "partner" is the expensive
+   version of this defect. But once any act carries a script the operator can
+   no longer choose, so `blocksWriting()` stops asking: a guard nobody can
+   satisfy would kill the resume after a run that died on act 4, which is the
+   one press this pipeline most needs to keep working.
+
+   **THE POSITIVE CHECK, AND WHY IT IS SENTENCE-SCOPED.**
+   `ValidateOutlineSpine::checkPartnerEndState()` reads the last act's SUMMARY
+   and wants the chosen state's words **in the same sentence as the partner's
+   name**. Story 39 is the known-answer pair and it is the operator's own
+   point: its act-5 summary contains "together" twice and **both are the
+   antagonist quoting herself about the accomplice** — *"they grew up
+   together"* — so a word search over the summary passes that story for an end
+   state it does not have. Sentence-scoping is the same technique the
+   discovery check uses for its finder words, and it was checked against story
+   39's real summaries before the check was written.
+
+   Three properties worth keeping:
+
+   - **The word lists are deliberately GENEROUS, and the direction is the
+     reason.** This check reports an ABSENCE, so a generous list misses a weak
+     summary and a mean list fires on a good one — the opposite trade from the
+     discovery check, and a check that fires on good output is the one that
+     retires a detector.
+   - **TOGETHER IS THE FLOOR** and takes every other state's words: married,
+     engaged and living together each entail being together. The other three
+     are exact and do not entail each other. So "her partner" satisfies
+     *together* — which is the finding, not a gap — and fails *married*.
+   - **It fires before a single act is bought.** The first version waited for
+     a script, which made it silent on the one state it is most useful in: an
+     outline reviewed at Gate 1. The repair sentence is BUILT when the page is
+     read rather than frozen — re-outline before any act exists, rewrite the
+     act after — which is the failure-remedy rule applied to a Gate 1 warning.
+
+   **Unchecked, said so it is not read as covered:** whether the PROSE of the
+   last chapter writes them as married. That is a reading, and both partner
+   checks test a NAME and a WORD. The operator reads the chapter at Gate 1.
+
+   **Run against story 39, read-only, before anything was spent:** the outline
+   refuses, the picker is open (five acts, no scripts), and with "married"
+   selected in memory Gate 1 reports *"act 5's summary never says so in the
+   same sentence as their name — look for 'married', 'marry', 'marries' …
+   writing the outline again is the cheap fix"*. Nothing was written. Twenty-
+   one drills, all red for the reason they name. 1,449 tests before, 1,472
+   after.
+
+   **MEASURED ON STORY 39, 2026-09-20, IN TWO CALLS — AND THE STATED END STATE
+   STEERS ABSOLUTELY.** `partner_end_state = married`, the story re-outlined at
+   `outlined` with five acts and no scripts. The last act's summary came back
+   *"Nancy Kong and I are married at a twelve-table lunch in Chengdu"* — the
+   chosen word, in the same sentence as the partner's name, first time. Gate 1:
+   0 problems, 0 warnings, the check silent because there is nothing to report.
+   That answers the question this entry was left open on: an end state is
+   satisfiable exactly, so it behaves like a stated COUNT and not like a word
+   target. See the stated-count entry under "Where bugs actually live".
+
+   **THE FIRST OF THE TWO CALLS GOT THE VERB RIGHT AND THE PERSON WRONG, AND
+   THAT IS THE MORE USEFUL HALF.** It also came back married — to **Amy Gu, a
+   structural reviewer in Chengdu who exists in no premise**, with Nancy Kong
+   demoted to `narrator_side` and the narrator renamed. The cast was not held,
+   because `OutlineCast::chosenBeforeOutline()` returned nothing on a story
+   with acts, so the prompt never said the cast was chosen and the `chosen_cast`
+   refusal had nothing to compare. $0.2566 for an outline that married a
+   stranger. The scope is corrected and the reasoning is its own entry — a
+   repair path and a protection path had been given one condition.
+
+   Re-run with the picked candidate's cast restored and the answers it was
+   checked on handed over, at $0.2688: Nancy Kong back as `future_partner`
+   *"who by the end of this story is my wife"*, and the three spine answers
+   that had been re-invented the first time came back as the operator picked
+   them — the warehouse licence only the narrator can sign, the 400,000 yuan
+   borrowed on the father's promise of the manager job, and the signature
+   meeting that puts him in the room. Story 39 stands at `outlined`, five acts,
+   no scripts, $0.9410 total.
+
+   Two Gate 1 warnings on the first outline, both read against the text they
+   fired on before anything was concluded, and **both were the checks**: the
+   running-thought payoff fired although the refusal quotes the joke verbatim,
+   because `properNouns()` strips the joke's own capitalised name ("Volunteer
+   Fire Department") out of its own word list and the rest was subtracted as
+   shared with another spine field; and the departure fired on an announced
+   BREAK ("The wedding is off") on a story whose RELOCATION is unannounced and
+   whose search works — which is the reference's own two-departure shape, 3d.
+   Neither is fixed here; both are recorded as live over-reports.
+
+3l. **THE OUTLINE CAN BE WRITTEN AGAIN FROM GATE 1, AND THE CAST IS A QUESTION
+   THE PRESS ASKS RATHER THAN ANSWERS.** Built 2026-09-20.
+   `OperatorAction::ReOutline`.
+
+   **Why it did not exist.** `GenerateOutline::assertReady()` has accepted a
+   re-outline at `outlined` since it was written, and `handle()` deletes and
+   replaces the acts inside its own transaction — the capability was complete
+   and correct. Every path to it declined: `story:write` printed *"Outline
+   already exists — keeping it"*, `WriteStoryJob` wrote an outline only when
+   the act count was zero, and Gate 1's button went through both. A story with
+   no scripts and a wrong outline was a $0.28 fix reachable only from a
+   bootstrap script. The operator's framing is now the standing question —
+   **does the repair a Gate 1 finding names have a button?** — under "Where
+   bugs actually live".
+
+   **THE PRECONDITION IS THE PART WITH TEETH, AND `outlined` IS WHY.** That
+   status is BOTH the state this press is for — acts exist, no scripts, the
+   outline is still a plan — and the ordinary state of a story whose every
+   script is written and waiting for approval, which this file says in as many
+   words under the act-summary finding. So the capability cannot answer alone.
+   `GenerateOutline::WRITTEN_ACTS` refuses a re-outline that would orphan
+   scripts, in the Action, upstream of the call; `canReOutline()` asks the same
+   question where the button is drawn, so a press that cannot succeed is never
+   offered. The axis question asked before the press existed rather than after
+   it cost something.
+
+   **THE CAST CHECKBOX.** Default ON: the cast on the story is held, the prompt
+   says it is chosen, and `chosen_cast` refuses a drop or a role change before
+   anything is stored. OFF is the operator saying this cast is the thing being
+   repaired — the case the old scope served silently, and the one
+   `AccompliceArcTest`'s no-accomplice re-outline needs. It is a press-level
+   fact, so it is a parameter (`$keepCast`) threaded to both the prompt and the
+   invariant from one flag, and never a column: the same story is repairable on
+   one press and pinned on the next.
+
+   **The spine answers are NOT tied to that checkbox**, deliberately. It says
+   the CAST is wrong; an operator repairing a cast has said nothing about the
+   withheld information. Two questions, and one flag answering both would
+   answer the second without asking it. They follow the same "no act scripts"
+   scope on their own.
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | `OperatorAction::ReOutline` | `outlined` only; every other status refuses with a reason | `ReOutlineTest`, all statuses |
+   | `GenerateOutline` | `$keepCast`; refuses `WRITTEN_ACTS` before the call | red/green, drilled |
+   | `ScriptWriter::outline()` | a third parameter, defaulted true | contract + both writers |
+   | the outline prompt | "THE CAST IS ALREADY CHOSEN", or nothing when released | `ChosenCastTest`, drilled |
+   | `FakeScriptWriter` | records `keep_cast` on the call | drilled |
+   | `WriteStoryJob` | `$reOutline`, `$keepCast`; rewrites instead of resuming | red/green, drilled |
+   | `DispatchTextStage` | both flags, and the ending guard widened — see below | drilled |
+   | Gate 1 | a second money panel naming what it DESTROYS, the checkbox, a refusal when it cannot | Livewire + layout |
+   | `story:write` | `--re-outline`, `--release-cast` | — |
+
+   **A guard that read the act count moved with it.** `DispatchTextStage`
+   refused a single narrative with no ending only when the story had no acts —
+   "would this press write the outline?" answered by "does this story have
+   acts?", the same answer right up until a press existed that rewrites an
+   outline on a story that has them. Both readers of that question (here and
+   `WriteStoryJob`) were changed together, and the dispatcher has its own case
+   rather than being covered by the component that happens to call it first.
+
+   **The spend panel names what it throws away, not only what it buys.** Every
+   other money panel in this console names a purchase; this one replaces
+   {acts} act rows with their summaries and beats, the cast, and every spine
+   field, including anything the operator edited on the page. A bill alone
+   would hide that.
+
+   Fourteen drills, all red for the reason they name. 1,473 tests before, 1,486
+   after. **Two tests that asserted the old scope were rewritten rather than
+   deleted**, and each says the old assertion was the defect: `ChosenCastTest`'s
+   re-outline case now holds the cast and releases it explicitly, and
+   `AccompliceArcTest`'s no-accomplice case passes `keepCast: false` — so the
+   test that produced the narrow scope is the test that documents the release.
+   Measured against the real model on story 39 the same day; see 3k.
+
+3m. **"MORE" BETWEEN THE NARRATOR AND THE PARTNER MEANS WHO CAN SEE IT, NOT HOW
+   CLOSE THEY ARE. That is a correction to what was asked for, not a detail of
+   how it was built.** Built 2026-09-20.
+
+   The request was progression — the relationship getting closer between the
+   departure and the marriage, because one moment in act 4 and a statement in
+   the last chapter is thin for a marriage the title may promise. The data says
+   the axis is different. **Closeness is not a property of prose anybody can
+   write to**: "closer" has no unit, it cannot be staged, and an instruction
+   asking for it would be the hedge ban one field over — a request whose
+   satisfaction nobody can recognise, including the writer.
+
+   What story 39's outline reached for, unasked, is an axis this genre already
+   runs on:
+
+   | beat | who is present |
+   |---|---|
+   | Nancy takes his hand to steady him at her booth | her clients, and Jenny walking up |
+   | Nancy tells her parents Jenny never asked whose booth it was | the family New Year dinner |
+   | Nancy is waiting at the car | nobody |
+
+   Private → seen by the antagonist → acknowledged to her family, and then one
+   nobody sees. **Being seen is what makes a beat cost the antagonist
+   something**, which is the same reason `reversal_beats` is about what each
+   attempt costs HER rather than about how hard she looks. The prompt was
+   already half-saying it — *"The antagonist may see them together; the narrator
+   does not stage it for her"* — and that clause turns out to have been the
+   whole axis, stated as an aside.
+
+   **THE INVERSION IS THE PAYOFF AND IT IS DELIBERATE.** The two that escalate
+   are public; the third, in the refusal act after the room has emptied, is not
+   for an audience at all. A ladder of exposure that kept climbing would end on
+   a performance, and this genre's ending is the opposite of a performance —
+   the narrator is done proving things to that room.
+
+   **A NUMBER, NOT "SEVERAL".** Three: two in the search act, one in the
+   refusal act. The stated-count finding predicts this steers absolutely, where
+   "two or three" or "several" is a quantity of prose and steers at about
+   +0.30 — and the failure mode of a vague count here is specific and nasty,
+   because a writer told to make the relationship "grow" has no way to stop,
+   and every frame she is in becomes about it. Both the act prompt and the
+   scene call carry the bound in the same breath as the ask: **in every other
+   scene she is in, she is what she arrived as.**
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline | three moments, the axis, and where they go | `PartnerRelationshipTest` |
+   | escalation, departure acts | unchanged — nothing romantic before he leaves | reflection, drilled |
+   | search act | TWO MOMENTS, first private, second in front of people with the antagonist among them | reflection, drilled |
+   | search act's SUMMARY | sentence four names both and says who was watching | reflection, drilled |
+   | refusal act | a THIRD nobody sees, before the last chapter | reflection, drilled |
+   | scene call, search act | which frame is which, and that no other frame is one | reflection + fake record, drilled |
+
+   **THE SUMMARY JOB IS WHY THIS IS NOT A PROMPT LINE ALONE, and it closes a
+   gap that was working by luck.** `GenerateActScripts` REPLACES the outline's
+   summary with the act writer's own, and the refusal act is written from that
+   summary and *"learns nothing else about the two of them"*. The act writer's
+   summary has five sentences with five assigned jobs and none of them is the
+   partner — so whether act 5 heard about act 4's moment at all was up to
+   whatever act 4's writer happened to keep. Story 38 kept its partner twice;
+   nothing had asked it to. Sentence four of the search act's summary is now
+   the named home, which is the same sentence `partnerArcFor(Refusal)` already
+   claims for the end state.
+
+   **NO CHECK THAT THE BEATS ESCALATE, and that is a decision rather than an
+   omission.** Whether beat two is more exposed than beat one is a reading of
+   prose. A marker list for it would be the escalation-attempt problem one
+   field over — measured there at a 100% false-negative rate on the 17 beats it
+   cleared — and the sense-blind class this file has now paid for four times.
+   The request has no mechanism and the next story's search act is the
+   measurement. Said out loud so the sentence is not read as coverage.
+
+   **THE CONSTRAINT IS THE SUMMARY BOUND, NOT RUNTIME, AND THE NEXT PERSON
+   ADDING A FIELD SHOULD KNOW WHERE THE PRESSURE IS.** Runtime was the obvious
+   worry and it is not the binding one. Measured on story 38, the only rendered
+   story with a partner:
+
+   | act | words | the partner's share |
+   |---|---|---|
+   | 1-3 | 1,552 / 1,491 / 1,360 | 0 — the prohibition |
+   | 4 search | 1,388 | **224 words, 16.1%, 68 seconds** |
+   | 5 refusal | 1,597 | 186 words, 11.6%, 56 seconds |
+
+   One scene is 44-46 words, about **14 seconds**. So story 38 already spent 68
+   seconds of its search act on the partner and bought an operations director, a
+   rebate schedule and a line review with it. Three beats cost 42 seconds —
+   **less than what was already being spent on work frames.** The budget exists;
+   this changes what it buys. And 3d already recorded the space: the search
+   act's *"the narrator's own life is ON SCREEN, not a paragraph"* produced a
+   paragraph, *"which is what a middle with nobody beside the narrator has to
+   offer"*.
+
+   **The summary is where it actually lands.** `Act::SUMMARY_MAX_CHARS` has
+   fired three times in twelve acts, every prompt addition since has asked the
+   summary to carry more, and the bound is information about the writer rather
+   than a number to move. This change assigns the search act's sentence four a
+   job it did not have. **Progression beats are the next thing asking a summary
+   to carry more, and the five-sentence shape has five jobs and no sixth slot** —
+   so the next field that wants to travel between acts is competing for a
+   sentence, not for runtime.
+
+   Nothing here has been run against the real model. Story 39's acts are the
+   measurement, including whether a stated TWO comes back as two.
+
+   **READ 2026-09-21, STORY 39 RENDERED AND WATCHED: THE PARTNER LANDS AND IT
+   IS NOT AN INSTANT MARRIAGE.** The operator's verdict on the three beats.
+   The two findings from that watch are 3n.
+
+3n. **THE MIDDLE OF THE VIDEO WAS THE NARRATOR TALKING ABOUT SCENES INSTEAD OF
+   BEING IN THEM, AND THE ONE JOKE IN THIRTY-NINE MINUTES WAS AN EXAMPLE IN A
+   PROMPT.** Built 2026-09-21 from story 39, the first story watched end to end
+   under every rule in 3k-3m.
+
+   ---------------------------------------------------------------------------
+   **FINDING 1: FOUR OF FOUR STORIES RETURNED AN ITEMIZED INVOICE**
+   ---------------------------------------------------------------------------
+
+   `running_thought` offered three shapes: *"a running tally, a bill they are
+   mentally sending somebody, a name they privately give someone"*. Every
+   story in the database that has one came back with an accounting metaphor:
+
+   | story | what came back |
+   |---|---|
+   | 36 | "an invoice I was never going to send: holding the camera, 200…" |
+   | 37 | "an invoice for Sophie Weng, itemized… one wedding, 86,400 yuan" |
+   | 38 | "a mental invoice for him, itemized, the way I'd done supplier billing" |
+   | 39 | "a bill in my head, made out to him and itemized" |
+
+   **Four of four.** Not a tendency — the same example every time, and two of
+   the three examples were accounting metaphors while "petty and precise"
+   pushed the same way. This is 3f's example-name defect one field over, at
+   100%: sixteen of seventy-two cast entries were the en-CN guidance's own
+   example names, and the note then was that *"the guidance meant them as the
+   FORM of a name; the writer read them as a list to draw from."* The examples
+   were ALSO in `genreGuidance()`, a second copy nobody had asked about.
+
+   **The operator's read was that it is an accountant's joke — you have to
+   hold the idea of billing a relationship before it is funny — and the
+   references run the opposite shape.** Measured against the comedy
+   transcript: *"You bought me a corpse suit"*, *"My spine feels like rusted
+   scaffolding"*, *"I'm going to die in a silk bathrobe"*, *"I am going to
+   pour it directly into the nearest potted plant"*. One clause each, present
+   tense, reacting to what is in the room, needing nothing explained.
+
+   **THE SURVIVING EXAMPLE IS THE ONE THAT WORKED, AND THE REASON IS
+   MECHANICAL.** "A name they privately give someone" produced the only line
+   of story 39 shaped the way this genre's jokes are shaped — *"the volunteer
+   fireman. Always first at the fire, always smelling faintly of gasoline."*
+   **This field gets SAID ALOUD in the refusal, and a concept has to be
+   re-explained where it pays off while a picture does not.** Story 39's
+   payoff spends 47 words reading the invoice back — the terms, the amount,
+   the interest — because an invoice means nothing unless you restate it.
+   "There he is, the volunteer fireman" is six words. Note which one the story
+   chose for the payoff: the invoice, because this column holds the invoice.
+
+   ---------------------------------------------------------------------------
+   **AND THE FIELD WAS DOING TWO JOBS, WHICH IS WHY THERE WAS ONE JOKE**
+   ---------------------------------------------------------------------------
+
+   Story 39's twenty-one tagged thoughts: about eleven are the bill
+   re-itemized, four are the volunteer fireman, **five are the tag with no
+   joke attached** (*"I did not say it."*, *"I never said it out loud."*), and
+   one is not a joke. Roughly **one original joke in thirty-nine minutes.**
+
+   Density was never the problem — 27.8 tagged thoughts per 10k words, in line
+   with 36, 37 and 38. Variety was. The comedy reference runs 23 thoughts of
+   which **one** returns and twenty-two are one-offs; ours is the inverse
+   ratio, and `genreGuidance()` said why in one sentence: **"A thought that
+   returns is worth more than ten that do not."** That instructs repetition
+   over invention and it was obeyed.
+
+   | | asked for | got |
+   |---|---|---|
+   | before | ONE motif that returns | one motif, repeated ~15 times |
+   | now | THREE one-off thoughts per act, PLUS the motif | measurement pending |
+
+   **THREE, and the number is stated because a count is satisfiable exactly.**
+   The reference runs about fifteen an act at our act length; it is a comedy
+   with a fantasy premise and this is melodrama, and story 39 already produces
+   about four tagged thoughts an act — so three ONE-OFFS is a substitution
+   rather than a runtime increase. **Recurrences of the motif explicitly do
+   not count toward the three**, or the writer satisfies it with three more
+   lines of the same invoice, which is what it already did.
+
+   ---------------------------------------------------------------------------
+   **FINDING 2: THE SEARCH ACT IS WRITTEN AS REPORT, AND IT IS A PATTERN**
+   ---------------------------------------------------------------------------
+
+   The operator reported boredom in the middle before sending timestamps. The
+   measurement was run first and the timestamps then matched it.
+
+   **Method, because the first two versions of it were wrong in ways worth
+   keeping.** Two detectors rather than one, bounded on both sides, because no
+   single rule is fair to both corpora and picking one would be picking the
+   answer: STRICT is a quoted utterance (staged dialogue), LOOSE adds
+   said-tags and therefore also catches REPORTED speech, which is summary and
+   is exactly what the question calls setup. Nine known-answer cases, 9/9,
+   including one honest miss — reference 0:16 is staged dialogue the ASR
+   stripped entirely, so the reference's true figure is better than measured.
+   **The first detector counted "I did not say a word of it out loud" as
+   dialogue** (bare `say` in the verb list), which is a scene with nobody
+   speaking in it. And **the first comparison was a units error**: 39% of
+   SCENES against 15% of CAPTION LINES, when a scene is 12.6s and a caption
+   line 4.8s. Time-weighted it is 37.2% against 18.1%, and that is still
+   confounded because one quote marks 2.6x more runtime in our corpus — so
+   density is not leaned on at all. **Gaps are robust**: coarser units make
+   gaps SHORTER, so ours are if anything understated.
+
+   | | story 39 | reference |
+   |---|---|---|
+   | longest stretch, no staged line | **4.0 min** | 3.0 min |
+   | stretches over 90s | **4** | 2 |
+   | stretches over 2 min | **2** | 1 |
+
+   **Every rendered story's worst stretch contains the departure act, and
+   every one ends by 68% of runtime.** 5 of 5:
+
+   | story | worst stretch | % of runtime | length | phases |
+   |---|---|---|---|---|
+   | 33 | 23:04-26:27 | 57-66% | 3.4 m | departure + search |
+   | 36 | 21:17-25:04 | 54-64% | 3.8 m | departure + search |
+   | 37 | 14:02-25:51 | 36-67% | **11.8 m** | escalation + departure + search |
+   | 38 | 22:11-26:51 | 57-68% | 4.7 m | departure + search |
+   | 39 | 15:41-19:38 | 40-50% | 4.0 m | escalation + departure |
+
+   Quoted share of all speech, by act — the middle collapses and act 5
+   recovers, every time:
+
+   | story | 1 | 2 | 3 dep | 4 search | 5 refusal |
+   |---|---|---|---|---|---|
+   | 33 | 59% | 53% | 44% | **30%** | 57% |
+   | 36 | 48% | 64% | 38% | **27%** | 73% |
+   | 37 | 53% | 45% | **0%** | 28% | 64% |
+   | 38 | 64% | 73% | 66% | **26%** | 82% |
+   | 39 | 62% | 68% | 38% | **38%** | 74% |
+
+   **THE MECHANISM IS A STATED COUNT, AND IT WAS OBEYED EXACTLY.**
+
+   | phase | what it asked | quoted share |
+   |---|---|---|
+   | escalation | *"In EVERY scene the antagonist is in…"* | 48-64% |
+   | **search** | *"PUT THEM IN THE SAME SCENE AT LEAST ONCE"* | **26-38%** |
+   | refusal | the exposure, plus each refusal answering a named moment | 57-82% |
+
+   "At least once" is satisfiable exactly, at one. One staged meeting in a
+   1,400-word act leaves six minutes unclaimed, and **unclaimed act text
+   defaults to narration**. Beside it sat *"the narrator's own life is ON
+   SCREEN in this act, not a paragraph"*, which 3d had already recorded as
+   having produced a paragraph — an instruction for a montage with no staging
+   requirement attached.
+
+   **TWO, not three, and the reason is that the spine already said two.**
+   `reversalBeats()` asks the outline for *"IN THE SAME SCENE in at least two
+   of these"* while the act asked for one — the two disagreed by one and the
+   act prompt, later and more specific, won. That is the act-1 collision shape
+   (3d finding 1) sitting unnoticed between a spine question and a phase
+   ending. Aligning on two removes a live disagreement rather than inventing a
+   third number. Three was considered and declined: the search act already
+   carries the accomplice's fall, the partner's two moments (3m) and the
+   narrator's own life, and a third required meeting is what would start
+   pushing on the summary bound that 3m named as the real constraint.
+
+   **THE BIGGEST BEAT IS STAGED, AND THAT RULE IS NOT SEARCH-ONLY.** Story
+   39's demotion in front of forty people — the act's whole point — arrived as
+   indirect speech: *"He said the company was growing, that the warehouse
+   needed a manager who could be on site every day, and that from the first of
+   November the manager line would carry Ryan Tao's name."* So did the
+   narrator's attempt two minutes later. **That act is the DEPARTURE act**, so
+   the rule lives in `actSystemPrompt()` where every act reads it, not in the
+   search ending. The act system prompt already said *"name the exact words
+   people used"* and that was not enough; it now says which beat and what a
+   summary of it looks like, quoting the failure.
+
+   | consumer | what it gets | arrival assertion |
+   |---|---|---|
+   | outline prompt | the running thought as a picture, no accounting shape | `AccompliceArcTest` |
+   | genre contract | three one-offs per act; recurrences do not count | `AccompliceArcTest` |
+   | every act prompt | the same, through `actSystemPrompt()` | `AccompliceArcTest` |
+   | every act prompt | the biggest beat is a scene; every line is quoted | `ContactThroughTheMiddleTest` |
+   | search act | TWO staged meetings, each played not reported | `ContactThroughTheMiddleTest`, drilled |
+   | Gate 1 phase guidance | the same number | `ContactThroughTheMiddleTest` |
+
+   Thirteen drills, all red for the reason they name. **Nothing here has been
+   run against the real model**: the next story's middle is the measurement,
+   including whether a stated THREE comes back as three and whether the two
+   meetings arrive with quotation marks on them.
+
 4. **Narration is generated per scene, never as one 40-minute file.** One giant TTS
    call means one bad sentence forces a full re-bill. Per-scene audio is
    re-generatable in isolation and concatenated at mux time.
@@ -2626,6 +3261,10 @@ Written for Phase 1, but Phase 0 code should not contradict it.
 **stories**
 ```
 id, title, premise, premise_candidates (json, nullable — the latest premise roll, see 3i),
+premise_spine (json, nullable — the SEVEN spine answers the picked premise was built on,
+        kept by "Use this premise" and handed to every outline until an act carries a script.
+        The third thing that used to die at that click; see "Use this premise kept the
+        prose and threw away the answers" under "Where bugs actually live"),
 cast_age_profile (nullable),
 outline_cast (json, nullable — [{name, role, relationship}], see 3f),
 outlined_before_cast (bool, default false),
@@ -2640,6 +3279,10 @@ refusal,
 antagonist_regret, outlined_before_antagonist_regret (bool, default false, 3h),
 ending (varchar, nullable — new_life | antagonist_voice, the operator's choice before the
         outline; null on stories outlined before it existed, 3j),
+partner_end_state (varchar, nullable — married | engaged | living_together | together, the
+        operator's choice beside the ending. Read only on a single narrative whose ending is
+        new_life and whose cast names a future partner; null is "not chosen" and never a
+        default. Choosable until the first act SCRIPT, one stage longer than `ending`, 3k),
 format (enum: single, anthology),
 locale_profile (default 'en-US'), voice_id,
 target_duration_min (default 30), target_duration_max (default 40),
@@ -2674,9 +3317,13 @@ for act 2, and the exact opposite of what act 6 of seven needs, where the ground
 is being lost by the antagonist. Null on an anthology, where each act is a
 self-contained story running the whole arc itself.
 
-`escalation_beat` is what the act costs **and to whom**: the narrator before the
-departure, the antagonist after it. One column, two directions, and `phase` is
-what says which.
+`escalation_beat` is **an attempt and its cost, and to whom**: before the
+departure, what the NARRATOR tried and what it cost them that it failed; after
+it, what the attempt cost the ANTAGONIST. One column, two directions, and
+`phase` is what says which. The attempt half was added 2026-09-20 — the search
+half had always had it and the escalation half never did, which is the
+asymmetry that produced a passive narrator. See "THE ESCALATION PHASE ASKED FOR
+COSTS AND NEVER FOR ATTEMPTS" under "Where bugs actually live".
 
 **characters**
 ```
@@ -6608,6 +7255,36 @@ Closed since:
   disagreed by 11% from the day both were written, and nothing compares a
   spec sentence against a config value.
 
+  **THE RULE GENERALISES PAST THE CHAPTER COUNT, AND THE STATED END STATE IS
+  THE FIRST TEST OF IT THAT WAS PREDICTED BEFORE THE RUN.** 3k went in saying
+  the measurement was open — *"whether a stated end state steers as absolutely
+  as a stated COUNT does or as weakly as a stated FIGURE"*. Story 39's
+  re-outline, 2026-09-20, is the reading: `partner_end_state = married` came
+  back as *"Nancy Kong and I are married"*, in the chosen word, in the same
+  sentence as the partner's name, first time, at 0 problems and 0 warnings.
+
+  So the axis is not counts-versus-figures. **It is whether the thing asked for
+  is SATISFIABLE EXACTLY.** A count is (three chapters is three chapters). A
+  named state out of four is (married is married). A word target is not — a
+  writer can only aim at 985 words, and aiming is what the +0.30 slope
+  measures. Restated so the next field can be placed on it before it is built:
+
+  | asked for | satisfiable exactly? | observed |
+  |---|---|---|
+  | act word target | no — a quantity of prose | +0.30 slope, advisory |
+  | chapters per act | yes — a count | 6 of 6, absolute |
+  | 20-second hook budget | no — a quantity of prose | unmeasured |
+  | partner end state | yes — one of four named states | 1 of 1, absolute |
+
+  The practical consequence, and it is the reason this is worth writing down
+  rather than filing as a curiosity: **a request that is satisfiable exactly
+  does not need a mechanism behind it, and one that is not always will.** The
+  narrating-the-narration ban, the hedge ban and the escalation attempt are all
+  in the second column, and all three are recorded here as prompt requests that
+  a guard had to catch or that changed coat. An end state is in the first, and
+  4 of the 5 sites that were widened for it needed no check at all — only the
+  summary, which is prose, got one.
+
 - **THE NARRATING-THE-NARRATION BAN WAS OBEYED BY PHRASE AND DODGED BY FORM,
   AND THE MEASUREMENT IS A CLEAN PAIR BECAUSE THE PREMISE WAS HELD CONSTANT.**
 
@@ -7405,7 +8082,805 @@ Closed since:
   produce what the stage refuses (recorded beside the British-spelling
   decision). No full sweep of stage pairs has been done.
 
+- **THE ESCALATION PHASE ASKED FOR COSTS AND NEVER FOR ATTEMPTS, AND THE SEARCH
+  PHASE HAD ASKED FOR BOTH SINCE THE DAY IT WAS WRITTEN. THE FIRST DIRECT
+  AUDIENCE FEEDBACK ON THIS CHANNEL LANDED ON EXACTLY THAT.** 2026-09-20. Four
+  comments across three videos, two complaints, and the passive one came from
+  three commenters independently:
+
+  > "The main character is stupid. Should have stood up for himself by now."
+  > "The second and third one he deserved it, that's what you get for a doormat
+  > simp." "The FL is infuriatingly bad. Kept giving non-stop for no reason at
+  > all."
+
+  One of the three is story 33, written after the answer-back register landed,
+  so whatever they were reacting to survived that change.
+
+  **WE CHANGED THE MOUTH AND READ THE COMPLAINT AS BEING ABOUT THE MOUTH. THREE
+  OF US AGREED ON THAT READING AND THE CODE SAID OTHERWISE.** That is the entry,
+  and it outranks the fix. 3d item 2 measured a real defect — narrators saying
+  "Yes, Mother" nine times — and fixed it well: `endingFor(Escalation)`,
+  `ActPhase::guidance()` and `genreGuidance()` all ask for the answer-back, and
+  it ARRIVED. The natural reading of "he's a doormat" is that the narrator does
+  not speak. Measured on the escalation and departure acts of stories 33, 36, 37
+  and 38 — 49 rounds by hand, cross-checked by a said-tag counter that agreed
+  within one per story:
+
+  | | rounds | narrator speaks | complies with the SUBSTANCE | counter-move |
+  |---|---|---|---|---|
+  | 33 | 14 | 10 | 11 | 1 |
+  | 36 | 12 | 6 | 9 | 0 |
+  | 37 | 9 | 5 | 7 | 1 |
+  | 38 | 14 | 9 | 10 | 1 |
+  | **total** | **49** | **30 (61%)** | **46 (94%)** | **3** |
+
+  Three counter-moves in ~85 minutes of escalation. Seven rounds are the
+  reference's shape, resisted and lost because the room sided with her — story
+  38 at 3:34, *"And half the roof laughed. Not all of it. Half. Which is worse,
+  because you can see exactly who."* The other 42 lose because the narrator
+  hands it over. The sharpest is story 36 at 16:53: his wife has ended a
+  fourteen-year career behind his back, a resignation letter in her handwriting
+  is pushed across the table, he says one good line — and *"Then I ate the rest
+  of my rice, thanked her mother for the fish, and went home."*
+
+  **A fix verified on the axis it was designed for says nothing about the axis
+  beside it.** This is the axis question, committed on a piece of WRITING rather
+  than on a clause or a guard: the register work was measured on lines spoken
+  and was right about every one of them, while the thing the viewer was actually
+  watching — what the narrator DOES — was never on any list. The comments were
+  read through the last fix rather than measured, which is the cheapest possible
+  version of the same mistake and the one hardest to notice, because the last
+  fix was correct.
+
+  **THE CAUSE WAS AN ASYMMETRY INSIDE ONE METHOD.** `ActPhase::beatLabel()`:
+
+  | phase | what the field was asked for |
+  |---|---|
+  | Escalation | *"what this act costs the narrator"* |
+  | Search | *"what this **attempt** costs the antagonist"* |
+
+  `SpineQuestions::reversalBeats()` has always required the antagonist's losses
+  to be the price of ATTEMPTS — *"a search that costs her nothing is a montage
+  of somebody looking worried"* — and `checkReversalBeats()` warns when they are
+  not. Her losses were the price of trying; his were required to be nothing but
+  losses. **All 53 escalation and departure beats in the database read "the
+  narrator loses X". Not one names a thing the narrator tried.** Every other
+  instruction about what the narrator DOES is prohibitive: does not sabotage,
+  does not retaliate, "no round won", and information *"established early and
+  not used"*.
+
+  **An attempt that fails is the only move that produces an EXTERNAL loss
+  without winning a round**, which is why the arc is untouched by this and
+  `endsWorseForNarrator()` is too. The five movements were not traded and the
+  decision in 3g stands; a test pins that pair so a later edit cannot quietly
+  flip it.
+
+  **THE SECOND HALF: "COMES OUT" MEANT "IS REVEALED TO THE VIEWER".** Three
+  phases said *"the withheld information does not come out here"* and the
+  refusal said *"comes out here and nowhere earlier"*. Measured in rendered
+  time, the card's CONTENT — what it is and what it can do — reaches the viewer
+  at:
+
+  | story | the card | first shown | what it DOES, explained |
+  |---|---|---|---|
+  | 33 | legal representative + company chop | 0:20 | **14:42** of 40:18 — 36% |
+  | 37 | title certificate in his name alone | not in the hook | **19:46** of 38:30 — 51% |
+  | 36 | pink counterfoil, guarantor withdrawal | 0:30, then 7:17, 14:22, 19:51, 22:22 | **29:26** of 39:15 — 75% |
+  | 38 | 10% founding equity, consent requirement | 0:27 | **29:37** of 39:13 — 75% |
+
+  Story 36 shows the same pink envelope five times across twenty-two minutes and
+  never says what it can do. Story 38's narrator holds a veto for thirty-three
+  minutes and the reason he is not using it arrives at **33:41**, as a line of
+  dialogue at the exposure. A viewer cannot price a concession against a card
+  they cannot read — which is half of "kept giving for no reason" and, on the
+  same evidence, half of "too confusing".
+
+  **This contract draws the audience/antagonist split correctly twice, one
+  paragraph away from where it matters most.** `endingFor(Departure)`: *"the
+  audience may know, the antagonist must not"*. Hook beat 4: *"something quiet
+  and exact that the audience understands and the antagonist does not"*. It was
+  never drawn for the withheld information. `withheldInformationHere()` is the
+  one copy now, called by the escalation, departure and search endings; the
+  refusal says the reveal is HERS and not the viewer's; and
+  `SpineQuestions::withheldInformation()` asks for the reason as a sentence the
+  narrator can say aloud in act 1.
+
+  **NO CHECK, AND THE MEASUREMENT IS WHY RATHER THAN A SHRUG.** The obvious
+  mirror of `COST_MARKERS` is an `ATTEMPT_MARKERS` list. It was built and run
+  against all 53 stored beats BEFORE being written: 36 of 53 fire correctly, and
+  **the 17 it passes are all false negatives** — "four days being TOLD to his
+  face", "my SAY in my own home", "the aunts are TOLD again", "elders who now
+  CALL me unfilial". That is the narrator being acted upon, which is the exact
+  thing the check exists to catch. A 100% false-negative rate on what it clears
+  is the sense-blind class this file has now paid for four times (`pencil` the
+  skirt, "announces" the antagonist's, "booked" the restaurant, "her phone" the
+  photo). The list cannot tell "he asked" from "he was told" and that difference
+  is the whole content of the check. **The attempt is a prompt request with no
+  mechanism**, said out loud in `checkEscalation()` so the field is not read as
+  covered, and the measurement is the next story's escalation acts.
+
+  **THE ACT-1 COLLISION, THIRD INSTANCE, AND THE FIRST IN THE RESTORATION
+  HALF.** `hookInstruction()` suspends four rules for the length of the five
+  beats. The sentence giving them back named ONE — *"every other rule in this
+  prompt is back in force, the answer-back included"* — and the chapter bullet
+  said *"NOT THIS ONE"*, where "one" reads as the chapter or as the act. Stories
+  36 and 37 announce **"Chapter one." and then "Chapter four."**, with act 1's
+  chapters 2 and 3 stored, titled, cut and silent; 33 and 38 announce all
+  sixteen. Two of four, on a coin-flip reading of one word.
+
+  **Both were written AFTER the clause that was supposed to prevent it.**
+  `chapterInstruction()` gained *"Every later chapter in this act opens with its
+  number as normal"* on 2026-09-14; story 36's acts are 09-17 and story 37's are
+  09-18. The delegation — *"the OPENING block below sets its order"* — was
+  pointing at a block that answered for chapter one and nothing after it. Both
+  lists name every rule now, and
+  `ActOneOpeningContractTest::test_every_suspended_rule_is_named_where_it_is_given_back`
+  is the assertion the file did not have: every other case there asserts that a
+  single instruction is PRESENT, and none could see a list complete on one side
+  and short on the other. **The standing question for "every" and "always" gains
+  a second half: when a block suspends a rule, the sentence that gives it back
+  names it.**
+
+  **AND A POINT-OF-VIEW SLIP NOTHING COULD SEE.** Story 36, 10:19, in the
+  narration and the burned-in subtitles: *"...said to the whole room that the
+  apartment money **my husband's** parents put in back in 2019..."*. Aaron Cui is
+  the husband; the sentence reports what his mother-in-law said and the
+  possessive changed seats halfway through. `LocaleGuard` reads a denylist,
+  `CharacterTextGuard` reads cast descriptions, and **no check in this app had
+  ever had an opinion about who "I" is.**
+
+  `App\Support\NarratorPointOfView` is derived from the STORY rather than from
+  the narrator's gender: the cast says what the narrator calls the antagonist
+  ("his wife of six years"), and the mirror of that term, in narration, is
+  somebody else's possessive in the narrator's mouth. Quoted speech is stripped
+  first, which is the whole precision story — every aunt at every banquet says
+  "my husband" correctly. `GenerateActScripts::pointOfViewSlips()` recomputes
+  from the stored text the way `localeDenied()` does, and Gate 1 shows it as a
+  warning beside the locale hits.
+
+  **The first version fell back to `voice_id` and the sweep killed it: 13 false
+  fires against 1 true one.** Stories 30, 31 and 32 are narrated by a
+  daughter-in-law and carry Brian, because they predate the new-story form
+  asking who narrates. `NarratorVoice::genderOf()` answers *which narrator
+  gender is this VOICE the channel's voice for* — not *what gender is this
+  story's narrator* — and the two disagree on four stories. Caught by measuring
+  across every story in the database before shipping, which is the practice, not
+  luck. The cast is the only source now: **1 true positive, 0 false, across the
+  whole database.** *Seen and not fixed:* `premisePrompt()` reads the narrator's
+  gender back through the same method and has the same exposure on any story
+  whose voice was never set deliberately.
+
+  **Neither published story is repaired, and that is not a gap.** Stories 36 and
+  37 are rendered and uploaded; fixing an act script now would make the database
+  disagree with the artifact, which is the stored-decision defect from the other
+  side. The announcements would need act 1 rewritten and the whole video
+  re-rendered; the POV slip would need one scene re-narrated, re-aligned,
+  re-clipped and the file re-muxed and re-uploaded. Both are spending and
+  publishing decisions rather than code ones. The cause is fixed and the next
+  story is where it shows.
+
+  Fifteen drills, all red for the reason they name, run from a file with every
+  patch as a literal. 1,430 tests before, 1,449 after. **Nothing here has been
+  run against the real model**: the next outline and its escalation acts are the
+  measurement, including whether an attempt that fails is what comes back.
+
+  **A needle straddled a heredoc line break while writing the tests for this** —
+  entry 11 in the self-defeating-checks table, reproduced by somebody who had
+  read it that morning. Fixed as the class rather than the string:
+  `FailedAttemptTest::flat()` collapses whitespace before asserting, so the
+  whole shape is unreachable in that file.
+
+- **"USE THIS PREMISE" KEPT THE PROSE AND THREW AWAY THE ANSWERS. THIRD THING
+  LOST AT THAT ONE FUNCTION, AND THE OPERATOR HAD TO ASK WHY TWICE.** The
+  premise generator returns, per candidate, a narrator, a cast, SEVEN spine
+  answers (`PremiseCandidate::FIELDS`) and the prose. `OutlineGate::
+  usePremise()` stored the prose and, since 3f, the cast. The seven stayed in
+  `premise_candidates`, where only Gate 1's checks read them.
+
+  So: Gate 1 ran fourteen checks over seven answers, the operator picked on
+  what those checks said, and the outline — handed `stories.premise` and
+  nothing else — answered all seven again from the prose. Measured on story
+  39, the candidate the operator chose against what the outline wrote:
+
+  | field | the candidate, checked and picked | the outline |
+  |---|---|---|
+  | `withheld_information` | "the only signer on the license renewal for the warehouse lease due that month" | an 8.4 million yuan Hamburg account, 60% of export revenue |
+  | `accomplice_motive` | "a private loan on the promise that Jenny's father would make him manager" | a 380,000 yuan failed seafood freight business in Quanzhou |
+  | `narrator_at_exposure` | "the warehouse lease renewal meeting, the one document that needed my signature" | flown in at the buyer's request for a compliance audit |
+
+  Neither column is wrong. Only one of them was checked and chosen.
+
+  **AND FOUR OF THE SEVEN ARE AT LEAST TIED TO THE PROSE; THREE ARE TIED TO
+  NOTHING.** `checkPremiseProse()` requires a two-word overlap between the
+  prose and `betrayal_scene`, `antagonist_justification`,
+  `withheld_information` and `departure`. `accomplice_motive`,
+  `accomplice_performance` and `narrator_at_exposure` are checked for their
+  own content and never for whether the prose carries them — so those three
+  could only ever have reached the outline by luck.
+
+  **The whole roster of what the premise stage produces, and what survived the
+  click before 2026-09-20:**
+
+  | produced | survived? |
+  |---|---|
+  | `narrator` {name, relationship} | yes, since 3f |
+  | `cast` | yes, since 3f |
+  | the prose | yes |
+  | seven spine answers | **no** |
+  | the operator's `idea` | stored in `premise_candidates.idea`, read by Gate 1's revenge line and **nothing downstream** |
+  | `idea_was_revenge_shaped`, `translation` | shown at Gate 1, never sent anywhere |
+
+  **`stories.premise_spine` is the fix**, written by `usePremise()` and handed
+  to the outline by `chosenSpineInstruction()` as "THE PREMISE CAME WITH THESE
+  ANSWERS, AND THE OPERATOR PICKED IT ON THEM … keep the specifics". Scoped
+  like the chosen cast (`chosenBeforeOutline`): while the story has no acts,
+  so a re-outline is free to answer differently. `story:fork` carries it, for
+  the reason it carries the spine — a fork that re-outlined from the prose
+  alone would vary two things and measure nothing.
+
+  **NOT an invariant, and the difference from the cast is the reasoning.**
+  `GenerateOutline` refuses an outline that drops a chosen cast member,
+  because a name is checkable for identity. A spine answer is prose the
+  outline must EXPAND — the betrayal scene into a chapter, the withheld
+  information into an exposure the outline also invents — so "the outline
+  changed it" is not by itself a defect, and refusing would turn an ordinary
+  rewrite into a billed failure. It is handed over; the operator reads the
+  result at Gate 1.
+
+  **THE IDEA ITSELF STILL DOES NOT REACH THE OUTLINE, AND THAT IS A DECISION
+  RATHER THAN AN OVERSIGHT.** The premise prompt is where the idea is read and
+  where a revenge-shaped one is TRANSLATED; handing the raw idea to a second
+  writer downstream of that translation would let it re-import exactly what
+  the translation removed. Story 39's own idea also carries "way more sexy",
+  which is not a thing to hand an outline writer. What the idea carried that
+  had nowhere to live was one fact — who the narrator ends up with and what
+  they are by the end — and that now has a column (3k) instead of a sentence
+  nobody forwards. **If a second such fact turns up, the answer is another
+  column or a field on the premise schema, not a pipe for the raw idea.**
+
+  **The consumer question, asked in the change**: the outline prompt (the new
+  block), `story:fork`, the Gate 1 premise panel (which now says how many
+  answers the pick kept, and that editing the premise does not rewrite them),
+  and the premise help text, which used to say the prose is what everything
+  downstream is generated from — true until this change and now qualified
+  rather than left standing. Four drills red.
+
+- **A `\b` JUSTIFICATION THAT WAS REASONED AND WRONG, CAUGHT BY ITS OWN DRILL
+  STAYING GREEN.** The end-state matcher was first written as a `(?<!\pL)` …
+  `(?!\pL)` pair, on the reasoning that PCRE's `\b` is ASCII-only under `/u`
+  without UCP and so could never match "fiancée". The drill that put `\b` back
+  stayed GREEN, including on the accented case written to prove the point.
+
+  Measured rather than argued, which is what the drill forced: PHP's `u`
+  modifier turns on UCP as well as UTF, so `\b` is Unicode-aware here — on
+  PCRE 10.42, `/\bfiancée\b/u` matches and `/\bfiance\b/u` does NOT match
+  inside "fiancée". The matcher is `\b` now, which is also what the name check
+  three lines above it uses, so there is one opinion about word boundaries in
+  that method instead of two.
+
+  Worth recording as the class rather than the character: **a green drill is
+  a finding about the justification, not only about the code.** The
+  lookarounds were harmless; the DOCBLOCK explaining them was false, and a
+  false explanation is the documented-guard shape pointed at a comment. The
+  replacement states the measurement and the PCRE version it was taken on.
+
+- **AND I WROTE THE `orderByDesc()` NO-OP INTO A MEASUREMENT HAVING READ ITS
+  OWN COMMENT TWENTY MINUTES EARLIER.** `checkEnding()` carries a comment
+  saying, in as many words, that `Act::chapters()` already orders ascending so
+  an appended `orderByDesc()` is a secondary sort that does nothing — written
+  when the RED case named the wrong chapter. The probe written to read story
+  39's last chapter used exactly that, and read the first one.
+
+  That is the `duration_ms`-in-two-tables finding in its purest form: the fact
+  was written down, in the right place, correct and complete, and it fired
+  once — at the moment somebody happened to be looking at it for a different
+  reason. **Being the person who read it is no protection**, and being the
+  person who WROTE it is not either. Nothing is built for this; it is here
+  because a throwaway probe is the least scrutinised instrument in the project
+  and the one most likely to decide something, which this section already says
+  about probes that report an absence.
+
+- **A REPAIR PATH AND A PROTECTION PATH WERE GIVEN THE SAME CONDITION, AND
+  NOTHING ASKS WHICH CASE A STORY IS IN. The guard that destroyed story 39's
+  cast was written to let a re-outline repair one.**
+
+  `OutlineCast::chosenBeforeOutline()` returned nothing the moment a story had
+  acts. Its docblock gave the reason and the reason was true: *"holding it
+  fixed would make re-outlining unable to repair a bad cast."* It came from
+  `AccompliceArcTest`'s re-outline case going red on the first version — a real
+  test, a real need, a scope narrowed on evidence.
+
+  One condition, two jobs:
+
+  | the story's cast is | what the condition does | what it is called |
+  |---|---|---|
+  | wrong | lets the outline rewrite it | the repair |
+  | right | lets the outline rewrite it | the defect |
+
+  **Identical behaviour. The only thing that differs is a fact about the story
+  that the condition never looks at.** So it worked perfectly for a day and
+  then, on 2026-09-20, story 39 was re-outlined at `outlined` with five acts
+  and no scripts — to put a chosen end state into its last summary — and came
+  back with the narrator renamed, Nancy Kong (the older sister the operator's
+  idea named, and the reason `married` had been chosen at all) demoted to
+  `narrator_side`, and a stranger invented for the partner row. $0.2566. The
+  `chosen_cast` refusal built for story 38's identical swap was inert for the
+  whole call, because its input was empty.
+
+  **This is not the same as a check that cannot fire.** Those are silent by
+  accident — a needle that straddles a line, a fixture too small. This one was
+  silent BY DESIGN, and the design was correct about the case it was written
+  for. A condition serving two purposes is not over-broad; it is precisely as
+  broad as one of its two jobs needs, which makes it invisible from the side of
+  the other.
+
+  **The repair, and why it is not "narrow the condition".** Narrowing it to "no
+  act scripts" — the line `PartnerEnding::stillChoosable()` already draws —
+  fixes the protection and kills the repair, which is the trade the original
+  author declined and was right to. The answer is that **the two jobs are
+  different QUESTIONS and one of them belongs to the operator**: the scope is
+  now "no act scripts", and `$keepCast = false` on the re-outline confirm is
+  the operator saying, of this story, on this press, that the cast is the thing
+  being repaired. The condition stopped guessing which case a story is in and
+  started asking. `AccompliceArcTest`'s case — whose cast legitimately loses
+  its accomplice — passes `keepCast: false` now and says so, so the test that
+  produced the narrow scope is the test that documents the release.
+
+  **THE STANDING QUESTION, which is cheap and general: when a condition exists
+  to ALLOW something, ask what else it allows.** Not "is this condition
+  correct" — it was — but "does this same expression sit in front of a second
+  behaviour, and would the right answer for one be the wrong answer for the
+  other?" When it would, the condition cannot decide alone, and the decision
+  goes to whoever knows which case they are in. The shape is the axis question
+  from one more step out: there, a mechanism was flawless on the axis somebody
+  specified and silent on the one beside it; here, a condition was flawless for
+  the purpose somebody specified and destructive for the one beside it.
+
+  One more pair of this shape is already on the record and is worth re-reading
+  as an instance rather than a locale detail: a denied term KEPT at Gate 1 for
+  judgement and REFUSED at scene drafting, two decisions a paragraph apart,
+  each right alone.
+
+- **DOES THE REPAIR A GATE 1 FINDING NAMES HAVE A BUTTON? A STANDING QUESTION,
+  ASKED OF EVERY FINDING THE PAGE CAN EMIT.**
+
+  The operator's framing, 2026-09-20, after the second instance in a row:
+
+  | the finding | its repair | where the repair lived |
+  |---|---|---|
+  | a denied locale term in an act script | `story:write --acts-only=N` | a terminal |
+  | an outline that came back wrong, no scripts yet | one $0.28 outline call | **nowhere** — no command either |
+
+  The second is the sharper one and it is why this became a question rather
+  than a note. `GenerateOutline` has accepted a re-outline at `outlined` since
+  it was written, and `handle()` deletes and replaces the acts itself — so the
+  capability was complete and correct. What was missing was every path to it:
+  `story:write` printed *"Outline already exists — keeping it"*, `WriteStoryJob`
+  wrote an outline only when the act count was zero, and Gate 1's button went
+  through both. The repair could be reached only by calling the Action from a
+  bootstrap script, which is not a path an operator has.
+
+  That is the console-audit shape — a capability with no button — with the
+  detail that makes it worth its own entry: **both instances were found by an
+  operator reading a Gate 1 finding and asking how to act on it.** Not by the
+  audit, which looks for Actions with no caller and finds none here, because
+  the caller exists and declines.
+
+  So the question is asked of the FINDING rather than of the code: when Gate 1
+  reports something, what is the repair, and can it be pressed from the page
+  that reported it? Three answers are all legitimate and only one is a gap:
+
+  - **It has a press.** Most do — an editable field, the write button.
+  - **It needs no press**, because the repair is the thing the operator is
+    already doing. The denied locale term ends here: the phrase has to come out
+    before approval, and the textarea is the press.
+  - **It has none.** Build one, or say on the page where the repair is.
+
+  Built for the re-outline: `OperatorAction::ReOutline`, a second money panel
+  at Gate 1, `story:write --re-outline`, and the keep-the-cast checkbox the
+  entry above exists for. **No sweep of the other findings has been done**, and
+  that is the next cheap thing rather than a claim that the rest are covered.
+
+- **THE SCENE CALL WAS NEVER TOLD THE PARTNER EXISTED EXCEPT IN THE LAST ACT,
+  AND THE ACT PROMPT HAD BEEN ASKING FOR A MOMENT IT COULD NOT SEE. Closed
+  2026-09-20.** The consumer question again, on a field that had been wired to
+  one of its two consumers and recorded as done.
+
+  `partnerArcFor()` asks the SEARCH act for *"ONE MOMENT, in a scene, told as
+  it happens, where the narrator and X are plainly more than colleagues or
+  friends"*. `sceneContext()` gated its partner block on `Refusal + NewLife`.
+  So the stage that decides what 150-250 pictures contain — who is in a frame
+  and how they stand — heard about her only in the last act, and the one moment
+  the act writer was asked for had no reinforcement anywhere in the pictures.
+
+  **Story 38 is that gap rendered**, and it is the same four scenes this file
+  already records from the prose side without noticing why:
+
+  | | |
+  |---|---|
+  | search act, scenes with the partner | 4 (#106, #109, #116, #117) |
+  | what they were drawn as | the operations director; a rebate schedule; a line review; the antagonist confronting him |
+  | the moment | not among them |
+
+  Nothing at scene resolution could have known one of those frames was meant to
+  be it, because nothing there had been told she was in the story at all.
+
+  Fixed by giving the search act its own line, and the shape of the line is the
+  careful part: it names the moment as ONE frame and then says, in the same
+  breath, that **every other frame she is in that act is not it** — she is what
+  she arrived as, drawn as on any ordinary day. Without that bound the fix
+  would trade a missed moment for a romance over the whole act, which is the
+  over-report direction and the one that would have to be taken back out.
+
+  **It is deliberately NOT gated on the ending, unlike the refusal line.**
+  `partnerArcFor(Search)` asks for the moment whatever the ending is, and the
+  point of this change is that the two stages agree; an extra condition here
+  would put the prompt and the pictures back into disagreement on the one story
+  shape — a partner on the antagonist's ending — that already gets a Gate 1
+  warning for it. The fake records the partner on both acts, so dropping either
+  half fails a test rather than going quiet. Five drills red.
+
+- **ALL FIVE PARTNER CHECKS ASK WHETHER SHE IS THERE. NONE ASKS WHERE, OR
+  WHETHER ANYTHING CHANGED. A story with her in exactly two scenes passes every
+  one of them.**
+
+  | # | check | what it asks |
+  |---|---|---|
+  | 1 | premise: partner in the cast, never in the prose | present |
+  | 2 | Gate 1: named in no act script | present |
+  | 3 | Gate 1: a partner on the antagonist's ending | present |
+  | 4 | `checkEnding()`: partner in the last chapter | present |
+  | 5 | `checkPartnerEndState()`: the chosen word beside her name | present |
+
+  Five checks, one question, asked five times in five places. **A story where
+  she appears once in act 4 and once in the last chapter — which is exactly
+  what the instructions ask for, no more — is green on all five**, and so is a
+  story where those two appearances are eleven minutes and a year apart with
+  nothing between them. Story 38 measured: 7 scenes of 162, 11.5% of runtime,
+  absent for the first 61%, absent again from 68% to 96%. Every check passed.
+
+  **Same shape as the overlap matcher, and worth naming as one class.**
+  `distinctiveWords()` counts shared tokens and is read as answering *does the
+  refusal answer the grievance*; these count a name and are read as answering
+  *are these two people a couple*. In both, the measurement is real and the
+  claim above it is about something else, so the check cannot be wrong on its
+  own terms and cannot be right about the thing anybody cares about. **A
+  detector with no relationship to what it claims to measure passes for
+  coverage indefinitely**, because nothing it reports is ever false.
+
+  What a check about the relationship would need is a property of the SHAPE —
+  how many scenes she is in, how far apart they are, whether anything between
+  them differs — and none of those is a presence test. Not built; see the
+  progression report, which is the request this finding came out of.
+
+  **Unchecked and said so it is not read as covered:** whether the two scenes
+  the instructions ask for are enough to carry a marriage the title may promise.
+  The title is bounded by the last summary's words and by nothing about how
+  much of the video earned them.
+
+- **STORY 37 IS PUBLISHED WITH TWELVE MINUTES OF DIALOGUE PUNCTUATED AS
+  NARRATION, AND NOTHING IN THIS APPLICATION HAD AN OPINION ABOUT QUOTATION
+  MARKS.** Found 2026-09-21 by a pacing measurement that was looking for
+  something else — its act 3 measured 0% staged dialogue and the obvious read
+  was a silent act. It is not silent. Three people are arguing:
+
+  > *"He said, take these back, we are not people who keep things."*
+  > *"He said, Uncle, don't trouble Brother Owen with the running around."*
+
+  Acts 1, 2 and 5 of the same story carry 18, 9 and 27 quoted lines, so the
+  writer had the convention and dropped it for one act. The act system prompt
+  has said *"Dialogue is quoted plainly"* since Phase 2 — the request with no
+  invariant behind it, which this file's own rule says reads as a guard while
+  doing nothing.
+
+  **It is not a typographic preference, and that is the whole reason it
+  matters: ONE VOICE READS THE WHOLE SCRIPT.** An unquoted line is read in the
+  narrator's own voice, as narration, and the viewer never learns somebody
+  else was speaking. It is the identical failure to an untagged thought, which
+  `genreGuidance()` has refused for exactly that reason since 3g.
+
+  **`App\Support\SpokenLines` owns the three states** — quoted, unquoted,
+  reported — and `ValidateOutlineSpine::checkQuotedDialogue()` reports the
+  third as a Gate 1 WARNING, recomputed from the stored script the way
+  `localeDenied()` is. A warning rather than a refusal on the same reasoning
+  as a denied locale term in act prose: refusing costs the billed act, and —
+  checked, because the 2026-09-19 correction says a "keep" can be a refusal
+  deferred to a stage that bills — `DraftScenes` does not read quotation
+  marks, so nothing downstream refuses it.
+
+  **THE DISCRIMINATOR WAS DESIGNED AGAINST THE DATA RATHER THAN GUESSED.** All
+  230 `TAG,` constructions in the five rendered stories were printed with what
+  follows them before a line of the detector was written. Reported speech
+  carries `that` or `whether`, usually after an adverbial — "said, quietly,
+  that my parents had given it freely"; direct speech does not. **It
+  under-reports on purpose**: "She said, if anybody asks, you don't know where
+  I went" opens on `if` and is not counted. This check reports an ABSENCE on
+  an operator's page, so a miss costs one unflagged line and a false fire
+  costs the whole check.
+
+  **Two conditions, and the second is what keeps it quiet**: at least three
+  unquoted constructions AND more unquoted than quoted. An act with three
+  slips among twenty-five quoted lines is three slips, not an act written in
+  the wrong register. Measured over all 25 acts of the five rendered stories,
+  **exactly one fires — story 37's act 3 — and it is the true positive.**
+
+  **A DEFECT IN THE DETECTOR, FOUND BY THE FIXTURE ASSERTION RATHER THAN BY
+  READING IT.** The first version matched `tag,(.{0,110})`, which makes the
+  window part of the match — so `preg_match_all` consumed the next tag inside
+  it and overlapping speech was never seen. Seven findings on story 37's act 3
+  where there are ten, and two on the test fixture where there are three. **A
+  check under-reporting the exact defect it exists for**, and it was the
+  fixture case asserting it can express BOTH states that went red, not any of
+  the four behavioural cases.
+
+  **And one drill passed, which was a real gap rather than a bad drill.**
+  Dropping the floor of three left every case green: the slips case holds the
+  RATIO and nothing reached the FLOOR, so that number was doing nothing a test
+  could see. It has its own green case now — one slip in an act with no other
+  dialogue, which is a slip and not a register collapse. Seven drills red.
+
+  **Story 37 is not repaired.** It is rendered and uploaded; fixing the script
+  now would make the database disagree with the artifact, and the repair is a
+  re-render and a re-upload. The cause is fixed and the next story is where it
+  shows.
+
+- **THE NARRATING-THE-NARRATION BAN IS BEING OBEYED ON ITS LIST AND BROKEN ON
+  ITS RULE — THIRD COAT, AND THIS TIME THE BANNED PHRASE ITSELF CAME BACK.**
+  Noted 2026-09-21, deliberately NOT fixed, on the operator's word.
+
+  The ban's own entry records the first two rounds: sixteen "I want to be
+  honest" across four stories, banned by name, followed by five "I want you to
+  understand" on the next story — the same move in a coat the list did not
+  cover. The prompt was then rewritten to name the MOVE and to say out loud
+  that there is no list.
+
+  Measured across the acts of the five rendered stories written since:
+
+  | story | hits | example |
+  |---|---|---|
+  | 33 | 1 | "I want to be precise about this, because people assume there was a fight." |
+  | 36 | 2 | "I want to be accurate about who they were laughing at." |
+  | 37 | 0 | |
+  | 38 | 4 | "I want to be fair to her — it was Nicole's birthday…" |
+  | 39 | 1 | "I want to be exact about what I was holding while I sat there…" |
+
+  **"Being honest, exact, clear or fair about it" is named in the ban, in
+  those words, and `exact`, `precise`, `accurate` and `fair` all came back.**
+  So this is not a new coat: it is the listed form returning after the list
+  was replaced by a rule, at a lower rate than before (sixteen across four
+  stories, then eight across five) but not at zero.
+
+  Story 39's instance is the sharpest, because of where it sits: at 17:38, at
+  the head of the fifty seconds of bonded-lease exposition inside the
+  four-minute hole 3n measures. The sentence announces the exposition and then
+  delivers it.
+
+  **Not built, and the reason is the same one the entry already gives:** a
+  guard on this would be false-positive-prone in exactly the way the hedge ban
+  was — "I want you to have the number" is the move and "I wanted her to
+  understand" is a scene. What is new and worth having on the record is that
+  **the rule-not-a-list rewrite reduced it and did not end it**, so the next
+  question is whether it is worth a Gate 1 advisory over returned prose, which
+  is where the hedge ban ended up and where the chapter-announcement check
+  already lives.
+
+- **THE WORKING ASSETS OF AN UPLOADED STORY ARE CLEARED BY A COMMAND, AND THE
+  MASTER IS NOT A WORKING ASSET.** Built 2026-09-21. `story:clear-assets`,
+  `App\Actions\ClearStoryAssets`, `stories.assets_cleared_at/_bytes`.
+
+  **What was on disk, measured before anything was built.** 13.33 GB under
+  `storage/app`; the 14 published stories are 12.06 GB of it:
+
+  | artifact | where | 14 published | purged today? |
+  |---|---|---|---|
+  | clips, padded PCM, silent.mp4, narration.wav | `renders/{slug}/` | **0** | yes, on render |
+  | archived responses | `private/responses/{id}/` | **0** | yes, on render |
+  | stills | `assets/{id}/stills/` | 1.24 GB, 3,011 files | never |
+  | per-scene narration | `assets/{id}/narration/` | 1.47 GB, 3,011 files | never |
+  | reference sheets | `characters/{id}/` | 130 MB, 543 files | never |
+  | composed thumbnails | `renders/{slug}/thumbnails/` | 5 MB | never |
+  | **final.mp4** | `renders/{slug}/` | **9.21 GB** | never |
+
+  `PurgeRenderScratch` works: a published story's render root holds only
+  `final.mp4`, `subs.ass`, `scene_audio.json` and `thumbnails/`. **Word timings
+  are not on disk at all** — `scene_audio.timings_json` is in MySQL, so there
+  is nothing to reclaim and nothing to lose there.
+
+  ---------------------------------------------------------------------------
+  **`final.mp4` IS 76% OF THE DISK AND THE ONLY COPY OF THIRTEEN VIDEOS**
+  ---------------------------------------------------------------------------
+
+  The obvious target is the master, and the obvious justification is that
+  `DeliverFinalVideo` copied it out. It did: `deliver` ran and SUCCEEDED for
+  thirteen stories and `render_jobs.output_path` names each delivered file.
+  **Not one of those files exists.** The delivery folder holds exactly two,
+  both story 39's; the rest were uploaded and removed. So thirteen job rows
+  already point at nothing, and a command that trusted them would have deleted
+  thirteen masters on the strength of a status column and a stale row.
+
+  **A job row is a record that something HAPPENED, never evidence that a file
+  is there now**, which is the stored-decision rule (does this record survive
+  its subject being regenerated?) pointed at an artifact nobody regenerated —
+  somebody deleted it. So `--include-final` requires a delivered copy that is
+  present AND the same size, and otherwise refuses and says which. The default
+  keeps it.
+
+  What that costs is the whole headline: clearing every published story frees
+  **3.54 GB of 12.06**, and 912 MB of that is story 39, the one story whose
+  delivered pair is still on disk.
+
+  ---------------------------------------------------------------------------
+  **THE PATHS ARE NULLED, AND THAT IS THE POINT RATHER THAN TIDINESS**
+  ---------------------------------------------------------------------------
+
+  `Scene::needsImage()` and `needsNarration()` read the ROW, not the disk. A
+  story whose stills are deleted while `image_path` still names them is a
+  story the pipeline believes is complete: `assets:generate --estimate` reports
+  nothing pending and $0.00, and the absence surfaces three stages later inside
+  a render. That is the half-believed row this file has already paid for twice
+  — the half-cleared `scene_audio` row that kept `samples`, and
+  `scenes.duration_ms` restored in one table of two — and its own rule is that
+  **a row that can be half-believed is worse than one that is plainly empty.**
+
+  So `image_path`, `audio_path`, `reference_image_path` and every
+  `character_references.image_path` are emptied. **No row is deleted**: not a
+  scene, not a character, not a cost entry, not a render job. `samples`,
+  `duration_ms` and `timings_json` stay, because they are facts about the
+  narration rather than pointers to it — `narration:measure` reads them, so the
+  measured 197/199 wpm figures survive a clear.
+
+  **Which creates the problem the flag exists for.** An emptied row is honest
+  and reads as "the assets never generated": Gate 2 shows scenes with no
+  stills, the faces page shows characters with no reference, and both are TRUE
+  on a story that is on YouTube. That is the false-success shape inverted — an
+  accurate reading presented as a problem — and only a record that it was
+  deliberate can tell them apart. `assets_cleared_at` is `is_fixture`'s
+  argument one state along, and the banner sits in the shared gate wrapper so
+  it reaches every gate rather than the one page somebody happened to test.
+
+  **A COMMAND AND NOT A BUTTON, deliberately**, against this file's own
+  standing question: nothing REPORTS this. There is no finding, no gate and no
+  decision surface — it is housekeeping on a story whose work is over, and a
+  button for it would sit on a page whose job is the next video. Dry run is the
+  default because what it deletes cannot be rebuilt without paying for it
+  again.
+
+  **Refused below `published`**, and `rendered` is the one worth naming: that
+  is a story sitting AT Gate 3 waiting to be watched, and clearing it would
+  strand it with no way forward but buying its stills again.
+
+  **Every case runs against faked disks.** The Action resolves through
+  `Storage::disk()` rather than `storage_path()`, because a test that deleted
+  for real would be a suite that can destroy 1.24 GB of paid stills on a green
+  run. Nine drills red, 14 cases. 1,498 tests before, 1,512 after.
+
+  ---------------------------------------------------------------------------
+  **AND THEN ONE PRESS FOR ALL OF THEM — `--all` AND ONE BUTTON, NEITHER OF
+  WHICH CAN REACH A MASTER BY ANY ARGUMENT.** Added 2026-09-21.
+  ---------------------------------------------------------------------------
+
+  Story by story is the right shape for the decision and the wrong shape for
+  the chore: fourteen finished videos is fourteen presses of a question whose
+  answer is the same every time. `story:clear-assets --all` and one button on
+  the stories index do the set.
+
+  **THE MASTERS ARE OUT OF BOTH, AND IT IS THE SIGNATURE THAT SAYS SO RATHER
+  THAN A DEFAULT.** `ClearStoryAssets::survey()` and `clearAll()` take **no
+  parameters at all** — there is no `includeFinal` to pass, so no caller, flag
+  or future edit can ask a sweep for a master without changing the method. A
+  reflection case pins it, and it drills red the moment a parameter appears.
+  The reasoning is the one already in this entry: deleting a master is safe
+  only after checking that THAT video's delivered copy is on disk now and is
+  the same file, which is answered by looking, per story. A flag that asked
+  fourteen of those questions in one press would answer them all with one
+  press.
+
+  `--all --include-final` therefore **refuses rather than ignoring the flag**,
+  and the distinction is the point. Ignoring it is the kinder-looking option
+  and the wrong one: an operator who typed it asked for something, and a sweep
+  that took the flag, did not honour it and reported success would teach them
+  the masters had been considered. They were not.
+
+  **The button is on the stories index, at the bottom, below the pagination.**
+  Not the dashboard: that page answers *what should I do next*, and its quiet
+  layout exists to stop anything else competing with the decisions — a press
+  about work that is finished and uploaded is the opposite question. Not a gate
+  page: fourteen identical buttons is the same decision asked fourteen times,
+  each on a page whose job is one video. The index is the one surface that is
+  about the whole SET rather than a member of it, and the finished stories are
+  on it. It is drawn only when a published story exists, because a button that
+  can never do anything is noise on the page that lists what there is to do.
+
+  **It is not an `OperatorAction`, deliberately.** That enum answers "may this
+  be done at this story's status", which is a question about one row; this acts
+  on a set and has no single status to ask. The per-story refusal is still
+  `assertReady()`, upstream of everything and unchanged — which is what makes
+  the sweep's eligibility the SAME question rather than a looser rule written
+  for the bulk path. Fixtures are not excluded for the same reason: none is
+  published, so the status already answers it, and an extra filter here would
+  be a refusal the single-story path does not have.
+
+  **The apply re-surveys rather than trusting what the operator was shown.**
+  `clearAll()` walks the disk again and deletes what is there now, and reports
+  what was actually taken rather than what the survey predicted; if the two
+  differ, the difference is visible. Pressing twice needs no lock — unlike the
+  character sheets nothing here is bought, and the second sweep reads a disk
+  the first one emptied. A story whose status moves mid-sweep is named and
+  skipped rather than aborting the rest.
+
+  **The poll stops while the confirm is open.** The index refreshes itself
+  every fifteen seconds, and that confirm is a list of files and a total being
+  read before a button that deletes them. A poll underneath it would re-walk
+  the disk and redraw the figures while somebody is reading them.
+
+  **One byte formatter, because three surfaces print it** — the command, the
+  button and the cleared-story banner, which had been doing the GB/MB
+  arithmetic inline in Blade where nothing could see it.
+
+  **The live reading, 2026-09-21: 12 stories, 5,478 files, 2.41 GB**, and two
+  of the fourteen published stories already cleared by hand earlier that day
+  (21 at 04:52, 25 at 04:51, 453 MB). Those two are the check on the design as
+  much as any test: every row survived — 882 and 840 cost rows, $15.24 and
+  $16.86 of ledger — every path column is null, every `samples` figure is
+  still there, and both masters are untouched at 708 MB and 659 MB. The survey
+  runs in well under a second on this machine.
+
+  **THE FIXTURE WAS TOO SMALL AND TOO BIG AT ONCE, WHICH IS ENTRY 10 IN THE
+  SELF-DEFEATING TABLE WITH A SECOND FACE.** `storyWithAssets()` let
+  `SceneFactory` mint an act per scene, and `ActFactory` draws its sequence
+  from `unique()->numberBetween(1, 8)` against a faker that resets per test
+  method — so three acts a story capped the fixture at **two stories in a
+  test**, and a sweep is the one thing that has to exceed two. The scenes share
+  one act now. In the other direction, an assertion written as
+  `foreach (Story::all())` swept up the draft stories that nested factories
+  mint for themselves and failed on rows that never had an asset. Both are the
+  same question asked twice: **is the fixture the size the failure needs, and
+  is the assertion looking at the rows the test made.** Ten drills, all red for
+  the reason they name. 1,512 tests before, 1,523 after.
+
+  **Seen and not built:** 1,077 render roots with no story row (1,061 of them
+  empty, 276 MB) and 43 orphan character directories (3 MB), all factory
+  leftovers from the test suite writing to the real disks. That is a different
+  job from this one — it is about the SUITE, not about any story — and a sweep
+  that deletes directories by "no row matches" is one bad query from deleting a
+  live story's render root.
+
 Still open, none blocking, all findable here rather than one gate at a time:
+
+- **NOTHING CAPS HOW FAST A VIEWER MEETS THE CAST, AND THE "CONFUSING" COMMENT
+  HAS A NUMBER ON IT.** Measured 2026-09-20 from the rendered scene offsets —
+  declared cast members named before the three-minute mark, which is where this
+  format's one known retention failure is:
+
+  | story | cast | met by 3:00 | met by 5:00 | distinct proper nouns by 3:00 |
+  |---|---|---|---|---|
+  | 33 | 12 | **8** | 8 | **17** |
+  | 36 | 5 | 5 | 5 | 11 |
+  | 37 | 7 | 6 | 6 | 14 |
+  | 38 | 8 | 2 | 5 | 5 |
+
+  Story 33 is the outlier on both counts and is the story carrying the "FL is
+  infuriatingly bad" comment. In its first three minutes a listener meets eight
+  named people plus six places and organisations, including **four "Qiao"s** —
+  Ethan Qiao, Qiao Meilan, Leo Qiao and the company Qiao Yan Design — with the
+  narrator's own surname inside the company name, and two men distinguished only
+  as the elder and younger Chen. The narrator is unnamed until **4:24**.
+
+  **What caps it: `cast.max_named` (8 besides the narrator), enforced by
+  `GenerateOutline` and warned at Gate 1.** That is a bound on the story's TOTAL
+  and it is working — 36, 37 and 38 have 5, 7 and 8. Story 33 has 12 and is
+  `outlined_before_cast`, so it predates the cap entirely.
+
+  **What caps the RATE: nothing.** Stories 36 and 37 put their entire cast in
+  the first three minutes and it costs them nothing only because the cast is
+  small. **And nothing counts non-person proper nouns at all** — the six places,
+  companies and hotels in story 33's first three minutes are invisible to every
+  check in the app, and "Qiao Yan Design" shares tokens with three of its people.
+
+  Left as a measured open item rather than built, on the operator's call. Four
+  comments cannot carry a per-minute budget, and the obvious fix — a cap on
+  names per act 1 — would collide with the betrayal scene, which is a room full
+  of witnesses by construction. The number to watch is the first column.
 
 - **The job history cannot answer questions about past failures, so any claim
   starting "this has never happened" is unsupported by it.** `RenderJob::record()`

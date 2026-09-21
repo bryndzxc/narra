@@ -44,6 +44,29 @@ enum OperatorAction: string
     case WriteScript = 'write_script';
 
     /**
+     * Write the outline AGAIN, on a story that already has one.
+     *
+     * A separate capability from WriteScript rather than a flag on it, and the
+     * reason is that at `outlined` the two press buttons that spend different
+     * money on different things: WriteScript there means "write the acts this
+     * outline is missing", and this means "throw the outline away and buy
+     * another one". One capability answering for both is how a button and a
+     * command come to disagree about what they are permitted to do, which this
+     * enum exists to prevent.
+     *
+     * It exists because the repair for a bad outline was terminal-only. A
+     * story with no scripts and a wrong outline is a $0.28 fix and there was
+     * no press for it — the second Gate 1 finding whose repair lived in a
+     * command, after the locale term in an act script.
+     *
+     * POSITION ONLY, and the precondition is elsewhere on purpose: `outlined`
+     * is also where a story with every script written waits for approval, and
+     * deleting those is what GenerateOutline::WRITTEN_ACTS refuses. A status
+     * cannot see it.
+     */
+    case ReOutline = 're_outline';
+
+    /**
      * Write three premise candidates from the operator's idea.
      *
      * Only at `draft`, before the outline exists: a premise is what the
@@ -109,6 +132,7 @@ enum OperatorAction: string
     {
         return match ($this) {
             self::WriteScript => 'Write the outline and act scripts',
+            self::ReOutline => 'Write the outline again',
             self::WritePremises => 'Write three premises from an idea',
             self::ReopenOutlineGate => 'Reopen Gate 1',
             self::DraftSceneList => 'Extract the cast and draft the scenes',
@@ -126,6 +150,7 @@ enum OperatorAction: string
     {
         return match ($this) {
             self::WriteScript => 'story:write, NewStory::create(), OutlineGate::write(), DispatchTextStage',
+            self::ReOutline => 'story:write --re-outline, OutlineGate::reOutline(), DispatchTextStage::writeScript()',
             self::WritePremises => 'OutlineGate::writePremises(), DispatchTextStage::writePremises()',
             self::ReopenOutlineGate => 'OutlineGate::reopen() and its blade',
             self::DraftSceneList => 'story:scenes, ScenesGate::draftScenes(), DispatchTextStage',
@@ -152,6 +177,12 @@ enum OperatorAction: string
                 StoryStatus::Outlined => true,
                 default => false,
             },
+
+            // `outlined` and nothing else. At `draft` there is no outline to
+            // replace and WriteScript is the press; past `outlined` the acts
+            // carry scripts and Gate 1 has been approved, which is the same
+            // wall WriteScript hits and for the same reason.
+            self::ReOutline => $status === StoryStatus::Outlined,
 
             // Only from `scripted`. Walking further back than one step is a
             // walk, not a jump: scenes drafted against this outline exist, and
@@ -252,6 +283,11 @@ enum OperatorAction: string
             // the operator writes the outline from one of them.
             self::WritePremises => null,
 
+            // Moves nothing. The story is already at `outlined` and stays
+            // there: a replaced outline is the same decision to make again,
+            // not progress through the gate.
+            self::ReOutline => null,
+
             self::ReopenOutlineGate => StoryStatus::Outlined,
 
             // Same reasoning. DraftScenes moves `scripted` -> `scenes_drafted`
@@ -320,6 +356,22 @@ enum OperatorAction: string
                     'the story is at "%s", well past the outline. Scenes, and probably paid assets, '
                     .'were built on the scripts as they stand. Walk back one gate at a time: reopen '
                     .'Gate 2 first, then Gate 1, and the script can be rewritten from there.',
+                    $status->value,
+                ),
+            },
+
+            // Deliberately says nothing about what the acts CONTAIN. The
+            // WriteScript refusal above states "every act carries a script"
+            // having checked only a status, which is the figure-axis defect
+            // this file records; a second copy of it would be a second one.
+            self::ReOutline => match (true) {
+                $status->rank() < StoryStatus::Outlined->rank() => 'there is no outline to replace yet. '
+                    .'Write the first one — that is the same press, at "draft".',
+
+                default => sprintf(
+                    'Gate 1 has been approved (the story is at "%s"), so the outline has work built on '
+                    .'it. Reopen Gate 1 — that returns the story to "outlined", where it can be '
+                    .'written again.',
                     $status->value,
                 ),
             },

@@ -49,8 +49,15 @@ interface ScriptWriter
      * @param  int  $actCount  5-8. For an anthology this is the number of
      *                         self-contained stories; for a single narrative it
      *                         is the act structure.
+     * @param  bool  $keepCast  Whether the cast already on the story is fixed
+     *                          for this call. True on every ordinary press; the
+     *                          re-outline confirm turns it off, which is the
+     *                          operator saying the cast is the thing to repair.
+     *                          The Action holds the same flag as an invariant,
+     *                          so a request and its refusal cannot disagree.
+     *                          See OutlineCast::chosenBeforeOutline().
      */
-    public function outline(Story $story, int $actCount): OutlineDraft;
+    public function outline(Story $story, int $actCount, bool $keepCast = true): OutlineDraft;
 
     /**
      * Write premise candidates from an operator's idea.

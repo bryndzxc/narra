@@ -240,6 +240,20 @@
                     </div>
                 @endif
 
+                {{-- Its own condition, not the ending's. The ending is fixed
+                     once acts exist; this is read by the act writer too, and
+                     the act writer replaces each summary with its own — so it
+                     is still choosable on the second press, where the panel
+                     above is writing the acts rather than the outline. --}}
+                @if ($this->canChoosePartnerEndState())
+                    <div class="mt-4">
+                        <x-partner-end-state-picker model="partnerEndState"
+                                                    :recent="$this->recentPartnerEndStates()"
+                                                    :required="$this->partnerEndStateRequired()"
+                                                    :partner="$this->chosenPartnerName()" />
+                    </div>
+                @endif
+
                 <x-worker-health :queues="[$this->workers()]" :compact="true" />
 
                 <table class="mt-4">
@@ -285,6 +299,103 @@
              unavailable is a page saying nothing where it should say why. --}}
         <div class="alert warn wide">
             <strong>The script cannot be written from here.</strong> {{ $this->writeRefusal() }}
+        </div>
+    @endif
+
+    {{-- Writing the outline AGAIN. The second Gate 1 finding whose repair was
+         terminal-only: a story with no scripts and a wrong outline is a $0.28
+         fix, and until now the only way to make it was a bootstrap script,
+         because `story:write` and the press above both keep an outline that
+         exists. Separate panel from the one above because at `outlined` they
+         spend different money on different things. --}}
+    @if ($this->canReOutline())
+        @php($destroys = $this->reOutlineCost())
+
+        <div class="panel money">
+            <label>Write the outline again</label>
+
+            <div class="muted small mt-1" style="max-width:78ch">
+                No act has a script yet, so this outline is still a plan. Writing it again replaces the
+                whole of it: <strong>{{ $destroys['acts'] }} act(s)</strong> with their summaries and
+                beats, <strong>{{ $destroys['cast'] }} cast row(s)</strong>, and
+                <strong>{{ $destroys['spine'] }} spine field(s)</strong>. Anything you have edited on this
+                page is included in that. The acts are deleted by the call that succeeds, so a call that
+                fails leaves what is here standing.
+            </div>
+
+            <x-worker-health :queues="[$this->workers()]" :compact="true" />
+
+            <table class="mt-4">
+                <tbody>
+                <tr>
+                    <td>Billed calls</td>
+                    <td class="mono">1</td>
+                    <td class="muted small">The outline only. The acts are a second press.</td>
+                </tr>
+                </tbody>
+            </table>
+
+            {{-- The cast question, asked rather than answered silently.
+                 Story 39 was re-outlined with this released by default — not
+                 by anybody's choice, but because the predicate that pins a
+                 cast went inert the moment a story had acts — and came back
+                 having demoted the partner the operator had chosen an end
+                 state for and invented a stranger in her place. Both settings
+                 are real needs; only one of them can be the default, and the
+                 other one has to be a sentence somebody reads. --}}
+            <div class="mt-4">
+                <label>
+                    <input type="checkbox" wire:model.live="keepCast">
+                    <span>Keep the cast on this story</span>
+                </label>
+
+                <div class="muted small mt-1" style="max-width:78ch">
+                    @if ($keepCast)
+                        The {{ $destroys['cast'] }} people below come back under the same names in the
+                        same roles@if ($destroys['partner'])&nbsp;&mdash; including
+                        <span class="mono">{{ $destroys['partner'] }}</span> as the partner@endif. The
+                        outline may add someone and may rewrite a relationship line; it is refused, before
+                        anything is stored, if it drops a person or changes a role.
+                    @else
+                        <strong>The cast is released.</strong> The outline writes its own from the premise,
+                        and whoever is on this story now may not come back under the same name, the same
+                        role, or at all. Turn this off only when the cast is the thing you are repairing.
+                    @endif
+                </div>
+            </div>
+
+            @if ($confirmingReOutline)
+                <div class="alert warn wide mt-4">
+                    <strong>1 billed call</strong> queued on the
+                    <span class="mono">{{ $this->workers()['queue'] }}</span> queue, replacing
+                    {{ $destroys['acts'] }} act(s) and the spine they were written with.
+                    @unless ($keepCast)
+                        <strong>The cast is released</strong>, so the people on this story now are not
+                        held.
+                    @endunless
+                    @if ($this->workers()['state'] === \App\Support\WorkerHealth::ABSENT)
+                        Nothing is listening on that queue right now — the job will wait and nothing is
+                        lost, but nothing happens until a worker starts.
+                    @endif
+                    <div class="mt-4">
+                        <button type="button" class="primary" wire:click="reOutline">
+                            Queue it — replace the outline
+                        </button>
+                        <button type="button" wire:click="cancelReOutline">Back</button>
+                    </div>
+                </div>
+            @else
+                <div class="actions mt-4">
+                    <button type="button" wire:click="askToReOutline">Write the outline again</button>
+                    <span class="muted small">Shows what it replaces first. Nothing is queued by this press.</span>
+                </div>
+            @endif
+        </div>
+    @elseif ($this->reOutlineRefusal())
+        {{-- Said, not swallowed, for the reason the write refusal is: a panel
+             that vanishes is a page saying nothing where it should say why. --}}
+        <div class="alert warn wide">
+            <strong>This outline cannot be replaced from here.</strong> {{ $this->reOutlineRefusal() }}
         </div>
     @endif
 
@@ -666,6 +777,44 @@
                     </div>
                 </div>
             @endif
+
+            {{-- The narrator wearing somebody else's possessive. Story 36
+                 shipped one at 10:19 and nothing in the app could see it: the
+                 locale guard reads a denylist and the character guard reads
+                 cast descriptions, and neither has an opinion about who "I"
+                 is. Rendered beside the locale hits because it is the same
+                 kind of finding — a term in the prose, recomputed from the
+                 stored text, judged here. --}}
+            @if ($this->pointOfViewSlips())
+                <div class="alert warn wide">
+                    <div class="alerthead">
+                        <h2>
+                            {{ count($this->pointOfViewSlips()) }} sentence(s) where the narrator says
+                            &ldquo;my {{ \App\Support\NarratorPointOfView::borrowedTermFor($this->story) }}&rdquo;
+                        </h2>
+                    </div>
+                    <div class="localehits">
+                        @foreach ($this->pointOfViewSlips() as $hit)
+                            <div class="hit">
+                                <span class="at">{{ $hit['act'] ? 'act '.$hit['act'] : $hit['where'] }}</span>
+                                <span class="minw">
+                                    <code>{{ $hit['term'] }}</code>
+                                    <span class="muted small">&hellip;{{ $hit['context'] }}&hellip;</span>
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div class="muted small mt-2">
+                        This story's cast says the narrator calls the antagonist
+                        &ldquo;my {{ \App\Support\NarratorPointOfView::ownTermFor($this->story) }}&rdquo;, so
+                        the possessive above belongs to somebody else and the sentence has changed seats
+                        mid-way &mdash; usually where the narration is reporting what another character
+                        said. Quoted speech is not counted, so a character saying it aloud is fine.
+                        A listener has no scrollback: story 36 shipped one of these at 10:19.
+                        {{ $this->voice()->judgement() }}
+                    </div>
+                </div>
+            @endif
         </x-gate-group>
 
         <x-gate-group>
@@ -731,6 +880,15 @@
                         Everything downstream is generated from this: the acts, then
                         5,500&ndash;8,000 words of script, then 150&ndash;250 stills. It is the
                         cheapest thing here to change.
+                        {{-- Said because it used not to be true. Until 2026-09-20 the prose
+                             really was all the outline got, so the seven answers a picked
+                             premise was chosen ON were re-answered from it. --}}
+                        @if (is_array($story->premise_spine) && $story->premise_spine !== [] && ! $story->acts()->exists())
+                            The outline is also handed the
+                            {{ count($story->premise_spine) }} answer(s) the premise you picked was
+                            checked on, so it builds on them instead of answering them again from
+                            these sentences. Editing the premise here does not rewrite those.
+                        @endif
                     </div>
                     {{-- The ending, at every status, so the choice the outline
                          was written to is on the page that reviews it. --}}
@@ -750,6 +908,37 @@
                                 <span class="muted">This story was asked for a narrator epilogue{{ trim((string) $story->antagonist_regret) !== '' ? ' and the antagonist\'s chapter after it' : '' }}.</span>
                             @endif
                         </div>
+
+                        {{-- What the two of them are by the end, at every
+                             status, for the reason the ending is here: the
+                             choice the acts were written to belongs on the
+                             page that reviews them. Said only when this story
+                             HAS somebody it could be about — a line about a
+                             partner on a story with none is a readout about
+                             nobody. --}}
+                        @if ($this->chosenPartnerName() !== null && $story->ending === \App\Enums\StoryEnding::NewLife)
+                            <div class="small mt-2">
+                                @if ($story->partner_end_state !== null)
+                                    By the end, {{ $this->chosenPartnerName() }} and the narrator are
+                                    <strong>{{ mb_strtolower($story->partner_end_state->label()) }}</strong>.
+                                    <span class="muted">{{ $this->canChoosePartnerEndState()
+                                        ? 'Changeable in the panel above until an act carries a script.'
+                                        : 'Fixed: the acts were written to it.' }}</span>
+                                @elseif ($this->canChoosePartnerEndState())
+                                    By the end, {{ $this->chosenPartnerName() }} and the narrator are
+                                    <strong>not chosen.</strong>
+                                    <span class="muted">Nothing asked, so the writers pick the word themselves
+                                        &mdash; and with nothing to go on they pick the weakest one, which is
+                                        "partner". Choose it in the panel above.</span>
+                                @else
+                                    By the end, {{ $this->chosenPartnerName() }} and the narrator are
+                                    <strong>whatever the acts say.</strong>
+                                    <span class="muted">This story was written before the choice existed, or its
+                                        partner came from the outline rather than the premise. Nothing was asked
+                                        and nothing is missing; read the last act's summary.</span>
+                                @endif
+                            </div>
+                        @endif
                     @endif
                 </div>
             </div>

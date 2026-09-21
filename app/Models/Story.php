@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CostCategory;
 use App\Enums\Gate;
+use App\Enums\PartnerEndState;
 use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Enums\StoryStatus;
@@ -85,6 +86,13 @@ class Story extends Model
         // made before the outline and read by the outline, the refusal act,
         // Gate 1 and the metadata brief. See App\Enums\StoryEnding.
         'ending',
+        // What the narrator and the future partner ARE to each other by the
+        // end, in the operator's own word. Chosen beside the ending, and read
+        // by the outline, every act, the last chapter, the scene call, the
+        // metadata brief and Gate 1 — but only where it has a subject. Story
+        // 39's idea said "married her older sister" and no stage could ask for
+        // a marriage. See App\Enums\PartnerEndState, App\Support\PartnerEnding.
+        'partner_end_state',
         // The betrayal as a scene: where the justification is first SAID,
         // aloud, to the narrator's face, in front of witnesses, with the person
         // it was done with in the room. Seven stories found their betrayal or
@@ -147,11 +155,23 @@ class Story extends Model
             'reopened_from' => StoryStatus::class,
             'format' => StoryFormat::class,
             'ending' => StoryEnding::class,
+            'partner_end_state' => PartnerEndState::class,
             'target_publish_at' => 'datetime',
             // The latest premise roll. Not fillable: only GeneratePremises
             // writes it, through forceFill, so no form can post one.
             'premise_candidates' => 'array',
+            // The picked premise's own spine answers, kept so the outline is
+            // written from them rather than re-answering all seven from the
+            // prose. Not fillable, for `premise_candidates`' reason: only
+            // `OutlineGate::usePremise()` writes it, through forceFill. See
+            // the migration that added it for what used to die there.
+            'premise_spine' => 'array',
             'is_fixture' => 'boolean',
+            // When the working assets were deliberately deleted, and what it
+            // freed. Not fillable: only ClearStoryAssets writes them, through
+            // forceFill, so no form can claim a story was cleared.
+            'assets_cleared_at' => 'datetime',
+            'assets_cleared_bytes' => 'integer',
             'total_cost_usd' => 'decimal:4',
             'target_duration_min' => 'integer',
             'target_duration_max' => 'integer',
@@ -239,6 +259,25 @@ class Story extends Model
     public function scenes(): HasMany
     {
         return $this->hasMany(Scene::class)->orderBy('sequence');
+    }
+
+    /**
+     * Whether any act carries a written script.
+     *
+     * The line between "the outline is still a plan" and "the words are in the
+     * prose", and the one three separate places had each written out as
+     * `whereNotNull('script')->where('script', '!=', '')` — PartnerEnding, the
+     * Gate 1 sizing panel, and now the chosen cast. A third copy is how two of
+     * them come to disagree about what an empty string means, which is the
+     * shape this project has paid for with one narration at three prices.
+     *
+     * A story with acts and no scripts is the state a re-outline is FOR: the
+     * acts exist, nothing was written against them, and GenerateOutline
+     * replaces them wholesale.
+     */
+    public function hasWrittenActs(): bool
+    {
+        return $this->acts()->whereNotNull('script')->where('script', '!=', '')->exists();
     }
 
     /**
@@ -441,6 +480,25 @@ class Story extends Model
     public function isFixture(): bool
     {
         return (bool) $this->is_fixture;
+    }
+
+    /**
+     * Whether this story's working assets were deliberately deleted.
+     *
+     * The same job as `isFixture()` one state along: a cleared story has null
+     * `image_path` on every scene and no files behind them, which is the
+     * truth and which every surface would otherwise read as "the assets never
+     * generated". This is what lets a page say it was on purpose.
+     *
+     * The paths are nulled rather than left standing, so this flag is an
+     * EXPLANATION and never the thing that makes the rows safe. `needsImage()`
+     * and `needsNarration()` read the row, so leaving a path in place would
+     * have the pipeline believe a deleted still exists — a row that can be
+     * half-believed is worse than one that is plainly empty.
+     */
+    public function assetsCleared(): bool
+    {
+        return $this->assets_cleared_at !== null;
     }
 
     /**

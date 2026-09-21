@@ -338,7 +338,11 @@ class EndingChoiceTest extends TestCase
 
         $withPartner = $this->brief(Story::factory()->create(['outline_cast' => $partner]));
         $this->assertStringContainsString('with Vivian Cao (her best friend) on screen', $withPartner);
-        $this->assertStringNotContainsString('Do not promise a wedding', $withPartner);
+        // With a partner, the promise is bounded by the last act's summary, not
+        // left open: a wedding only if the summary says one happened. The line
+        // this replaced asserted the ABSENCE of a limit, which pinned the gap.
+        $this->assertStringContainsString('LAST ACT\'S SUMMARY', $this->flat($withPartner));
+        $this->assertStringContainsString('a wedding, a marriage or a proposal only if it says one happened', $this->flat($withPartner));
 
         $alone = $this->brief(Story::factory()->create(['outline_cast' => []]));
         $this->assertStringContainsString('alone and fine', $alone);

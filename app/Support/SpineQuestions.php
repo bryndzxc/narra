@@ -173,7 +173,10 @@ final class SpineQuestions
     {
         return 'the specific thing the narrator knows and the '
             .'antagonist does not. It must already be true at the start of the story, and '
-            .'the narrator must have a plausible reason not to say it. AND WHAT THE NARRATOR '
+            .'the narrator must have a plausible reason not to say it — one the narrator can '
+            .'state out loud in their own words in act 1, in a sentence, because the audience is '
+            .'told all of this early and the antagonist is not. Write the reason here as that '
+            .'sentence. AND WHAT THE NARRATOR '
             .'MUST PRODUCE IN PERSON: a fact a document, a lawyer or a friend can produce on '
             .'their own lets the narrator stay eight hundred kilometers away while it comes '
             .'out, and the public payoff arrives as hearsay. Make it something only the '
@@ -231,14 +234,49 @@ final class SpineQuestions
             .'early. Empty if your cast has no accomplice.';
     }
 
+    /**
+     * The ONE joke that travels between acts. Not the act's supply of jokes —
+     * `genreGuidance()` asks for three one-offs per act, and this field is
+     * explicitly not them.
+     *
+     * -----------------------------------------------------------------------
+     * THE TWO EXAMPLES THAT WERE HERE PRODUCED FOUR IDENTICAL STORIES
+     * -----------------------------------------------------------------------
+     *
+     * It used to offer three shapes: "a running tally, a bill they are
+     * mentally sending somebody, a name they privately give someone". Every
+     * story in the database that has a running thought came back with an
+     * ITEMIZED INVOICE — 36, 37, 38 and 39, four of four, and 36 wrote a name
+     * as well. The examples were read as a list to draw from, which is the
+     * en-CN guidance's own defect one field over: sixteen of seventy-two cast
+     * entries were that list's example names (3f).
+     *
+     * Two of the three were accounting metaphors, and "petty and precise"
+     * pushed the same way. The third is the one that produced the only line
+     * of story 39 that works the way this genre's jokes work — "the volunteer
+     * fireman. Always first at the fire, always smelling faintly of gasoline."
+     * So the survivor is the picture, and the reason is mechanical rather than
+     * taste: THIS FIELD GETS SAID ALOUD IN THE REFUSAL, and a concept has to
+     * be re-explained where it pays off while a picture does not. Story 39's
+     * payoff spends 47 words reading the invoice back — the terms, the
+     * amount, the interest — because an invoice means nothing unless you
+     * restate it. "There he is, the volunteer fireman" is six words.
+     */
     public static function runningThought(): string
     {
-        return 'THE NARRATOR\'S ONE PRIVATE JOKE. A short, specific, funny thought '
-            .'the narrator first has in chapter one and keeps having, in their head, as the story '
-            .'goes on — a running tally, a bill they are mentally sending somebody, a name they '
-            .'privately give someone. Petty and precise, never crude, and about the situation, the '
-            .'other side or themselves. Nobody in the story hears it. Write it as the narrator '
-            .'thinks it. In the refusal it is said aloud, once.';
+        return 'THE NARRATOR\'S ONE PRIVATE JOKE, THE ONE THAT COMES BACK. Not the act\'s '
+            .'jokes — those are written per act and are different every time. This is the single '
+            .'one that travels: a short, funny thought the narrator first has in chapter one and '
+            .'keeps having, in their head, as the story goes on. MAKE IT A PICTURE, NOT A CONCEPT '
+            .'— something a viewer can see and could have thought of themselves, needing nothing '
+            .'explained before it is funny. A name they privately give someone works best: "the '
+            .'volunteer fireman, always first at the fire, always smelling faintly of gasoline". '
+            .'A joke built on an idea the audience has to hold in their head — an account, a '
+            .'ledger, a running total, anything itemized — is the shape to avoid: it needs setting '
+            .'up the first time and re-explaining at the end. Petty and precise, never crude, and '
+            .'about the situation, the other side or themselves. Nobody in the story hears it. '
+            .'Write it as the narrator thinks it. In the refusal it is said aloud, once, and it '
+            .'has to land in one line when it is.';
     }
 
     public static function refusal(): string

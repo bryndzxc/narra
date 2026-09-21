@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Stories;
 
+use App\Actions\ClearStoryAssets;
 use App\Livewire\Concerns\PaginatesWithProjectTheme;
 use App\Models\Story;
 use App\Support\NextAction;
@@ -51,6 +52,35 @@ class Index extends Component
      * the count is stated above the table.
      */
 
+    /*
+     * ---------------------------------------------------------------------
+     * THE ONE HOUSEKEEPING PRESS IN THE CONSOLE, AND IT LIVES HERE
+     * ---------------------------------------------------------------------
+     *
+     * Not on the dashboard: that page answers "what should I do next", and a
+     * button about work that is already finished and uploaded is the opposite
+     * question. Its quiet layout exists precisely to stop things that are not
+     * the next decision competing with the ones that are.
+     *
+     * Not on a gate page either, and not per story. Fourteen identical buttons
+     * scattered across fourteen stories is the same decision asked fourteen
+     * times, and each of them would sit on a page whose job is one video.
+     *
+     * So it is here, at the bottom of the list of everything that exists,
+     * below the pagination — which is where the finished stories are, and the
+     * one place in the app that is ABOUT the whole set rather than about one
+     * member of it.
+     *
+     * It is not an `OperatorAction`. That enum answers "may this be done at
+     * this story's status", which is a question about one row; this acts on a
+     * set and has no single status to ask about. The per-story refusal is
+     * `ClearStoryAssets::assertReady()`, upstream of everything and unchanged.
+     */
+    public bool $confirmingClear = false;
+
+    /** What the last sweep took. Rendered, never swallowed. */
+    public ?string $cleared = null;
+
     /**
      * @return array<int, array{queue: string, role: string, state: string, live: int, stale: int, oldest_boot: ?string, headline: string}>
      */
@@ -58,6 +88,87 @@ class Index extends Component
     public function workers(): array
     {
         return WorkerHealth::all();
+    }
+
+    /**
+     * How many stories this could ever act on.
+     *
+     * A COUNT rather than the survey, because this runs on every render and
+     * the survey walks several thousand files. It decides only whether the
+     * strip is drawn at all: a console with no published video has nothing
+     * this press could reach, and a button that can never do anything is
+     * noise on the page that is meant to be a list of work.
+     */
+    #[Computed]
+    public function publishedCount(): int
+    {
+        return app(ClearStoryAssets::class)->eligibleQuery()->count();
+    }
+
+    /**
+     * What a sweep would take, read from the disk.
+     *
+     * Deliberately NOT called from `render()`. It is only ever evaluated
+     * inside the confirm block, so the cost of walking every published story's
+     * assets is paid when somebody has asked what is there and at no other
+     * time — including on the fifteen-second poll.
+     *
+     * @return array{take: array<int, array{story: Story, result: array<string, mixed>}>, nothing: array<int, Story>, bytes: int, files: int}
+     */
+    #[Computed]
+    public function clearPlan(): array
+    {
+        return app(ClearStoryAssets::class)->survey();
+    }
+
+    public function askToClearAssets(): void
+    {
+        $this->cleared = null;
+        $this->confirmingClear = true;
+    }
+
+    public function cancelClearAssets(): void
+    {
+        $this->confirmingClear = false;
+    }
+
+    /**
+     * Take the working assets of every published story.
+     *
+     * The masters are not reachable from here by any argument: `clearAll()`
+     * has no parameter that could ask for one. That is the shape rather than a
+     * default, because a sweep cannot answer the only question that makes
+     * deleting a master safe — whether THIS video's delivered copy is on disk
+     * now and is the same file — and on this machine the answer is no for
+     * thirteen of the fourteen.
+     *
+     * A second press while the first is in flight carries the same snapshot
+     * and cannot be stopped by component state, which is the character-sheet
+     * lesson. It needs no lock: the second sweep surveys a disk the first one
+     * emptied, finds nothing, and reports nothing. Nothing here is bought.
+     */
+    public function clearAssets(): void
+    {
+        $result = app(ClearStoryAssets::class)->clearAll();
+
+        $this->confirmingClear = false;
+
+        // The plan described a disk that no longer exists.
+        unset($this->clearPlan);
+
+        $this->cleared = $result['cleared'] === []
+            ? 'Nothing to take — every published story had already been cleared.'
+            : sprintf(
+                'Cleared %d published story(s): %s across %s file(s). Every scene, character, cost '
+                .'and render-job row was kept, and no master was touched.',
+                count($result['cleared']),
+                ClearStoryAssets::human($result['bytes']),
+                number_format($result['files']),
+            );
+
+        foreach ($result['refused'] as $refusal) {
+            $this->cleared .= sprintf(' Skipped story %d: %s', $refusal['story']->id, $refusal['why']);
+        }
     }
 
     public function render(): View

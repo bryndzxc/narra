@@ -450,6 +450,49 @@ class OutlineSpineTest extends TestCase
         );
     }
 
+    /**
+     * And the fake records who the scene call was told about, on the two acts
+     * the real prompt names her to. Without this the search half could be
+     * dropped again and nothing would fail: that is exactly how it was missing
+     * for a phase while `partnerArcFor(Search)` asked the act writer for a
+     * moment the picture stage had never heard of.
+     */
+    public function test_the_scene_call_is_handed_the_partner_on_the_search_and_refusal_acts(): void
+    {
+        $story = Story::factory()->create([
+            'outline_cast' => [
+                ['name' => 'Jason Kong', 'role' => 'narrator', 'relationship' => 'the narrator'],
+                ['name' => 'Nicole Pei', 'role' => 'antagonist', 'relationship' => 'my wife'],
+                ['name' => 'Chloe Rong', 'role' => 'future_partner', 'relationship' => 'her best friend'],
+            ],
+        ]);
+
+        $seen = [];
+
+        foreach ([
+            1 => ActPhase::Escalation,
+            3 => ActPhase::Departure,
+            4 => ActPhase::Search,
+            5 => ActPhase::Refusal,
+        ] as $sequence => $phase) {
+            $act = Act::factory()->for($story)->create([
+                'sequence' => $sequence,
+                'phase' => $phase,
+                'script' => 'A sentence. '.str_repeat('Another one. ', 40),
+            ]);
+
+            $this->writer->scenes($story, $act, ['A sentence.', 'Another one.'], [], 2);
+
+            $call = collect($this->writer->calls)->last();
+            $seen[$phase->value] = $call['partner'];
+        }
+
+        $this->assertNull($seen['escalation'], 'Nothing romantic before the narrator leaves.');
+        $this->assertNull($seen['departure']);
+        $this->assertSame('Chloe Rong', $seen['search'], 'The moment had no reinforcement at scene resolution.');
+        $this->assertSame('Chloe Rong', $seen['refusal']);
+    }
+
     // -- Gate 1 sees a broken reversal ----------------------------------------
 
     public function test_an_announced_departure_is_flagged(): void

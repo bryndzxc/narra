@@ -15,9 +15,11 @@ use App\Support\AntagonistPointOfView;
 use App\Support\ChapterAnnouncement;
 use App\Support\LocaleGuard;
 use App\Support\OutlineCast;
+use App\Support\PartnerEnding;
 use App\Support\Providers\PremiseCandidate;
 use App\Support\ReferenceRateCard;
 use App\Support\SentenceSplitter;
+use App\Support\SpokenLines;
 
 /**
  * The genre check, run at Gate 1.
@@ -495,6 +497,7 @@ class ValidateOutlineSpine
         $this->checkPhases($story, $problems, $warnings, $legacy);
         $this->checkChapterAnnouncements($story, $warnings);
         $this->checkPointOfViewChapter($story, $warnings);
+        $this->checkQuotedDialogue($story, $warnings);
         $this->checkFormat($story, $warnings);
 
         return ['problems' => $problems, 'warnings' => $warnings, 'spine' => $spine, 'cast' => $cast];
@@ -1907,9 +1910,10 @@ class ValidateOutlineSpine
 
         if ($missing->isNotEmpty()) {
             $problems[] = sprintf(
-                'Act(s) %s have no beat. Each act has to name what it costs and to whom — the narrator '
-                .'before the departure, the antagonist after it. An act that costs nobody anything is '
-                .'where the retention graph falls off.',
+                'Act(s) %s have no beat. Before the departure a beat names what the NARRATOR tried and '
+                .'what it cost them that it failed; after it, what the attempt cost the ANTAGONIST. An '
+                .'act where nobody tries anything and nobody pays for it is where the retention graph '
+                .'falls off.',
                 $missing->pluck('sequence')->implode(', ')
             );
         }
@@ -1919,7 +1923,8 @@ class ValidateOutlineSpine
 
         if ($thin->isNotEmpty()) {
             $warnings[] = sprintf(
-                'Act(s) %s have a one-phrase beat. Name the specific thing it costs.',
+                'Act(s) %s have a one-phrase beat. Name the specific thing that was tried and the '
+                .'specific thing it cost.',
                 $thin->pluck('sequence')->implode(', ')
             );
         }
@@ -1958,6 +1963,39 @@ class ValidateOutlineSpine
 
             $seen[$fingerprint] = $act->sequence;
         }
+
+        // ------------------------------------------------------------------
+        // WHY THERE IS NO "THIS BEAT NAMES NO ATTEMPT" CHECK, MEASURED RATHER
+        // THAN ASSUMED
+        // ------------------------------------------------------------------
+        //
+        // Since 2026-09-20 an escalation beat names what the narrator TRIED
+        // and what it cost them that it failed. The obvious mirror of
+        // checkReversalBeats()'s COST_MARKERS is an ATTEMPT_MARKERS list —
+        // tried, asked, refused, corrected, called, declined — matched
+        // whole-word against the beat. It was built and measured against all
+        // 53 escalation and departure beats in the database BEFORE being
+        // written, and it does not work:
+        //
+        //   - 36 of 53 fire, correctly. Not one of the 53 names an attempt.
+        //   - The 17 it PASSES all match on an incidental word, and every one
+        //     is a false negative: "four days being TOLD to his face", "my SAY
+        //     in my own home", "the aunts are TOLD again on the phone",
+        //     "elders who now CALL me unfilial". Those are the narrator being
+        //     acted upon, which is the exact thing the check exists to catch.
+        //
+        // A 100% false-negative rate on the cases it clears is the sense-blind
+        // class this codebase has now paid for four times — `pencil` matching
+        // a skirt, "announces" matching the antagonist's announcement,
+        // "booked" matching a restaurant, "her phone" matching a photo. The
+        // list cannot tell "he asked" from "he was told", and that difference
+        // is the entire content of the check.
+        //
+        // So the attempt is a PROMPT REQUEST WITH NO MECHANISM, and it is said
+        // out loud here so the field is not read as covered. It sits where the
+        // narrating-the-narration ban and the partner relationship sit, for
+        // the same reason. The measurement is the next story's escalation
+        // acts, not a green test.
     }
 
     /**
@@ -2171,6 +2209,53 @@ class ValidateOutlineSpine
      *
      * @param  array<int, string>  $warnings
      */
+    /**
+     * An act whose dialogue is punctuated as narration.
+     *
+     * STORY 37 IS PUBLISHED WITH TWELVE MINUTES OF THIS IN IT. Its act 3 has
+     * three people arguing and not one quotation mark, while acts 1, 2 and 5
+     * carry 18, 9 and 27 quoted lines — so the writer had the convention and
+     * dropped it for one act. Nothing looked, because the rule lived only in
+     * the act system prompt as a request.
+     *
+     * A WARNING RATHER THAN A REFUSAL, on the same reasoning as a denied
+     * locale term in act prose: refusing costs the billed act, the text is
+     * otherwise good, and nothing downstream is broken by it — `DraftScenes`
+     * does not read quotation marks, so keeping it is not a refusal deferred
+     * to a stage that bills. What it costs is the one voice reading somebody
+     * else's line as narration, and the repair is an edit or one act re-run.
+     *
+     * Recomputed from the stored script the way `localeDenied()` is, never
+     * recorded, so fixing the act clears the warning and nothing goes stale.
+     */
+    private function checkQuotedDialogue(Story $story, array &$warnings): void
+    {
+        foreach ($story->acts()->orderBy('sequence')->get() as $act) {
+            $script = (string) $act->script;
+
+            // An act with no script yet is not this check's business, and its
+            // absence is reported by the gate itself.
+            if (trim($script) === '' || ! SpokenLines::readsAsNarration($script)) {
+                continue;
+            }
+
+            $unquoted = SpokenLines::unquoted($script);
+
+            $warnings[] = sprintf(
+                'Act %d ("%s") writes its dialogue without quotation marks — %d line(s) of direct speech '
+                .'and %d quoted. One voice reads the whole video, so the narrator reads those lines in '
+                .'their own voice and the viewer never learns somebody else was speaking. The first is: '
+                .'"%s…". Fix them here, or rewrite the act (story:write --acts-only=%d).',
+                $act->sequence,
+                $act->title,
+                count($unquoted),
+                SpokenLines::quoted($script),
+                mb_substr((string) ($unquoted[0] ?? ''), 0, 60),
+                $act->sequence,
+            );
+        }
+    }
+
     private function checkPointOfViewChapter(Story $story, array &$warnings): void
     {
         $name = AntagonistPointOfView::nameFor($story);
@@ -2259,7 +2344,19 @@ class ValidateOutlineSpine
 
         $refusal = $story->acts()->where('phase', ActPhase::Refusal)->first();
 
-        if ($refusal === null || trim((string) $refusal->script) === '') {
+        if ($refusal === null) {
+            return;
+        }
+
+        // BEFORE the script guard AND before the chapter lookup. This one
+        // reads the act's SUMMARY, which exists from the outline onward, and
+        // gating it behind either would make it silent on the state it is
+        // most useful in: an outline reviewed at Gate 1 before six act calls
+        // are bought against it. Story 39 is exactly that story, and the
+        // first version of this check could not fire on it.
+        $this->checkPartnerEndState($story, $refusal, $partner, $warnings);
+
+        if (trim((string) $refusal->script) === '') {
             return;
         }
 
@@ -2293,6 +2390,119 @@ class ValidateOutlineSpine
                 $last->title,
             );
         }
+    }
+
+    /**
+     * THE CHOSEN END STATE, STATED NEXT TO THE PARTNER'S NAME IN THE LAST
+     * ACT'S SUMMARY.
+     *
+     * The positive half of story 39's finding. The operator picked "married";
+     * the writers are told "married"; this reads back whether the artifact
+     * says it. The summary rather than the prose because the summary is what
+     * the metadata brief bounds its promise by, what the next act would be
+     * written from, and the thing the act writer produces in its own words
+     * — `GenerateActScripts` replaces the outline's summary with it, which is
+     * also why choosing the state after the outline still reaches this check.
+     *
+     * SAME SENTENCE AS THE NAME, and that is the whole precision of it. Story
+     * 39's act-5 summary contains "together" twice and both are about the
+     * antagonist and the accomplice — "they grew up together", her line, in her
+     * sentence. A summary-wide word search passes that story for an end state
+     * it does not have. Sentence-scoping is the same technique the discovery
+     * check uses for its finder words, and it was checked against story 39's
+     * real summaries before it was written: "Nancy introduces me to a room as
+     * her partner" is the sentence that carries the name, and it says partner.
+     *
+     * ONLY WHEN THE OPERATOR CHOSE ONE. Null is a story outlined before the
+     * column existed, or one whose partner the OUTLINE invented rather than the
+     * premise — neither was ever asked, and reporting a missing answer on them
+     * would put a finding nobody can act on onto every earlier story. The Gate
+     * 1 readout says which they are. A WARNING, not a problem, for the reason
+     * every finding in this group is one: the outline is legal and the operator
+     * decides whether to rewrite the act.
+     *
+     * @param  array<int, string>  $warnings
+     */
+    private function checkPartnerEndState(Story $story, Act $refusal, string $partner, array &$warnings): void
+    {
+        $state = PartnerEnding::stateFor($story);
+        $summary = trim((string) $refusal->summary);
+
+        if ($state === null || $summary === '') {
+            return;
+        }
+
+        $tokens = array_values(array_filter(
+            preg_split('/\s+/u', mb_strtolower($partner)) ?: [],
+            static fn (string $t): bool => mb_strlen($t) >= 2,
+        ));
+
+        foreach ($this->splitter->split($summary) as $sentence) {
+            $lower = mb_strtolower($sentence);
+
+            $namesThem = false;
+
+            foreach ($tokens as $token) {
+                if ($this->wholeWord($lower, $token)) {
+                    $namesThem = true;
+
+                    break;
+                }
+            }
+
+            if (! $namesThem) {
+                continue;
+            }
+
+            foreach ($state->words() as $word) {
+                if ($this->wholeWord($lower, mb_strtolower($word))) {
+                    return;
+                }
+            }
+        }
+
+        // THE REPAIR IS DIFFERENT BEFORE AND AFTER THE ACT IS WRITTEN, and it
+        // is built here rather than frozen into one sentence — the rule the
+        // failure remedies arrived at. Before: the outline planned it wrong
+        // and re-outlining is the cheap fix, which is the whole reason this
+        // check does not wait for a script. After: the act writer is what
+        // produced this summary, so the act is what asks again.
+        $written = trim((string) $refusal->script) !== '';
+
+        $warnings[] = sprintf(
+            'You chose that the narrator and %s are %s by the end, and act %d\'s summary never says so in '
+            .'the same sentence as their name — look for %s. The summary is what the title is allowed to '
+            .'promise and what the last chapter is written from. Story 39 read "introduces me to a room as '
+            .'her partner" against an idea that said married. %s',
+            $partner,
+            mb_strtolower($state->label()),
+            $refusal->sequence,
+            $state->quotedWords(),
+            $written
+                ? 'The act writer wrote this summary, so rewriting this act asks again.'
+                : 'No act is written yet, so this is the outline\'s plan and writing the outline again is '
+                    .'the cheap fix — an act bought against it costs more.',
+        );
+    }
+
+    /**
+     * Whole-word — and `\b`, which is the same matcher the name check three
+     * lines above uses rather than a second opinion beside it.
+     *
+     * The first version of this was a `(?<!\pL)` lookaround pair, written on
+     * the reasoning that `\b` is ASCII-only under /u and so could never match
+     * "fiancée". MEASURED, that is false: PHP's `u` modifier turns on UCP as
+     * well as UTF, so `\b` is Unicode-aware here (PCRE 10.42 —
+     * `/\bfiance\b/u` does NOT match "fiancée", and `/\bfiancée\b/u` does).
+     * The drill that removed the lookarounds stayed green, which is what said
+     * so; the justification was reasoned rather than checked.
+     *
+     * `\b` is also what makes "wed" refuse to match "Wednesday", which is the
+     * over-report this list's generosity would otherwise have bought.
+     */
+    private function wholeWord(string $haystack, string $needle): bool
+    {
+        return (bool) preg_match('/\b'.preg_quote($needle, '/').'\b/u', $haystack);
     }
 
     /**

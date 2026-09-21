@@ -53,12 +53,20 @@ class WriteStoryJob implements ShouldQueue
      * instantly for no reason.
      *
      * @param  array<int, int>  $actsOnly  Act sequences to rewrite, or [] for all of them.
+     * @param  bool  $reOutline  Replace the outline even though acts exist.
+     *                           Only Gate 1's re-outline press and
+     *                           `story:write --re-outline` set it; the Action
+     *                           still refuses past `outlined`.
+     * @param  bool  $keepCast  Whether the cast on the story is fixed for that
+     *                          rewrite. See OutlineCast::chosenBeforeOutline().
      */
     public function __construct(
         public int $storyId,
         public ?int $actCount = null,
         public array $actsOnly = [],
         public bool $outlineOnly = false,
+        public bool $reOutline = false,
+        public bool $keepCast = true,
     ) {
         $this->onQueue((string) config('render.queues.text'));
     }
@@ -71,8 +79,13 @@ class WriteStoryJob implements ShouldQueue
         // that already has acts is a resume, not a rewrite — replacing the
         // outline would orphan every script written against it, which is the
         // refusal GenerateOutline::assertReady() states in full.
-        if ($this->actsOnly === [] && $story->acts()->count() === 0) {
-            $outline->handle($story, $this->actCount);
+        //
+        // $reOutline is the operator asking for the rewrite in so many words,
+        // from a press that priced it and named what it destroys. It is not a
+        // way past assertReady(): a story with a written script is still
+        // refused there, which is what keeps "orphan every script" true.
+        if ($this->actsOnly === [] && ($this->reOutline || $story->acts()->count() === 0)) {
+            $outline->handle($story, $this->actCount, $this->keepCast);
             $story->refresh();
         }
 

@@ -238,6 +238,124 @@ final class OutlineCast
     }
 
     /**
+     * The person the narrator ends up with, if the cast names one.
+     *
+     * @param  array<int, array<string, mixed>>|null  $rows
+     */
+    public static function futurePartner(?array $rows): ?CastMember
+    {
+        foreach (self::members($rows) as $member) {
+            if ($member->role === CastRole::FuturePartner && $member->name !== '') {
+                return $member;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The cast the next outline must honour: the story's, while no act carries
+     * a script.
+     *
+     * -----------------------------------------------------------------------
+     * IT READ "WHILE THE STORY HAS NO ACTS", AND THAT COST STORY 39 ITS PARTNER
+     * -----------------------------------------------------------------------
+     *
+     * The narrower scope was deliberate and its reasoning is worth keeping,
+     * because it is half right: *holding the cast fixed would make re-outlining
+     * unable to repair a bad cast*. True. What it missed is that the SAME
+     * condition also decides whether a re-outline may destroy a GOOD one, and
+     * nothing asked which case a story was in.
+     *
+     * Measured, 2026-09-20. Story 39 was re-outlined at `outlined` with five
+     * acts and no scripts, to put a chosen end state into its last summary. It
+     * had acts, so this returned nothing, so the prompt never said the cast was
+     * fixed and `chosenCastChanges()` had nothing to compare. The outline came
+     * back having renamed the narrator, demoted Nancy Kong — the older sister
+     * the operator's idea named, and the reason `married` had been chosen at
+     * all — to `narrator_side`, and invented a stranger for the partner row.
+     * $0.2566, and the guard written for exactly that swap (story 38) was inert
+     * for the whole call. Restoring the cast and re-outlining with this scope
+     * returned Nancy Kong, married, at 0 problems and 0 warnings.
+     *
+     * So the line is drawn where the words are, which is where this project
+     * draws it everywhere else: once an act carries a SCRIPT the cast is in the
+     * prose and an outline cannot be replaced at all (GenerateOutline::
+     * assertReady refuses past `outlined`). Before that, a cast on the story is
+     * one the operator has seen at Gate 1 and can edit there, so honouring it
+     * is honouring them. Same line as `PartnerEnding::stillChoosable()`, from
+     * the same predicate.
+     *
+     * **The repair path did not go away; it stopped being the default.**
+     * `$keepCast = false` is the operator saying, on the re-outline confirm,
+     * that this cast is the thing that is wrong. That is a press-level fact and
+     * not a story-level one, which is why it is a parameter rather than a
+     * column: the same story is repairable on one press and pinned on the next.
+     * The outline prompt and GenerateOutline both ask this, with the same flag,
+     * so they cannot disagree about it.
+     *
+     * @return array<int, CastMember>
+     */
+    public static function chosenBeforeOutline(Story $story, bool $keepCast = true): array
+    {
+        if (! $keepCast || $story->hasWrittenActs()) {
+            return [];
+        }
+
+        return self::members($story->outline_cast);
+    }
+
+    /**
+     * What the outline did to a cast that was chosen before it, as sentences.
+     *
+     * A cast on the story before the outline is written was picked with a
+     * premise (Gate 1's "Use this premise"), or typed there by the operator.
+     * Story 38's roll declared Chloe Rong as the future partner in all three
+     * candidates; the pick kept only the prose, the prose never said what she
+     * was to the narrator, and the outline made her a friend and invented a
+     * stranger for the row. The outline is now handed the chosen cast, and
+     * this is the invariant behind the request: every chosen person comes back
+     * under the same name in the same role. The outline may add people (the
+     * restraint rule still bounds that) and may rewrite a relationship line.
+     *
+     * @param  array<int, CastMember>  $chosen
+     * @param  array<int, CastMember>  $returned
+     * @return array<int, string>
+     */
+    public static function chosenCastChanges(array $chosen, array $returned): array
+    {
+        $byName = [];
+
+        foreach ($returned as $member) {
+            $byName[self::normalise($member->name)] = $member;
+        }
+
+        $changes = [];
+
+        foreach ($chosen as $member) {
+            if ($member->name === '') {
+                continue;
+            }
+
+            $back = $byName[self::normalise($member->name)] ?? null;
+            $role = $member->role?->label() ?? 'no role';
+
+            if ($back === null) {
+                $changes[] = "{$member->name} ({$role}) is not in the outline's cast.";
+            } elseif ($back->role !== $member->role) {
+                $changes[] = sprintf(
+                    '%s came back as %s instead of %s.',
+                    $member->name,
+                    $back->role?->label() ?? 'no role',
+                    $role,
+                );
+            }
+        }
+
+        return $changes;
+    }
+
+    /**
      * Full names used by the most recent other stories, keyed by normalised name.
      *
      * Read from BOTH the outline cast and the extracted characters, because

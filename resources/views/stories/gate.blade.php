@@ -80,6 +80,38 @@
         </div>
     @endif
 
+    {{--
+        A cleared story says so, for the same reason a fixture does, and it is
+        the more misleading of the two without a line here.
+
+        Every path column is null and no file is behind them, so Gate 2 shows
+        scenes with no stills, the faces page shows characters with no
+        reference, and both are TRUE. Read cold they say the assets failed to
+        generate on a story that is on YouTube. That is the false-success shape
+        inverted — an accurate reading presented as a problem — and the only
+        thing that can tell the two apart is a record that it was deliberate.
+
+        Advisory, never an alarm: nothing is wrong, and the one thing it has to
+        stop is somebody pressing a spend button to "fix" it.
+    --}}
+    @if ($story->assetsCleared())
+        <div class="alert wide">
+            <strong>The working assets of this story were cleared on purpose.</strong>
+            <div class="mt-1">
+                Deleted {{ $story->assets_cleared_at->toFormattedDayDateString() }}, freeing
+                {{ \App\Actions\ClearStoryAssets::human((int) $story->assets_cleared_bytes) }}
+                &mdash; the stills, the per-scene narration, the reference sheets and the composed
+                thumbnails. Nothing generated below this point is missing by accident.
+            </div>
+            <div class="muted small mt-2">
+                Every scene, character, cost and render-job row was kept, and so were the word timings,
+                the subtitles and the scene manifest. The path columns are empty rather than naming files
+                that are gone, which is why the pages below show no pictures.
+                <strong>Re-rendering this story means buying its stills and its narration again.</strong>
+            </div>
+        </div>
+    @endif
+
     {{-- The stepper is the spine of the whole tool: four gates, always visible,
          always in order, so it is never unclear which decision is outstanding. --}}
     <div class="gates">

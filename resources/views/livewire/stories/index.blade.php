@@ -1,8 +1,14 @@
 {{-- Polls because this is the console. Three terminal windows updated
      themselves; a page that replaces them and does not would be a downgrade
      dressed as an upgrade. 15s is slow enough that 25 rows of NextAction is
-     cheap and fast enough that a finished batch is noticed. --}}
-<div wire:poll.15s>
+     cheap and fast enough that a finished batch is noticed.
+
+     IT STOPS WHILE A SWEEP IS BEING CONFIRMED. That confirm shows a list of
+     files and a total, read before pressing a button that deletes them; a poll
+     underneath it would re-walk the disk every fifteen seconds and redraw the
+     figures while somebody is reading them. Nothing on this page is more
+     time-critical than that. --}}
+<div @if (! $confirmingClear) wire:poll.15s @endif>
     @if (session('notice'))
         <div class="alert ok">{{ session('notice') }}</div>
     @endif
@@ -133,6 +139,137 @@
         <div class="muted small mt-5">
             The <em>Next</em> column names the action, never performs it. Approving a gate is an editorial
             judgement made in front of the thing being judged, so all four live on their own pages.
+        </div>
+    @endif
+
+    {{--
+        RECLAIMING THE DISK FINISHED WORK IS STILL HOLDING.
+
+        Last on the page, below the pagination, and that is the position it
+        wants: it is housekeeping on videos that are already on YouTube, and
+        everything above it is about the next one. It is the only press in this
+        console that is about the whole set rather than one story.
+
+        Drawn only when a published story exists, because otherwise it is a
+        button that can never do anything on the page whose job is to say what
+        there is to do.
+    --}}
+    @if ($this->publishedCount() > 0)
+        <div class="panel mt-5">
+            <div class="row">
+                <div class="grow">
+                    <strong>Clear the working assets of published stories</strong>
+                    <div class="muted small mt-1">
+                        The stills, the per-scene narration, the reference sheets and the composed
+                        thumbnails of every story past Gate 4 &mdash; every published story, not only the
+                        {{ $stories->count() }} on this page. Every scene, character, cost and render-job
+                        row is kept; the path columns are emptied so nothing claims a file that is gone.
+                    </div>
+                </div>
+
+                @unless ($confirmingClear)
+                    <button type="button"
+                            wire:click="askToClearAssets"
+                            wire:target="askToClearAssets"
+                            wire:loading.attr="disabled">
+                        Clear assets of published stories
+                    </button>
+                @endunless
+            </div>
+
+            {{-- Louder than a muted line: it is the record of files that are gone. --}}
+            @if ($cleared)
+                <div class="alert ok wide mt-4">{{ $cleared }}</div>
+            @endif
+
+            {{-- Reading the disk takes a moment on a console holding thousands of
+                 stills, and a button that does nothing visible for two seconds is
+                 a button somebody presses again. --}}
+            <div class="alert run small mt-2 wide" wire:loading wire:target="askToClearAssets">
+                <strong>Reading what is on disk.</strong> Nothing is being deleted by this.
+            </div>
+
+            @if ($confirmingClear)
+                @php($plan = $this->clearPlan())
+
+                <div class="alert warn wide mt-4">
+                    @if ($plan['take'] === [])
+                        <strong>Nothing to take.</strong>
+                        Every published story has already been cleared, or never generated the assets.
+                    @else
+                        <strong>{{ count($plan['take']) }} published story(s), and this is what goes:</strong>
+
+                        <div class="mt-2">
+                            @foreach ($plan['take'] as $entry)
+                                <div class="row">
+                                    <span class="grow">
+                                        {{ $entry['story']->title }}
+                                        <span class="muted mono small">{{ $entry['story']->slug }}</span>
+                                    </span>
+                                    <span class="mono small">{{ number_format($entry['result']['files']) }} files</span>
+                                    <span class="mono">{{ \App\Actions\ClearStoryAssets::human($entry['result']['bytes']) }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div class="row mt-4">
+                            <strong class="grow">Total</strong>
+                            <span class="mono small">{{ number_format($plan['files']) }} files</span>
+                            <strong class="mono">{{ \App\Actions\ClearStoryAssets::human($plan['bytes']) }}</strong>
+                        </div>
+                    @endif
+
+                    @if ($plan['nothing'] !== [])
+                        <div class="muted small mt-2">
+                            {{ count($plan['nothing']) }} other published story(s) have nothing left to take
+                            and are not in this list.
+                        </div>
+                    @endif
+
+                    {{--
+                        Said at the confirm, every time, because it is the
+                        difference between this and what somebody looking at a
+                        13 GB storage folder is probably hoping for. final.mp4
+                        is 76% of the disk and, on this machine, the only copy
+                        of thirteen of these videos.
+                    --}}
+                    <div class="muted small mt-2">
+                        <strong>No master is touched.</strong> Deleting one is a decision about whether that
+                        video's delivered copy is really on disk and really matches, which is answered per
+                        story: <span class="mono">php artisan story:clear-assets &lt;id&gt; --apply
+                        --include-final</span>. This press cannot reach them.
+                    </div>
+
+                    @if ($plan['take'] !== [])
+                        <div class="actions mt-4">
+                            <button type="button"
+                                    class="primary"
+                                    wire:click="clearAssets"
+                                    wire:target="clearAssets"
+                                    wire:loading.attr="disabled">
+                                <span wire:loading.remove wire:target="clearAssets">
+                                    Delete {{ \App\Actions\ClearStoryAssets::human($plan['bytes']) }}
+                                </span>
+                                <span wire:loading wire:target="clearAssets">Deleting &hellip;</span>
+                            </button>
+                            <button type="button"
+                                    wire:click="cancelClearAssets"
+                                    wire:target="clearAssets"
+                                    wire:loading.attr="disabled">Back</button>
+                        </div>
+
+                        <div class="alert run small mt-2 wide" wire:loading wire:target="clearAssets">
+                            <strong>Deleting {{ number_format($plan['files']) }} files.</strong>
+                            The page waits for it. Nothing is being bought and nothing can be bought by
+                            pressing again &mdash; a second sweep finds an empty disk.
+                        </div>
+                    @else
+                        <div class="actions mt-4">
+                            <button type="button" wire:click="cancelClearAssets">Back</button>
+                        </div>
+                    @endif
+                </div>
+            @endif
         </div>
     @endif
 </div>

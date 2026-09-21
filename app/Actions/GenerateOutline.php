@@ -14,6 +14,7 @@ use App\Models\Story;
 use App\Support\AccompliceArc;
 use App\Support\LocaleGuard;
 use App\Support\OutlineCast;
+use App\Support\PartnerEnding;
 use App\Support\Providers\OutlineDraft;
 use App\Support\Providers\ScriptWriterException;
 use Illuminate\Support\Facades\DB;
@@ -159,10 +160,40 @@ class GenerateOutline
      */
     public const DEFAULT_ACTS_ANTHOLOGY = 5;
 
+    /**
+     * A re-outline would delete acts that carry scripts. Said here, at the
+     * dispatch and at the button, from one copy.
+     *
+     * The status cannot answer this and never could: `outlined` is BOTH the
+     * state a re-outline is for (acts, no scripts — the outline is still a
+     * plan) and the ordinary state of a story whose scripts are all written
+     * and waiting for approval. `assertReady()` was position-only, which was
+     * safe for exactly as long as nothing called this Action on a story with
+     * acts — and the re-outline press is that caller. The axis question, asked
+     * before the press existed rather than after it cost something.
+     */
+    public const WRITTEN_ACTS = 'This story already has act scripts written against its outline. Writing '
+        .'the outline again deletes every act and replaces it, so those scripts would be orphaned — the '
+        .'words are in the prose by now, and an outline is only a plan until they are. Rewrite the acts '
+        .'instead, or fork the story if you want the outline changed from here. Nothing was billed.';
+
     /** Said at the dispatch and here, from one copy. */
     public const NO_ENDING = 'Choose the ending before the outline is written: the narrator\'s new life, '
         .'or the antagonist\'s year in their own voice. The outline writes the fields the chosen ending '
         .'needs, so it cannot be picked afterwards without writing the outline again. Nothing was billed.';
+
+    /**
+     * Said at the dispatch, at the button and here, from one copy.
+     *
+     * Only when the answer was knowable before the call — the cast came WITH
+     * the premise and names a future partner. See PartnerEnding::
+     * requiredBeforeOutline() for why a typed premise is not asked.
+     */
+    public const NO_PARTNER_END_STATE = 'This story\'s cast names someone the narrator ends up with, and '
+        .'nothing says what they are to each other by the end. Choose it beside the ending: married, '
+        .'engaged, living together, or together. Story 39 was written without it and came back "introduces '
+        .'me to a room as her partner" against an idea that said married — not a writer ignoring an '
+        .'instruction, a writer obeying the only words on offer. Nothing was billed.';
 
     /**
      * The act count a story gets when nobody names one.
@@ -211,8 +242,15 @@ class GenerateOutline
 
     /**
      * @param  int|null  $actCount  Defaults per format. See the constants above.
+     * @param  bool  $keepCast  Whether the cast already on the story is fixed.
+     *                          True on every ordinary press. The re-outline
+     *                          confirm turns it off, which is the operator
+     *                          saying this cast is the thing to repair — the
+     *                          one case the old "no acts" scope served, and the
+     *                          one it served by also destroying good casts. See
+     *                          OutlineCast::chosenBeforeOutline().
      */
-    public function handle(Story $story, ?int $actCount = null): OutlineDraft
+    public function handle(Story $story, ?int $actCount = null, bool $keepCast = true): OutlineDraft
     {
         $this->assertReady($story);
 
@@ -225,11 +263,11 @@ class GenerateOutline
         return RenderJob::record(
             $story->id,
             RenderStage::Outline,
-            fn (RenderJob $job): OutlineDraft => $this->generate($story, $actCount, $job),
+            fn (RenderJob $job): OutlineDraft => $this->generate($story, $actCount, $job, $keepCast),
         );
     }
 
-    private function generate(Story $story, int $actCount, RenderJob $job): OutlineDraft
+    private function generate(Story $story, int $actCount, RenderJob $job, bool $keepCast = true): OutlineDraft
     {
         $job->note(sprintf(
             'Asking for %d acts on %s.%s',
@@ -240,7 +278,7 @@ class GenerateOutline
                 : ' Departure in act '.ActPhase::departureActFor($actCount).'.',
         ));
 
-        $draft = $this->writer->outline($story, $actCount);
+        $draft = $this->writer->outline($story, $actCount, $keepCast);
 
         // Before the locale check, deliberately. The call has already been
         // billed and a cost table that drops the rows for failed stages cannot
@@ -297,6 +335,26 @@ class GenerateOutline
                 'The outline\'s cast cannot be used: '.implode(' ', $castProblems).' The call was billed and nothing was stored.',
                 kind: FailureKind::OutlineRefused,
                 facts: ['check' => 'cast_structure'],
+            );
+        }
+
+        // The cast on the story is handed to the writer as fixed, and this is
+        // the check that it came back so. Read from the story BEFORE anything
+        // is stored, so it is the chosen cast and not this draft's. A
+        // re-outline is held to it too, unless the operator released it on the
+        // confirm — which is the whole of `$keepCast`, and the correction to a
+        // scope that used to go inert the moment a story had acts. See
+        // OutlineCast::chosenBeforeOutline() for story 39, where that inertia
+        // bought a swapped partner, and chosenCastChanges() for story 38, where
+        // the same swap happened at exactly this step.
+        $chosenChanges = OutlineCast::chosenCastChanges(OutlineCast::chosenBeforeOutline($story, $keepCast), $draft->cast);
+
+        if ($chosenChanges !== []) {
+            throw new ScriptWriterException(
+                'The outline changed the cast picked with the premise: '.implode(' ', $chosenChanges)
+                .' The call was billed and nothing was stored.',
+                kind: FailureKind::OutlineRefused,
+                facts: ['check' => 'chosen_cast'],
             );
         }
 
@@ -503,6 +561,25 @@ class GenerateOutline
         // ending — each act runs the whole arc — and is not asked.
         if ($story->format === StoryFormat::Single && $story->ending === null) {
             throw new RuntimeException(self::NO_ENDING);
+        }
+
+        // And what the partner is by the END, wherever the answer exists
+        // before the call: a story already carrying a cast that names one,
+        // whether it was picked with the premise or written by the outline
+        // this one replaces. The outline writes the relationship line and
+        // every act summary from it, so it is the ending's own argument, one
+        // field over.
+        if (PartnerEnding::requiredBeforeOutline($story)) {
+            throw new RuntimeException(self::NO_PARTNER_END_STATE);
+        }
+
+        // A PRECONDITION, not a position, and the two disagree at exactly one
+        // status. `outlined` permits a re-outline because the acts are still a
+        // plan; it is also where a story sits with every script written,
+        // waiting for Gate 1. Asking the status alone would let a re-outline
+        // delete work the operator is about to approve.
+        if ($story->hasWrittenActs()) {
+            throw new RuntimeException(self::WRITTEN_ACTS);
         }
 
         if (in_array($story->status, [StoryStatus::Draft, StoryStatus::Outlined], true)) {

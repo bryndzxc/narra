@@ -6,6 +6,7 @@ use App\Actions\CreateStory;
 use App\Actions\DispatchTextStage;
 use App\Actions\GenerateOutline;
 use App\Enums\OperatorAction;
+use App\Enums\PartnerEndState;
 use App\Enums\StoryEnding;
 use App\Enums\StoryFormat;
 use App\Exceptions\DispatchRefusedException;
@@ -98,6 +99,21 @@ class NewStory extends Component
     public string $ending = '';
 
     /**
+     * What the narrator and the future partner are to each other by the end, a
+     * PartnerEndState value. OPTIONAL here, and that is the difference from
+     * the ending: the ending is true of every story, this one has a subject
+     * only if the story's cast ends up naming someone. A premise's author
+     * knows; a form cannot check it, and requiring an answer about a person
+     * who may not exist is the unanswerable-checklist-item shape.
+     *
+     * It is asked here anyway because a typed premise queues its outline from
+     * this form — so this is the only place before the outline where that path
+     * can answer at all. Gate 1 can still set it afterwards, up to the first
+     * act script.
+     */
+    public string $partnerEndState = '';
+
+    /**
      * What the text box holds: a finished premise, or an idea to write
      * premises from. An idea creates the draft and queues NOTHING — the
      * premises are a separate, billed press on Gate 1, and the outline is the
@@ -134,6 +150,7 @@ class NewStory extends Component
             'acts' => ['nullable', 'integer', 'min:3', 'max:8'],
             'narratorGender' => ['required', Rule::in(NarratorVoice::GENDERS)],
             'ending' => [$this->format === 'anthology' ? 'nullable' : 'required', Rule::in(array_column(StoryEnding::cases(), 'value'))],
+            'partnerEndState' => ['nullable', Rule::in(array_column(PartnerEndState::cases(), 'value'))],
             'startFrom' => ['required', Rule::in($this->format === 'anthology' ? ['premise'] : ['premise', 'idea'])],
         ];
     }
@@ -247,6 +264,18 @@ class NewStory extends Component
         $rows = RecentEndings::last();
 
         return ['rows' => $rows, 'streak' => RecentEndings::streak($rows)];
+    }
+
+    /**
+     * The last few videos that chose an end state, for the picker. The same
+     * visibility argument as the endings beside it. See RecentEndings.
+     *
+     * @return array<int, array{title: string, state: PartnerEndState}>
+     */
+    #[Computed]
+    public function recentPartnerEndStates(): array
+    {
+        return RecentEndings::lastPartnerEndStates();
     }
 
     /**
@@ -366,6 +395,7 @@ class NewStory extends Component
                 localeProfile: $this->localeProfile,
                 narrator: $this->narratorGender,
                 ending: StoryEnding::tryFrom($this->ending),
+                partnerEndState: PartnerEndState::tryFrom($this->partnerEndState),
             );
         } catch (Throwable $e) {
             $this->confirming = false;
@@ -440,6 +470,7 @@ class NewStory extends Component
         return view('livewire.stories.new-story', [
             'formats' => StoryFormat::cases(),
             'endings' => StoryEnding::cases(),
+            'partnerEndStates' => PartnerEndState::cases(),
             'existing' => Story::query()->count(),
         ]);
     }

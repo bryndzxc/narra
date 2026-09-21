@@ -161,6 +161,19 @@
                              :anthology="$format === 'anthology'" />
         </div>
 
+        {{-- Only on the new life, where the partner is on screen at the end at
+             all. OPTIONAL here, unlike the ending: there is no cast yet, so a
+             required answer would be a question about a person who may never
+             exist. A typed premise queues its outline from this form, so this
+             is the only place that path can answer before the outline; Gate 1
+             can still set it up to the first act script. --}}
+        @if ($ending === \App\Enums\StoryEnding::NewLife->value)
+            <div class="row mt-6">
+                <x-partner-end-state-picker model="partnerEndState"
+                                            :recent="$this->recentPartnerEndStates()" />
+            </div>
+        @endif
+
         <div class="row mt-6">
             <div>
                 <label for="format">Format</label>

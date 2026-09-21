@@ -4,7 +4,6 @@ namespace App\Services\Claude;
 
 use Anthropic\Client;
 use App\Contracts\MetadataWriter;
-use App\Enums\CastRole;
 use App\Enums\StoryEnding;
 use App\Models\Act;
 use App\Models\Story;
@@ -250,24 +249,41 @@ class ClaudeMetadataWriter implements MetadataWriter
             return [];
         }
 
-        $partner = null;
-
-        foreach (OutlineCast::members($story->outline_cast) as $member) {
-            if ($member->role === CastRole::FuturePartner && trim($member->name) !== '') {
-                $partner = $member;
-
-                break;
-            }
-        }
+        $partner = OutlineCast::futurePartner($story->outline_cast);
 
         $noPartnerPromise = 'Do not promise a wedding, a remarriage or a new love: the video does not show one.';
 
         return [match ($story->ending) {
+            // WITH A PARTNER, THE PROMISE IS WHAT THE LAST ACT'S SUMMARY SAYS,
+            // and no more. The rule used to forbid a wedding only when there
+            // was no partner, so a story with one could be titled "I married
+            // her best friend" whatever the last chapter showed. Story 38's
+            // shows a boss at a staff dinner. The summary is the act writer's
+            // own record of where things stand at the end (its sentence four),
+            // so it is true of a story written before the partner was asked to
+            // be a couple and of one written after.
             StoryEnding::NewLife => $partner !== null
                 ? sprintf(
-                    '- How the video ends: the narrator\'s new life, a year on, with %s (%s) on screen.',
+                    '- How the video ends: the narrator\'s new life, a year on, with %s (%s) on screen. What '
+                    .'the two of them are to each other at the end is what the LAST ACT\'S SUMMARY below says, '
+                    .'and a title or description promises that and nothing more: a couple only if it says '
+                    .'they are together, and a wedding, a marriage or a proposal only if it says one happened.%s',
                     $partner->name,
                     $partner->relationship !== '' ? $partner->relationship : 'the person they end up with',
+                    // THE SUMMARY IS STILL THE BOUND, and the chosen state is
+                    // said beside it rather than instead of it. The column is
+                    // an INTENT recorded before the outline; the summary is
+                    // what the acts actually came back with, and the two can
+                    // disagree — Gate 1 warns when they do. Promising from the
+                    // intent would be the record standing in for the artifact,
+                    // which is the shape `thumbnail_selected` was fixed out of.
+                    $story->partner_end_state !== null
+                        ? sprintf(
+                            ' This video was written to end with them %s; if the summary does not say so, the '
+                            .'summary is what the video has and the summary is what you may promise.',
+                            mb_strtolower($story->partner_end_state->label()),
+                        )
+                        : '',
                 )
                 : '- How the video ends: the narrator\'s new life, a year on, alone and fine. There is no new '
                     .'partner in this video. '.$noPartnerPromise,

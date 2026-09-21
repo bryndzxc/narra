@@ -50,17 +50,44 @@ enum ActPhase: string
      * What `acts.escalation_beat` means in this phase.
      *
      * One column, two directions. In the escalation phase the beat names what
-     * the act costs the NARRATOR; after the departure it names what the
-     * attempt costs the ANTAGONIST. Splitting it into two columns would leave
-     * one of them null on every act and give the duplicate-beat check two
-     * lists to walk — the beat is the same idea running the other way, and the
-     * phase is what says which way.
+     * the narrator TRIED and what it cost them that it failed; after the
+     * departure it names what the attempt costs the ANTAGONIST. Splitting it
+     * into two columns would leave one of them null on every act and give the
+     * duplicate-beat check two lists to walk — the beat is the same idea
+     * running the other way, and the phase is what says which way.
+     *
+     * -----------------------------------------------------------------------
+     * THE ATTEMPT WAS ADDED 2026-09-20, AND IT CLOSES AN ASYMMETRY BETWEEN THE
+     * TWO HALVES OF THIS ONE METHOD
+     * -----------------------------------------------------------------------
+     *
+     * The search half has always asked for an ATTEMPT and its cost —
+     * `SpineQuestions::reversalBeats()` refuses "a search that costs her
+     * nothing" as "a montage of somebody looking worried". The escalation half
+     * asked for a cost and nothing else, so the antagonist's losses were
+     * required to be the price of trying and the narrator's were required to
+     * be nothing but losses.
+     *
+     * Measured on the four published stories before the change: across 49
+     * rounds in the escalation and departure acts the narrator speaks in 30
+     * and complies with the substance in 46, and there are 3 counter-moves in
+     * the whole corpus. Every one of the 53 stored beats reads "the narrator
+     * loses X". Three viewers independently called him passive, one of them on
+     * story 33, which was written after the answer-back register landed — so
+     * the register fix reached the mouth and this field is why it did not
+     * reach the hands.
+     *
+     * An attempt that fails is the only move that produces an EXTERNAL loss
+     * without winning a round: the narrator does something, the room or the
+     * institution overrides it, and the ledger still runs against them. That
+     * is the reference's shape, and `endsWorseForNarrator()` is unchanged by
+     * it because the ledger is unchanged by it.
      */
     public function beatLabel(): string
     {
         return match ($this) {
-            self::Escalation => 'Escalation beat — what this act costs the narrator',
-            self::Departure => 'Departure beat — what finally makes staying impossible',
+            self::Escalation => 'Escalation beat — what the narrator tried, and what it cost them that it failed',
+            self::Departure => 'Departure beat — what the narrator tried last, and what finally makes staying impossible',
             self::Search => 'Reversal beat — what this attempt costs the antagonist',
             self::Refusal => 'Refusal beat — which earlier humiliation this answers',
         };
@@ -70,18 +97,23 @@ enum ActPhase: string
     public function guidance(): string
     {
         return match ($this) {
-            self::Escalation => 'Costs the narrator more than the act before it. Nothing is recovered, '
-                .'no apology sticks — and the narrator answers back in every scene the antagonist '
-                .'is in, one line that lands and changes nothing about the cost. Set in the '
-                .'story\'s PRESENT: a prior incident is cited in one sentence inside it, never '
+            self::Escalation => 'THE NARRATOR TRIES SOMETHING HERE AND IT FAILS — a specific, '
+                .'reasonable move a person in that position would actually make, and the room, the '
+                .'family or the institution overrides it. The act costs the narrator more than the '
+                .'act before it BECAUSE the attempt failed, not instead of an attempt. Nothing is '
+                .'recovered, no apology sticks — and the narrator answers back in every scene the '
+                .'antagonist is in, one line that lands and changes nothing about the cost. Set in '
+                .'the story\'s PRESENT: a prior incident is cited in one sentence inside it, never '
                 .'staged as the act.',
-            self::Departure => 'The narrator goes. It has to be the act where staying stops being '
-                .'possible, and where they went is not announced — no note, no address, and the '
-                .'people who know are asked not to tell her.',
+            self::Departure => 'The narrator goes. It is still an escalation act until they leave, '
+                .'so it carries the LAST attempt — the one that had the best chance and fails '
+                .'worst, and is what makes staying stop being possible. Then they go, and where '
+                .'they went is not announced — no note, no address, and the people who know are '
+                .'asked not to tell her.',
             self::Search => 'The antagonist looks for them and REACHES them: she and the narrator '
-                .'are in the same scene at least once in this act, and the meeting costs her — '
-                .'money, standing, the people who backed her excuse, her face in public — more than '
-                .'the last one did.',
+                .'are in the same scene TWICE in this act — two separate meetings, each one played '
+                .'as a scene rather than reported — and each costs her more than the last: money, '
+                .'standing, the people who backed her excuse, her face in public.',
             self::Refusal => 'The narrator is in the room for the exposure and says no. Each refusal '
                 .'answers one specific earlier humiliation by name — this is the private payoff, '
                 .'and it is what the audience has been waiting forty minutes for.',
